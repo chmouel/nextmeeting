@@ -56,10 +56,10 @@ install --user package) or from your package manager if available:
 * https://pypi.org/project/python-dateutil/
 * https://pypi.org/project/gcalcli/
 
-### AUR
+### [AUR](https://aur.archlinux.org/packages/nextmeeting)
 
 ```shell
-yay -Ss nextmeeting
+yay -S nextmeeting
 ```
 
 ### Related
