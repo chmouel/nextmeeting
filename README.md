@@ -14,6 +14,10 @@ It has a few features compared to just gcalcli :
 * notificaiton via notify-send 5 minutes before meeting
 * title elipsis
 
+## Screenshot
+
+![192647099-ccfa2002-0db3-4738-a54b-176a03474483](https://user-images.githubusercontent.com/98980/212869786-1acd56e2-2e8a-4255-98c3-ebbb45b28d6e.png)
+
 ## How to use it?
 
 You need to install [gcalcli](https://github.com/insanum/gcalcli) and [setup
