@@ -54,8 +54,6 @@ import webbrowser
 import dateutil.parser as dtparse
 import dateutil.relativedelta as dtrel
 
-CALENDAR_URL_DOMAIN = "redhat.com"
-
 REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
 )
@@ -66,6 +64,7 @@ NOTIFY_MIN_BEFORE_EVENTS = 5
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
 NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
+GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
 
 
 def elipsis(string: str, length: int) -> str:
@@ -230,6 +229,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cache-dir", default=CACHE_DIR.expanduser(), help="cache dir location"
     )
+
+    parser.add_argument(
+        "--google-domain",
+        help="let you specify your google domain instead of the default google.com one",
+        default=os.environ.get("NEXTMEETING_GOOGLE_DOMAIN"),
+    )
     parser.add_argument(
         "--notify-min-before-events",
         type=int,
@@ -239,13 +244,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def replace_domain_url(url: str) -> str:
-    if CALENDAR_URL_DOMAIN != "":
-        return url.replace(
-            "www.google.com/calendar",
-            f"calendar.google.com/a/{CALENDAR_URL_DOMAIN}",
-        )
-    return url
+def replace_domain_url(domain, url: str) -> str:
+    return url.replace(
+        GOOGLE_CALENDAR_PUBLIC_URL,
+        f"calendar.google.com/a/{domain}",
+    )
 
 
 def bulletize(rets: list[str]) -> str:
@@ -263,7 +266,14 @@ def main():
             sys.exit(0)
         url = matches[0].group("meet_url")
         if not url:
-            url = replace_domain_url(matches[0].group("calendar_url"))
+            url = matches[0].group("calendar_url")
+            # TODO: go over the description and detect zoom and other stuff
+            # gnome-next-meeting-applet has a huge amount of regexp for that already we can reuse
+            # Maybe show a dialog with the description and the user can click on the link with some gtk
+            if args.google_domain:
+                url = replace_domain_url(args.google_domain, url)
+        # TODO: we can't do the "domain" switch thing on meet url that are not
+        # calendar, maybe speicfy a /u/number/ for multi accounts ?
         open_url(url)
         sys.exit(0)
     if args.waybar:
