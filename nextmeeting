@@ -58,7 +58,7 @@ REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
 )
 DEFAULT_CALENDAR = "Work"
-GCALCLI_CMDLINE = f"gcalcli --nocolor agenda --nodeclined --default-calendar=Lyc --default-calendar={DEFAULT_CALENDAR} --details=end --details=url --tsv today"
+GCALCLI_CMDLINE = f"gcalcli --nocolor agenda --nodeclined --calendar={DEFAULT_CALENDAR} --details=end --details=url --tsv today"
 TITLE_ELIPSIS_LENGTH = 50
 NOTIFY_MIN_BEFORE_EVENTS = 5
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
@@ -174,7 +174,8 @@ def ret_events(
             if hyperlink:
                 thetime = f"{thetime: <17}"
                 thetime = make_hyperlink(
-                    replace_domain_url(match.group("calendar_url")), thetime
+                    replace_domain_url(args.google_domain, match.group("calendar_url")),
+                    thetime,
                 )
             ret.append(f"{thetime} - {title}")
     return ret
