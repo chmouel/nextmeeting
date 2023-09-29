@@ -92,7 +92,7 @@ def pretty_date(deltad: dtrel.relativedelta, date: datetime.datetime) -> str:
     elif deltad.hours != 0:
         s = date.strftime("%HH%M")
     else:
-        if deltad.minutes <= 5:
+        if deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS:
             number = f"""<span background="red">{deltad.minutes}</span>"""
         else:
             number = f"{deltad.minutes}"
@@ -116,8 +116,8 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     with subprocess.Popen(
         args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
     ) as cmd:
-        for line in cmd.stdout.readlines():  # type: ignore
-            line = line.strip().decode(encoding="utf-8")
+        for _line in cmd.stdout.readlines():  # type: ignore
+            line = _line.strip().decode(encoding="utf-8")
             if not line or line == "\n":
                 continue
             match = REG_TSV.match(line)
