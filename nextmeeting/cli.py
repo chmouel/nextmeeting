@@ -65,6 +65,7 @@ CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
 NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
 GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
+ALL_DAYS_MEETING_HOURS = 24
 
 
 def elipsis(string: str, length: int) -> str:
@@ -126,6 +127,7 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
             )
             if datetime.datetime.now() > enddate:
                 continue
+
             if not match:
                 continue
             ret.append(match)
@@ -223,6 +225,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--waybar", action="store_true", help="get a json for to display for waybar"
     )
+
+    parser.add_argument(
+        "--waybar-show-all-day-meeting", action="store_true", help="show all day meeting in next event for waybar"
+    )
+
+    parser.add_argument(
+        "--all-day-meeting-hours", default=ALL_DAYS_MEETING_HOURS, help="how long is an all day meeting in hours, (default: %s)" % (ALL_DAYS_MEETING_HOURS)
+    )
+
+
     parser.add_argument(
         "--open-meet-url", action="store_true", help="click on invite url"
     )
@@ -256,12 +268,21 @@ def bulletize(rets: list[str]) -> str:
     return "• " + "\n• ".join(rets)
 
 
+def get_next_non_all_day_meeting(matches: list[re.Match], rets: list[str], all_day_meeting_hours: int) -> None | str:
+    for m in matches:
+        start_date = dtparse.parse("%s %s" % (m['startdate'], m['starthour']))
+        end_date = dtparse.parse("%s %s" % (m['enddate'], m['endhour']))
+        if end_date > (start_date + datetime.timedelta(hours=all_day_meeting_hours)):
+            continue
+        return rets[matches.index(m)]
+    return None
+
 def main():
     args = parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
     matches = gcalcli_output(args)
+    rets = ret_events(matches, args)
     if args.open_meet_url:
-        rets = ret_events(matches, args)
         if not rets:
             print("No meeting 🏖️")
             sys.exit(0)
@@ -277,13 +298,19 @@ def main():
         # calendar, maybe speicfy a /u/number/ for multi accounts ?
         open_url(url)
         sys.exit(0)
-    if args.waybar:
-        rets = ret_events(matches, args)
+
+    elif args.waybar:
         if not rets:
             ret = {"text": "No meeting 🏖️"}
         else:
+            if args.waybar_show_all_day_meeting:
+                coming_up_next = rets[0]
+            else:
+                coming_up_next = get_next_non_all_day_meeting(matches, rets, int(args.all_day_meeting_hours))
+                if not coming_up_next: # only all days meeting
+                 coming_up_next = rets[0]
             ret = {
-                "text": elipsis(rets[0], args.max_title_length),
+                "text": elipsis(coming_up_next, args.max_title_length),
                 "tooltip": bulletize(rets),
             }
         json.dump(ret, sys.stdout)

@@ -2,17 +2,18 @@
 
 ## What is it?
 
-nextmeeting is a simple cli leveraging gcalcli to show  the next meetings.
+nextmeeting is a simple CLI leveraging gcalcli to show the next meetings.
 
-It has a few features compared to just gcalcli : 
+It has a few features compared to just gcalcli :
 
-* bar integration (ie: [waybar](https://github.com/Alexays/Waybar)/[polybar](https://github.com/polybar/polybar) etc..)
-* smart date in english (not just the date, tomorrow or others)
-* show the time to go for current meeting
-* change colors if there is 5 minutes to go to the meeting
-* hyperlink in default view to click on terminal
-* notificaiton via notify-send 5 minutes before meeting
-* title elipsis
+- bar integration (i.e: [waybar](https://github.com/Alexays/Waybar)/[polybar](https://github.com/polybar/polybar) and probably others)
+- smart date in English (not just the date, tomorrow or others)
+- show the time to go for current meeting
+- change colors if there is 5 minutes to go to the meeting
+- hyperlink in default view to click on terminal
+- notification via notify-send 5 minutes before meeting
+- title ellipsis
+- Exclude next day meetings.
 
 ## Screenshot
 
@@ -21,12 +22,14 @@ It has a few features compared to just gcalcli :
 ## How to use it?
 
 You need to install [gcalcli](https://github.com/insanum/gcalcli) and [setup
-the google oauth integration](https://github.com/insanum/gcalcli#login-information) with google calendar.
+the google Oauth integration](https://github.com/insanum/gcalcli#login-information) with google calendar.
 
-by default you can press nextmeeting and it will show the list of meetins you
+By default you can start `nextmeeting` and it will show the list of meetings you
 have with "human date".
 
-### Waybar 
+There is a few options to customize things, see `nextmeeting --help` for more.
+
+### Waybar
 
 More interesting to integrate with waybar you can have something like this:
 
@@ -43,22 +46,32 @@ More interesting to integrate with waybar you can have something like this:
     },
 ```
 
-This will detect if i have my external display connected for the lenght of the tile and show how long i have until the next meeting.
-If if i click on the item it will open the meet url attached to the event.
-On right click it will use `kitty` terminal  to show the timezones with
+This will detect if i have my external display connected for the length of the
+tile and show how long i have until the next meeting. If if i click on the item
+it will open the meet URL attached to the event. On right click it will use
+`kitty` terminal to show the time zones with
 [batz](https://github.com/chmouel/batzconverter) and my next meeting. I can
-click on the title in the terminal and it will open the meet url.
+click on the title in the terminal and it will open the meet URL.
 
 ### Installation
 
-Copy the [nextmeeting](./nextmeeting) script somewhere
-in your PATH (ie: `~/.local/bin` or `/usr/local/bin`)
+Use `poetry` and run it with :
 
-For the dependences you will need to install those packages from pypi (pip
-install --user package) or from your package manager if available:
+`poetry run nextmeeting`
 
-* https://pypi.org/project/python-dateutil/
-* https://pypi.org/project/gcalcli/
+and that will install the dependences and run everything from a virtualenv.
+
+If you don't want to use poetry you will to install those packages from PyPi (pip
+install --user package) or from your package manager if available.
+
+And run the script
+
+`python3 ./nextmeeting/cli.py`
+
+or even just copy it `./nextmeeting/cli.py` to your path and run it.
+
+- <https://pypi.org/project/python-dateutil/>
+- <https://pypi.org/project/gcalcli/>
 
 ### [AUR](https://aur.archlinux.org/packages/nextmeeting)
 
@@ -68,7 +81,7 @@ yay -S nextmeeting
 
 ### Related
 
-* For Gnome: [gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
+- For Gnome: [gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
 
 ## Copyright
 
@@ -77,6 +90,6 @@ yay -S nextmeeting
 ## Authors
 
 - Chmouel Boudjnah <https://github.com/chmouel>
-    - Fediverse - <[@chmouel@fosstodon.org](https://fosstodon.org/@chmouel)>
-    - Twitter - <[@chmouel](https://twitter.com/chmouel)>
-    - Blog  - <[https://blog.chmouel.com](https://blog.chmouel.com)>
+  - Fediverse - <[@chmouel@fosstodon.org](https://fosstodon.org/@chmouel)>
+  - Twitter - <[@chmouel](https://twitter.com/chmouel)>
+  - Blog - <[https://blog.chmouel.com](https://blog.chmouel.com)>
