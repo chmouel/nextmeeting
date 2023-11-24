@@ -58,7 +58,7 @@ REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
 )
 DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
-GCALCLI_CMDLINE = f"gcalcli --nocolor agenda --nodeclined --calendar={DEFAULT_CALENDAR} --details=end --details=url --tsv today"
+GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
 TITLE_ELIPSIS_LENGTH = 50
 NOTIFY_MIN_BEFORE_EVENTS = 5
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
