@@ -41,7 +41,6 @@
 import argparse
 import datetime
 import hashlib
-import html
 import json
 import os.path
 import pathlib
@@ -78,7 +77,9 @@ def open_url(url: str):
     webbrowser.open_new_tab(url)
 
 
-def pretty_date(deltad: dtrel.relativedelta, date: datetime.datetime) -> str:
+def pretty_date(
+    deltad: dtrel.relativedelta, date: datetime.datetime, args: argparse.Namespace
+) -> str:
     today = datetime.datetime.now()
     s = ""
     if date.day != today.day:
@@ -93,8 +94,8 @@ def pretty_date(deltad: dtrel.relativedelta, date: datetime.datetime) -> str:
     elif deltad.hours != 0:
         s = date.strftime("%HH%M")
     else:
-        if deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS:
-            number = f"""<span background="red">{deltad.minutes}</span>"""
+        if deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS and args.notify_min_color:
+            number = f"""<span background="{args.notify_min_color}">{deltad.minutes}</span>"""
         else:
             number = f"{deltad.minutes}"
 
@@ -141,8 +142,6 @@ def ret_events(
     cssclass = ""
     for match in lines:
         title = match.group("title")
-        if args.waybar:
-            title = html.escape(title)
         if hyperlink and match.group("meet_url"):
             title = make_hyperlink(match.group("meet_url"), title)
         startdate = dtparse.parse(
@@ -175,7 +174,7 @@ def ret_events(
                 cssclass = "soon"
                 notify(title, startdate, enddate, args.cache_dir, args.notify_icon)
 
-            thetime = pretty_date(timeuntilstarting, startdate)
+            thetime = pretty_date(timeuntilstarting, startdate, args)
             if hyperlink:
                 thetime = f"{thetime: <17}"
                 thetime = make_hyperlink(
@@ -262,6 +261,12 @@ def parse_args() -> argparse.Namespace:
         default=NOTIFY_MIN_BEFORE_EVENTS,
         help="How many before minutes to notify the events is coming up",
     )
+    parser.add_argument(
+        "--notify-min-color",
+        default=NOTIFY_MIN_BEFORE_EVENTS,
+        help="How many before minutes to notify the events is coming up",
+    )
+
     parser.add_argument(
         "--notify-icon",
         default=NOTIFY_ICON,
