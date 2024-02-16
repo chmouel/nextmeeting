@@ -53,6 +53,23 @@ it will open the meet URL attached to the event. On right click it will use
 [batz](https://github.com/chmouel/batzconverter) and my next meeting. I can
 click on the title in the terminal and it will open the meet URL.
 
+You can style the waybar item with the following CSS:
+
+```css
+#custom-agenda {
+  color: #696969;
+}
+```
+
+If you enable the option "--notify-min-before-events it will output a class
+`soon` if the events is coming soon, you can style it with:
+
+```css
+#custom-agenda.soon {
+  color: #eb4d4b;
+}
+```
+
 ### Installation
 
 Use `poetry` and run it with :

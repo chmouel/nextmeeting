@@ -136,8 +136,9 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
 
 def ret_events(
     lines: list[re.Match], args: argparse.Namespace, hyperlink: bool = False
-) -> list[str]:
+) -> (list[str], str):
     ret = []
+    cssclass = ""
     for match in lines:
         title = match.group("title")
         if args.waybar:
@@ -170,7 +171,8 @@ def ret_events(
                 and not timeuntilstarting.hour
                 and timeuntilstarting.minutes <= args.notify_min_before_events
             ):
-                notify(title, startdate, enddate, args.cache_dir)
+                cssclass = "soon"
+                notify(title, startdate, enddate, args.cache_dir, args.notify_icon)
 
             thetime = pretty_date(timeuntilstarting, startdate)
             if hyperlink:
@@ -180,7 +182,7 @@ def ret_events(
                     thetime,
                 )
             ret.append(f"{thetime} - {title}")
-    return ret
+    return ret, cssclass
 
 
 def notify(
@@ -188,6 +190,7 @@ def notify(
     start_date: datetime.datetime,
     end_date: datetime.datetime,
     cache_dir: pathlib.Path,
+    icon: str,
 ):
     t = f"{title}{start_date}{end_date}".encode("utf-8")
     uuid = hashlib.md5(t).hexdigest()
@@ -210,7 +213,7 @@ def notify(
         [
             NOTIFY_PROGRAM,
             "-i",
-            NOTIFY_ICON,
+            os.path.expanduser(icon),
             title,
             f"Start: {start_date.strftime('%H:%M')} End: {end_date.strftime('%H:%M')}",
         ]
@@ -258,6 +261,11 @@ def parse_args() -> argparse.Namespace:
         default=NOTIFY_MIN_BEFORE_EVENTS,
         help="How many before minutes to notify the events is coming up",
     )
+    parser.add_argument(
+        "--notify-icon",
+        default=NOTIFY_ICON,
+        help="Notification icon to use for the notify-send",
+    )
     return parser.parse_args()
 
 
@@ -288,7 +296,7 @@ def main():
     args = parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
     matches = gcalcli_output(args)
-    rets = ret_events(matches, args)
+    rets, cssclass = ret_events(matches, args)
     if args.open_meet_url:
         if not rets:
             print("No meeting 🏖️")
@@ -322,6 +330,8 @@ def main():
                 "text": elipsis(coming_up_next, args.max_title_length),
                 "tooltip": bulletize(rets),
             }
+            if cssclass:
+                ret["class"] = cssclass
         json.dump(ret, sys.stdout)
     else:
         rets = ret_events(matches, args, hyperlink=True)
