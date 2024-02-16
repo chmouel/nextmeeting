@@ -70,6 +70,15 @@ If you enable the option "--notify-min-before-events it will output a class
 }
 ```
 
+if the meeting is currently hapenning it will add the `current` class to it,
+you can style it for example with:
+
+```css
+#custom-agenda.current {
+  color: #00ffff;
+}
+```
+
 ### Installation
 
 Use `poetry` and run it with :

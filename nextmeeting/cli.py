@@ -150,6 +150,7 @@ def ret_events(
         )
         enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
         if datetime.datetime.now() > startdate:
+            cssclass = "current"
             timetofinish = dtrel.relativedelta(enddate, datetime.datetime.now())
             if timetofinish.hours == 0:
                 s = f"{timetofinish.minutes} minutes"
