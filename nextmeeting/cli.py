@@ -41,6 +41,7 @@
 import argparse
 import datetime
 import hashlib
+import html
 import json
 import os.path
 import pathlib
@@ -142,6 +143,8 @@ def ret_events(
     cssclass = ""
     for match in lines:
         title = match.group("title")
+        if args.waybar:
+            title = html.escape(title)
         if hyperlink and match.group("meet_url"):
             title = make_hyperlink(match.group("meet_url"), title)
         startdate = dtparse.parse(
@@ -333,7 +336,7 @@ def main():
                 if not coming_up_next:  # only all days meeting
                     coming_up_next = rets[0]
             ret = {
-                "text": elipsis(coming_up_next, args.max_title_length),
+                "text": html.escape(elipsis(coming_up_next, args.max_title_length)),
                 "tooltip": bulletize(rets),
             }
             if cssclass:
