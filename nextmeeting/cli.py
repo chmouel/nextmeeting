@@ -189,7 +189,7 @@ def notify(
     end_date: datetime.datetime,
     cache_dir: pathlib.Path,
 ):
-    t = "{title}{start_date}{end_date}".encode("utf-8")
+    t = f"{title}{start_date}{end_date}".encode("utf-8")
     uuid = hashlib.md5(t).hexdigest()
     notified = False
     cached = []
@@ -227,13 +227,17 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--waybar-show-all-day-meeting", action="store_true", help="show all day meeting in next event for waybar"
+        "--waybar-show-all-day-meeting",
+        action="store_true",
+        help="show all day meeting in next event for waybar",
     )
 
     parser.add_argument(
-        "--all-day-meeting-hours", default=ALL_DAYS_MEETING_HOURS, help="how long is an all day meeting in hours, (default: %s)" % (ALL_DAYS_MEETING_HOURS)
+        "--all-day-meeting-hours",
+        default=ALL_DAYS_MEETING_HOURS,
+        help="how long is an all day meeting in hours, (default: %s)"
+        % (ALL_DAYS_MEETING_HOURS),
     )
-
 
     parser.add_argument(
         "--open-meet-url", action="store_true", help="click on invite url"
@@ -268,14 +272,17 @@ def bulletize(rets: list[str]) -> str:
     return "• " + "\n• ".join(rets)
 
 
-def get_next_non_all_day_meeting(matches: list[re.Match], rets: list[str], all_day_meeting_hours: int) -> None | str:
+def get_next_non_all_day_meeting(
+    matches: list[re.Match], rets: list[str], all_day_meeting_hours: int
+) -> None | str:
     for m in matches:
-        start_date = dtparse.parse("%s %s" % (m['startdate'], m['starthour']))
-        end_date = dtparse.parse("%s %s" % (m['enddate'], m['endhour']))
+        start_date = dtparse.parse("%s %s" % (m["startdate"], m["starthour"]))
+        end_date = dtparse.parse("%s %s" % (m["enddate"], m["endhour"]))
         if end_date > (start_date + datetime.timedelta(hours=all_day_meeting_hours)):
             continue
         return rets[matches.index(m)]
     return None
+
 
 def main():
     args = parse_args()
@@ -306,9 +313,11 @@ def main():
             if args.waybar_show_all_day_meeting:
                 coming_up_next = rets[0]
             else:
-                coming_up_next = get_next_non_all_day_meeting(matches, rets, int(args.all_day_meeting_hours))
-                if not coming_up_next: # only all days meeting
-                 coming_up_next = rets[0]
+                coming_up_next = get_next_non_all_day_meeting(
+                    matches, rets, int(args.all_day_meeting_hours)
+                )
+                if not coming_up_next:  # only all days meeting
+                    coming_up_next = rets[0]
             ret = {
                 "text": elipsis(coming_up_next, args.max_title_length),
                 "tooltip": bulletize(rets),
