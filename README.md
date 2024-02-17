@@ -72,23 +72,26 @@ If you enable the option "--notify-min-before-events it will output a class
 
 ### Installation
 
-Use `poetry` and run it with :
+Use `pip` with:
+
+`pip install -U nextmeeting`
+
+or Checkout the source of this repo and use `poetry` :
 
 `poetry run nextmeeting`
 
-and that will install the dependences and run everything from a virtualenv.
-
-If you don't want to use poetry you will to install those packages from PyPi (pip
-install --user package) or from your package manager if available.
-
-And run the script
-
-`python3 ./nextmeeting/cli.py`
-
-or even just copy it `./nextmeeting/cli.py` to your path and run it.
+If you don't want to use poetry you can install the depndences packages from PyPi
+or from your operating system package manager if available:
 
 - <https://pypi.org/project/python-dateutil/>
 - <https://pypi.org/project/gcalcli/>
+
+And the you can run the nextmeeting script:
+
+`python3 ./nextmeeting/cli.py`
+
+alternatively you can even just copy the `./nextmeeting/cli.py` script to your path and run 
+it to make it more convenient.
 
 ### [AUR](https://aur.archlinux.org/packages/nextmeeting)
 
