@@ -49,6 +49,7 @@ import re
 import shutil
 import subprocess
 import sys
+import typing
 import webbrowser
 
 import dateutil.parser as dtparse
@@ -138,10 +139,10 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
 
 def ret_events(
     lines: list[re.Match], args: argparse.Namespace, hyperlink: bool = False
-) -> (list[str], str):
+) -> typing.Tuple[list[str], str]:
     ret = []
-    cssclass = ""
     for match in lines:
+        cssclass = ""
         title = match.group("title")
         if args.waybar:
             title = html.escape(title)
