@@ -141,6 +141,7 @@ def ret_events(
     lines: list[re.Match], args: argparse.Namespace, hyperlink: bool = False
 ) -> typing.Tuple[list[str], str]:
     ret = []
+    cssclass = ""
     for match in lines:
         cssclass = ""
         title = match.group("title")
@@ -337,7 +338,7 @@ def main():
                 if not coming_up_next:  # only all days meeting
                     coming_up_next = rets[0]
             ret = {
-                "text": html.escape(elipsis(coming_up_next, args.max_title_length)),
+                "text": elipsis(coming_up_next, args.max_title_length),
                 "tooltip": bulletize(rets),
             }
             if cssclass:
