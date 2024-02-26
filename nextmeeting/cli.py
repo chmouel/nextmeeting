@@ -115,26 +115,35 @@ def make_hyperlink(uri: str, label: None | str = None):
     return escape_mask.format(parameters, uri, label)
 
 
-def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
+def process_file(fp) -> list[re.Match]:
     ret = []
+    for _line in fp.readlines():  # type: ignore
+        try:
+            line = str(_line.strip(), "utf-8")
+        except TypeError:
+            line = _line.strip()
+        match = REG_TSV.match(line)
+        enddate = dtparse.parse(
+            f"{match.group('enddate')} {match.group('endhour')}"  # type: ignore
+        )
+        if datetime.datetime.now() > enddate:
+            continue
+
+        if not match:
+            continue
+        ret.append(match)
+    return ret
+
+
+def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
+    # TODO: do unittests with this
+    # with open("/tmp/debug") as f:
+    #     return process_file(f)
+
     with subprocess.Popen(
         args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
     ) as cmd:
-        for _line in cmd.stdout.readlines():  # type: ignore
-            line = _line.strip().decode(encoding="utf-8")
-            if not line or line == "\n":
-                continue
-            match = REG_TSV.match(line)
-            enddate = dtparse.parse(
-                f"{match.group('enddate')} {match.group('endhour')}"  # type: ignore
-            )
-            if datetime.datetime.now() > enddate:
-                continue
-
-            if not match:
-                continue
-            ret.append(match)
-    return ret
+        return process_file(cmd.stdout)
 
 
 def ret_events(
@@ -173,7 +182,7 @@ def ret_events(
 
             if (
                 not timeuntilstarting.days
-                and not timeuntilstarting.hour
+                and not timeuntilstarting.hours
                 and timeuntilstarting.minutes <= args.notify_min_before_events
             ):
                 cssclass = "soon"
