@@ -354,7 +354,7 @@ def main():
                 ret["class"] = cssclass
         json.dump(ret, sys.stdout)
     else:
-        rets = ret_events(matches, args, hyperlink=True)
+        rets, _ = ret_events(matches, args, hyperlink=True)
         print(bulletize(rets))
 
 
