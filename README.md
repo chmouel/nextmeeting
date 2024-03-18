@@ -41,8 +41,7 @@ More interesting to integrate with waybar you can have something like this:
         "on-click-right": "kitty --class=GClock -- /bin/bash -c \"batz;echo;cal -3;echo;nextmeeting;read;\";",
         "interval": 59,
         "return-type": "json",
-        "tooltip": "true",
-        "tooltip-format": "{tooltip}",
+        "tooltip": "true"
     },
 ```
 
@@ -90,7 +89,7 @@ And the you can run the nextmeeting script:
 
 `python3 ./nextmeeting/cli.py`
 
-alternatively you can even just copy the `./nextmeeting/cli.py` script to your path and run 
+alternatively you can even just copy the `./nextmeeting/cli.py` script to your path and run
 it to make it more convenient.
 
 ### [AUR](https://aur.archlinux.org/packages/nextmeeting)
