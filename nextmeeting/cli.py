@@ -162,6 +162,11 @@ def ret_events(
             f"{match.group('startdate')} {match.group('starthour')}"
         )
         enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
+        if (
+            args.skip_all_day_meeting
+            and dtrel.relativedelta(enddate, startdate).days >= 1
+        ):
+            continue
         if datetime.datetime.now() > startdate:
             cssclass = "current"
             timetofinish = dtrel.relativedelta(enddate, datetime.datetime.now())
@@ -262,6 +267,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-title-length", type=int, default=TITLE_ELIPSIS_LENGTH)
     parser.add_argument(
         "--cache-dir", default=CACHE_DIR.expanduser(), help="cache dir location"
+    )
+
+    parser.add_argument(
+        "--skip-all-day-meeting", "-S", action="store_true", help="skip all day meeting"
     )
 
     parser.add_argument(
