@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nextmeeting"
-version = "1.4.0"
+version = "1.4.1"
 description = "Show your nextmeeting in your poly/waybar with gcalcli"
 authors = ["Chmouel Boudjnah <chmouel@chmouel.com>"]
 keywords = ["calendar", "cli"]
