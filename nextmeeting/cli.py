@@ -343,27 +343,43 @@ def get_next_non_all_day_meeting(
     return None
 
 
+def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
+    if not rets:
+        print("No meeting 🏖️")
+        return
+    for match in matches:
+        startdate = dtparse.parse(
+            f"{match.group('startdate')} {match.group('starthour')}"
+        )
+        enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
+        if (
+            args.skip_all_day_meeting
+            and dtrel.relativedelta(enddate, startdate).days >= 1
+        ):
+            continue
+        url = match.group("meet_url")
+        if not url:
+            url = match.group("calendar_url")
+            # TODO: go over the description and detect zoom and other stuff
+            # gnome-next-meeting-applet has a huge amount of regexp for that already we can reuse
+            # Maybe show a dialog with the description and the user can click on the link with some gtk
+            if args.google_domain:
+                url = replace_domain_url(args.google_domain, url)
+        break
+    # TODO: we can't do the "domain" switch thing on meet url that are not
+    # calendar, maybe speicfy a /u/number/ for multi accounts ?
+    open_url(url)
+    sys.exit(0)
+
+
 def main():
     args = parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
     matches = gcalcli_output(args)
     rets, cssclass = ret_events(matches, args)
     if args.open_meet_url:
-        if not rets:
-            print("No meeting 🏖️")
-            sys.exit(0)
-        url = matches[0].group("meet_url")
-        if not url:
-            url = matches[0].group("calendar_url")
-            # TODO: go over the description and detect zoom and other stuff
-            # gnome-next-meeting-applet has a huge amount of regexp for that already we can reuse
-            # Maybe show a dialog with the description and the user can click on the link with some gtk
-            if args.google_domain:
-                url = replace_domain_url(args.google_domain, url)
-        # TODO: we can't do the "domain" switch thing on meet url that are not
-        # calendar, maybe speicfy a /u/number/ for multi accounts ?
-        open_url(url)
-        sys.exit(0)
+        open_meet_url(rets, matches, args)
+        return
 
     elif args.waybar:
         if not rets:
