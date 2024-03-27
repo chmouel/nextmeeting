@@ -145,10 +145,10 @@ def process_file(fp) -> list[re.Match]:
 
 def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     # TODO: do unittests with this
-    with open("/tmp/debug") as f:
-        return process_file(f)
+    # with open("/tmp/debug") as f:
+    #     return process_file(f)
 
-    with subprecess.Popen(
+    with subprocess.Popen(
         args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
     ) as cmd:
         return process_file(cmd.stdout)
