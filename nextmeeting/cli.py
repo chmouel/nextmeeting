@@ -157,7 +157,6 @@ def ret_events(
     ret = []
     cssclass = ""
     for match in lines:
-        cssclass = ""
         title = match.group("title")
         if args.waybar:
             title = html.escape(title)
