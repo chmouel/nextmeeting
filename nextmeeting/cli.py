@@ -62,6 +62,7 @@ DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
 GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
 TITLE_ELIPSIS_LENGTH = 50
 NOTIFY_MIN_BEFORE_EVENTS = 5
+NOTIFY_MIN_COLOR = "#FF0000"  # red
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
 NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
@@ -300,7 +301,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--notify-min-color",
-        default=NOTIFY_MIN_BEFORE_EVENTS,
+        default=NOTIFY_MIN_COLOR,
         help="How many before minutes to notify the events is coming up",
     )
 
