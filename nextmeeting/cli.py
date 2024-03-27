@@ -63,6 +63,7 @@ GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today
 TITLE_ELIPSIS_LENGTH = 50
 NOTIFY_MIN_BEFORE_EVENTS = 5
 NOTIFY_MIN_COLOR = "#FF0000"  # red
+NOTIFY_MIN_COLOR = "#FF5733"  # orange
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
 NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
