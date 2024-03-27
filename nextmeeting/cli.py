@@ -62,8 +62,8 @@ DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
 GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
 TITLE_ELIPSIS_LENGTH = 50
 NOTIFY_MIN_BEFORE_EVENTS = 5
-NOTIFY_MIN_COLOR = "#FF0000"  # red
-NOTIFY_MIN_COLOR = "#FF5733"  # orange
+NOTIFY_MIN_COLOR = "#FF5733"  # red
+NOTIFY_MIN_COLOR_FOREGROUND = "#F4F1DE"  # white
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
 NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
@@ -72,7 +72,9 @@ ALL_DAYS_MEETING_HOURS = 24
 
 
 def elipsis(string: str, length: int) -> str:
-    if len(string) > length:
+    # remove all html elements first from it
+    hstring = re.sub(r"<[^>]*>", "", string)
+    if len(hstring) > length:
         return string[: length - 3] + "..."
     return string
 
@@ -103,7 +105,7 @@ def pretty_date(
             and args.notify_min_color
             and args.waybar
         ):
-            number = f"""<span background="{args.notify_min_color}">{deltad.minutes}</span>"""
+            number = f"""<span background="{args.notify_min_color}" color="{args.notify_min_color_foreground}">{deltad.minutes}</span>"""
         else:
             number = f"{deltad.minutes}"
 
@@ -143,10 +145,10 @@ def process_file(fp) -> list[re.Match]:
 
 def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     # TODO: do unittests with this
-    # with open("/tmp/debug") as f:
-    #     return process_file(f)
+    with open("/tmp/debug") as f:
+        return process_file(f)
 
-    with subprocess.Popen(
+    with subprecess.Popen(
         args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
     ) as cmd:
         return process_file(cmd.stdout)
@@ -309,6 +311,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--notify-min-color",
         default=NOTIFY_MIN_COLOR,
+        help="How many before minutes to notify the events is coming up",
+    )
+
+    parser.add_argument(
+        "--notify-min-color-foreground",
+        default=NOTIFY_MIN_COLOR_FOREGROUND,
         help="How many before minutes to notify the events is coming up",
     )
 
