@@ -22,7 +22,7 @@ nextmeeting = "nextmeeting.cli:main"
 ruff = "^0.0.291"
 mypy = "^0.920"
 
-[tool.ruff]
+[tool.ruff.lint]
 ignore = ["E501"]
 select = ["E", "F", "D4", "PT", "PL"]
 
