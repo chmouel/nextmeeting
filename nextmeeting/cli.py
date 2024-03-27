@@ -344,6 +344,7 @@ def get_next_non_all_day_meeting(
 
 
 def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
+    url = ""
     if not rets:
         print("No meeting 🏖️")
         return
@@ -368,7 +369,8 @@ def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
         break
     # TODO: we can't do the "domain" switch thing on meet url that are not
     # calendar, maybe speicfy a /u/number/ for multi accounts ?
-    open_url(url)
+    if url:
+        open_url(url)
     sys.exit(0)
 
 
