@@ -190,6 +190,9 @@ def ret_events(
                 startdate + datetime.timedelta(minutes=1), datetime.datetime.now()
             )
 
+            url = match.group("calendar_url")
+            if args.google_domain:
+                url = replace_domain_url(args.google_domain, url)
             if (
                 not timeuntilstarting.days
                 and not timeuntilstarting.hours
