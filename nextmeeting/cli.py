@@ -97,7 +97,11 @@ def pretty_date(
     elif deltad.hours != 0:
         s = date.strftime("%HH%M")
     else:
-        if deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS and args.notify_min_color:
+        if (
+            deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
+            and args.notify_min_color
+            and args.waybar
+        ):
             number = f"""<span background="{args.notify_min_color}">{deltad.minutes}</span>"""
         else:
             number = f"{deltad.minutes}"
