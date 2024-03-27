@@ -191,7 +191,7 @@ def ret_events(
                 and timeuntilstarting.minutes <= args.notify_min_before_events
             ):
                 cssclass = "soon"
-                notify(title, startdate, enddate, args.cache_dir, args.notify_icon)
+                notify(title, startdate, enddate, args)
 
             thetime = pretty_date(timeuntilstarting, startdate, args)
             if hyperlink:
@@ -208,14 +208,13 @@ def notify(
     title: str,
     start_date: datetime.datetime,
     end_date: datetime.datetime,
-    cache_dir: pathlib.Path,
-    icon: str,
+    args: argparse.Namespace,
 ):
     t = f"{title}{start_date}{end_date}".encode("utf-8")
     uuid = hashlib.md5(t).hexdigest()
     notified = False
     cached = []
-    cache_path = cache_dir / "cache.json"
+    cache_path = args.cache_dir / "cache.json"
     if cache_path.exists():
         with cache_path.open() as f:
             cached = json.load(f)
@@ -228,11 +227,19 @@ def notify(
         json.dump(cached, f)
     if NOTIFY_PROGRAM == "":
         return
+    other_args = []
+    if args.notify_expiry > 0:
+        milliseconds = args.notify_expiry * 60 * 1000
+        other_args += ["-t", str(milliseconds)]
+    elif args.notify_expiry < 0:
+        milliseconds = NOTIFY_MIN_BEFORE_EVENTS * 60 * 1000
+        other_args += ["-t", str(milliseconds)]
     subprocess.call(
         [
             NOTIFY_PROGRAM,
             "-i",
-            os.path.expanduser(icon),
+            os.path.expanduser(args.notify_icon),
+            *other_args,
             title,
             f"Start: {start_date.strftime('%H:%M')} End: {end_date.strftime('%H:%M')}",
         ]
@@ -259,6 +266,13 @@ def parse_args() -> argparse.Namespace:
         default=ALL_DAYS_MEETING_HOURS,
         help="how long is an all day meeting in hours, (default: %s)"
         % (ALL_DAYS_MEETING_HOURS),
+    )
+
+    parser.add_argument(
+        "--notify-expiry",
+        type=int,
+        help="notifcation expiration in minutes (0 no expiry, -1 show notification until the meeting sart)",
+        default=0,
     )
 
     parser.add_argument(
