@@ -61,6 +61,7 @@ REG_TSV = re.compile(
 DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
 GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
 TITLE_ELIPSIS_LENGTH = 50
+MAX_CACHED_ENTRIES = 30
 NOTIFY_MIN_BEFORE_EVENTS = 5
 NOTIFY_MIN_COLOR = "#FF5733"  # red
 NOTIFY_MIN_COLOR_FOREGROUND = "#F4F1DE"  # white
@@ -234,6 +235,8 @@ def notify(
         return
     cached.append(uuid)
     with cache_path.open("w") as f:
+        if cached >= MAX_CACHED_ENTRIES:
+            cached = cached[-MAX_CACHED_ENTRIES:]
         json.dump(cached, f)
     if NOTIFY_PROGRAM == "":
         return
