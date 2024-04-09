@@ -27,32 +27,34 @@ the google Oauth integration](https://github.com/insanum/gcalcli#login-informati
 By default you can start `nextmeeting` and it will show the list of meetings you
 have with "human date".
 
-There is a few options to customize things, see `nextmeeting --help` for more.
+There is a few options to customize things, see `nextmeeting --help` for more options.
 
 ### Waybar
 
-More interesting to integrate with waybar you can have something like this:
+A more interesting use of `nextmeeting` is the integration with waybar, to output nicely on your desktop,
+for example my configuration look like this:
 
 ```json
     "custom/agenda": {
         "format": "{}",
-        "exec": "size=30;swaymsg -t get_outputs -p |grep -q 'Current mode: 3440x1440' && size=80; nextmeeting --max-title-length ${size} --waybar",
+        "exec": "nextmeeting --max-title-length 30 --waybar",
         "on-click": "nextmeeting --open-meet-url",
-        "on-click-right": "kitty --class=GClock -- /bin/bash -c \"batz;echo;cal -3;echo;nextmeeting;read;\";",
+        "on-click-right": "kitty -- /bin/bash -c \"batz;echo;cal -3;echo;nextmeeting;read;\";",
         "interval": 59,
         "return-type": "json",
         "tooltip": "true"
     },
 ```
 
-This will detect if i have my external display connected for the length of the
-tile and show how long i have until the next meeting. If if i click on the item
-it will open the meet URL attached to the event. On right click it will use
+This will show how long i have until the next meeting. If I click on the item
+it will open the meet URL attached to the event. If I hit via a right click it will launch a
 `kitty` terminal to show the time zones with
 [batz](https://github.com/chmouel/batzconverter) and my next meeting. I can
 click on the title in the terminal and it will open the meet URL.
 
-You can style the waybar item with the following CSS:
+#### Styling
+
+You can style some of the waybar item with the following CSS:
 
 ```css
 #custom-agenda {
