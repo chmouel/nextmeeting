@@ -228,14 +228,17 @@ def notify(
     cache_path = args.cache_dir / "cache.json"
     if cache_path.exists():
         with cache_path.open() as f:
-            cached = json.load(f)
+            try:
+                cached = json.load(f)
+            except json.JSONDecodeError:
+                cached = []
             if uuid in cached:
                 notified = True
     if notified:
         return
     cached.append(uuid)
     with cache_path.open("w") as f:
-        if cached >= MAX_CACHED_ENTRIES:
+        if len(cached) >= MAX_CACHED_ENTRIES:
             cached = cached[-MAX_CACHED_ENTRIES:]
         json.dump(cached, f)
     if NOTIFY_PROGRAM == "":
