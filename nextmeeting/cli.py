@@ -84,9 +84,7 @@ def open_url(url: str):
     webbrowser.open_new_tab(url)
 
 
-def pretty_date(
-    deltad: dtrel.relativedelta, date: datetime.datetime, args: argparse.Namespace
-) -> str:
+def pretty_date(deltad: dtrel.relativedelta, date: datetime.datetime, args: argparse.Namespace) -> str:
     today = datetime.datetime.now()
     s = ""
     if date.day != today.day:
@@ -101,11 +99,7 @@ def pretty_date(
     elif deltad.hours != 0:
         s = date.strftime("%HH%M")
     else:
-        if (
-            deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
-            and args.notify_min_color
-            and args.waybar
-        ):
+        if deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS and args.notify_min_color and args.waybar:
             number = f"""<span background="{args.notify_min_color}" color="{args.notify_min_color_foreground}">{deltad.minutes}</span>"""
         else:
             number = f"{deltad.minutes}"
@@ -132,9 +126,11 @@ def process_file(fp) -> list[re.Match]:
         except TypeError:
             line = _line.strip()
         match = REG_TSV.match(line)
-        enddate = dtparse.parse(
-            f"{match.group('enddate')} {match.group('endhour')}"  # type: ignore
-        )
+        try:
+            enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")  # type: ignore
+        except:
+            # Can't easily display all day events so ignore
+            continue
         if datetime.datetime.now() > enddate:
             continue
 
@@ -149,15 +145,11 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     # with open("/tmp/debug") as f:
     #     return process_file(f)
 
-    with subprocess.Popen(
-        args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
-    ) as cmd:
+    with subprocess.Popen(args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE) as cmd:
         return process_file(cmd.stdout)
 
 
-def ret_events(
-    lines: list[re.Match], args: argparse.Namespace, hyperlink: bool = False
-) -> typing.Tuple[list[str], str]:
+def ret_events(lines: list[re.Match], args: argparse.Namespace, hyperlink: bool = False) -> typing.Tuple[list[str], str]:
     ret = []
     cssclass = ""
     for match in lines:
@@ -166,14 +158,9 @@ def ret_events(
             title = html.escape(title)
         if hyperlink and match.group("meet_url"):
             title = make_hyperlink(match.group("meet_url"), title)
-        startdate = dtparse.parse(
-            f"{match.group('startdate')} {match.group('starthour')}"
-        )
+        startdate = dtparse.parse(f"{match.group('startdate')} {match.group('starthour')}")
         enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
-        if (
-            args.skip_all_day_meeting
-            and dtrel.relativedelta(enddate, startdate).days >= 1
-        ):
+        if args.skip_all_day_meeting and dtrel.relativedelta(enddate, startdate).days >= 1:
             continue
         if datetime.datetime.now() > startdate:
             cssclass = "current"
@@ -189,18 +176,12 @@ def ret_events(
                 thetime = make_hyperlink(match.group("calendar_url"), thetime)
             ret.append(f"{thetime} - {title}")
         else:
-            timeuntilstarting = dtrel.relativedelta(
-                startdate + datetime.timedelta(minutes=1), datetime.datetime.now()
-            )
+            timeuntilstarting = dtrel.relativedelta(startdate + datetime.timedelta(minutes=1), datetime.datetime.now())
 
             url = match.group("calendar_url")
             if args.google_domain:
                 url = replace_domain_url(args.google_domain, url)
-            if (
-                not timeuntilstarting.days
-                and not timeuntilstarting.hours
-                and timeuntilstarting.minutes <= args.notify_min_before_events
-            ):
+            if not timeuntilstarting.days and not timeuntilstarting.hours and timeuntilstarting.minutes <= args.notify_min_before_events:
                 cssclass = "soon"
                 notify(title, startdate, enddate, args)
 
@@ -264,12 +245,8 @@ def notify(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE
-    )
-    parser.add_argument(
-        "--waybar", action="store_true", help="get a json for to display for waybar"
-    )
+    parser.add_argument("--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE)
+    parser.add_argument("--waybar", action="store_true", help="get a json for to display for waybar")
 
     parser.add_argument(
         "--waybar-show-all-day-meeting",
@@ -280,8 +257,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all-day-meeting-hours",
         default=ALL_DAYS_MEETING_HOURS,
-        help="how long is an all day meeting in hours, (default: %s)"
-        % (ALL_DAYS_MEETING_HOURS),
+        help="how long is an all day meeting in hours, (default: %s)" % (ALL_DAYS_MEETING_HOURS),
     )
 
     parser.add_argument(
@@ -291,17 +267,11 @@ def parse_args() -> argparse.Namespace:
         default=0,
     )
 
-    parser.add_argument(
-        "--open-meet-url", action="store_true", help="click on invite url"
-    )
+    parser.add_argument("--open-meet-url", action="store_true", help="click on invite url")
     parser.add_argument("--max-title-length", type=int, default=TITLE_ELIPSIS_LENGTH)
-    parser.add_argument(
-        "--cache-dir", default=CACHE_DIR.expanduser(), help="cache dir location"
-    )
+    parser.add_argument("--cache-dir", default=CACHE_DIR.expanduser(), help="cache dir location")
 
-    parser.add_argument(
-        "--skip-all-day-meeting", "-S", action="store_true", help="skip all day meeting"
-    )
+    parser.add_argument("--skip-all-day-meeting", "-S", action="store_true", help="skip all day meeting")
 
     parser.add_argument(
         "--google-domain",
@@ -345,9 +315,7 @@ def bulletize(rets: list[str]) -> str:
     return "• " + "\n• ".join(rets)
 
 
-def get_next_non_all_day_meeting(
-    matches: list[re.Match], rets: list[str], all_day_meeting_hours: int
-) -> None | str:
+def get_next_non_all_day_meeting(matches: list[re.Match], rets: list[str], all_day_meeting_hours: int) -> None | str:
     for m in matches:
         start_date = dtparse.parse("%s %s" % (m["startdate"], m["starthour"]))
         end_date = dtparse.parse("%s %s" % (m["enddate"], m["endhour"]))
@@ -363,14 +331,9 @@ def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
         print("No meeting 🏖️")
         return
     for match in matches:
-        startdate = dtparse.parse(
-            f"{match.group('startdate')} {match.group('starthour')}"
-        )
+        startdate = dtparse.parse(f"{match.group('startdate')} {match.group('starthour')}")
         enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
-        if (
-            args.skip_all_day_meeting
-            and dtrel.relativedelta(enddate, startdate).days >= 1
-        ):
+        if args.skip_all_day_meeting and dtrel.relativedelta(enddate, startdate).days >= 1:
             continue
         url = match.group("meet_url")
         if not url:
@@ -404,9 +367,7 @@ def main():
             if args.waybar_show_all_day_meeting:
                 coming_up_next = rets[0]
             else:
-                coming_up_next = get_next_non_all_day_meeting(
-                    matches, rets, int(args.all_day_meeting_hours)
-                )
+                coming_up_next = get_next_non_all_day_meeting(matches, rets, int(args.all_day_meeting_hours))
                 if not coming_up_next:  # only all days meeting
                     coming_up_next = rets[0]
             ret = {
