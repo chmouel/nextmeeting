@@ -132,6 +132,8 @@ def process_file(fp) -> list[re.Match]:
         except TypeError:
             line = _line.strip()
         match = REG_TSV.match(line)
+        if not match:
+            continue
         enddate = dtparse.parse(
             f"{match.group('enddate')} {match.group('endhour')}"  # type: ignore
         )
