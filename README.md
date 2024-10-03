@@ -22,7 +22,7 @@ It has a few features compared to just gcalcli :
 ## How to use it?
 
 You need to install [gcalcli](https://github.com/insanum/gcalcli) and [setup
-the google Oauth integration](https://github.com/insanum/gcalcli#login-information) with google calendar.
+the google Oauth integration](https://github.com/insanum/gcalcli?tab=readme-ov-file#initial-setup) with google calendar.
 
 By default you can start `nextmeeting` and it will show the list of meetings you
 have with "human date".
