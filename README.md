@@ -19,6 +19,35 @@ It has a few features compared to just gcalcli :
 
 ![192647099-ccfa2002-0db3-4738-a54b-176a03474483](https://user-images.githubusercontent.com/98980/212869786-1acd56e2-2e8a-4255-98c3-ebbb45b28d6e.png)
 
+## Installation
+
+Use `pip` with:
+
+`pip install -U nextmeeting`
+
+or Checkout the source of this repo and use `poetry` :
+
+`poetry run nextmeeting`
+
+If you don't want to use poetry you can install the depndences packages from PyPi
+or from your operating system package manager if available:
+
+- <https://pypi.org/project/python-dateutil/>
+- <https://pypi.org/project/gcalcli/>
+
+And the you can run the nextmeeting script:
+
+`python3 ./nextmeeting/cli.py`
+
+alternatively you can even just copy the `./nextmeeting/cli.py` script to your path and run
+it to make it more convenient.
+
+### [AUR](https://aur.archlinux.org/packages/nextmeeting)
+
+```shell
+yay -S nextmeeting
+```
+
 ## How to use it?
 
 You need to install [gcalcli](https://github.com/insanum/gcalcli) and [setup
@@ -69,35 +98,6 @@ If you enable the option "--notify-min-before-events it will output a class
 #custom-agenda.soon {
   color: #eb4d4b;
 }
-```
-
-### Installation
-
-Use `pip` with:
-
-`pip install -U nextmeeting`
-
-or Checkout the source of this repo and use `poetry` :
-
-`poetry run nextmeeting`
-
-If you don't want to use poetry you can install the depndences packages from PyPi
-or from your operating system package manager if available:
-
-- <https://pypi.org/project/python-dateutil/>
-- <https://pypi.org/project/gcalcli/>
-
-And the you can run the nextmeeting script:
-
-`python3 ./nextmeeting/cli.py`
-
-alternatively you can even just copy the `./nextmeeting/cli.py` script to your path and run
-it to make it more convenient.
-
-### [AUR](https://aur.archlinux.org/packages/nextmeeting)
-
-```shell
-yay -S nextmeeting
 ```
 
 ### Related
