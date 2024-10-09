@@ -99,7 +99,7 @@ def pretty_date(
             date.minute,
         )  # pylint: disable=consider-using-f-string
     elif deltad.hours != 0:
-        s = date.strftime("%HH%M")
+        s = date.strftime("%H:%M")
     else:
         if (
             deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
@@ -183,7 +183,7 @@ def ret_events(
             if timetofinish.hours == 0:
                 s = f"{timetofinish.minutes} minutes"
             else:
-                s = f"{timetofinish.hours}H{timetofinish.minutes}"
+                s = f"{timetofinish.hours}:{timetofinish.minutes}"
             thetime = f"{s} to go"
             if hyperlink:
                 thetime = f"{thetime: <17}"
