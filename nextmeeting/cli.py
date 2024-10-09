@@ -189,7 +189,7 @@ def ret_events(
                 thetime = f"{thetime: <17}"
             if hyperlink:
                 thetime = make_hyperlink(match.group("calendar_url"), thetime)
-            ret.append(f"{thetime} - {title}")
+            ret.append(f"{thetime} {title}")
         else:
             timeuntilstarting = dtrel.relativedelta(
                 startdate + datetime.timedelta(minutes=1), datetime.datetime.now()
@@ -213,7 +213,7 @@ def ret_events(
                     replace_domain_url(args.google_domain, match.group("calendar_url")),
                     thetime,
                 )
-            ret.append(f"{thetime} - {title}")
+            ret.append(f"{thetime} {title}")
     return ret, cssclass
 
 
