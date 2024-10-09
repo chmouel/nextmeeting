@@ -401,7 +401,7 @@ def main():
 
     elif args.waybar:
         if not rets:
-            ret = {"text": "No meeting 🏖️"}
+            ret = {"text": ""}
         else:
             if args.waybar_show_all_day_meeting:
                 coming_up_next = rets[0]
