@@ -33,6 +33,7 @@
       };
       poetry_app = p2n.mkPoetryApplication {
         inherit python projectDir overrides;
+        meta.mainProgram = "nextmeeting";
       };
       pkgs = nixpkgs.legacyPackages.${system};
     in {
