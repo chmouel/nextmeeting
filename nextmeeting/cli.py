@@ -94,7 +94,7 @@ def pretty_date(
             s = "Tomorrow"
         else:
             s = f"{date.strftime('%a %d')}"
-        s += " at %02dh%02d" % (
+        s += " at %02d:%02d" % (
             date.hour,
             date.minute,
         )  # pylint: disable=consider-using-f-string
