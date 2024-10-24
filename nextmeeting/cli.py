@@ -59,7 +59,7 @@ REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
 )
 DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
-GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
+GCALCLI_CMDLINE = "gcalcli --nocolor --calendar={calendar} agenda today --nodeclined  --details=end --details=url --tsv "
 TITLE_ELIPSIS_LENGTH = 50
 MAX_CACHED_ENTRIES = 30
 NOTIFY_MIN_BEFORE_EVENTS = 5
@@ -265,9 +265,19 @@ def notify(
 
 
 def parse_args() -> argparse.Namespace:
+    initial_parser = argparse.ArgumentParser(add_help=False)
+    initial_parser.add_argument("--calendar", help="Specify the calendar to use", default=DEFAULT_CALENDAR)
+    initial_args, remaining_argv = initial_parser.parse_known_args()
+    calendar = initial_args.calendar
+
+    # Remove --calendar and its value from sys.argv
+    if "--calendar" in sys.argv:
+        sys.argv.remove("--calendar")
+        sys.argv.remove(calendar)
     parser = argparse.ArgumentParser()
+
     parser.add_argument(
-        "--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE
+        "--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE.format(calendar=calendar)
     )
     parser.add_argument(
         "--waybar", action="store_true", help="get a json for to display for waybar"
