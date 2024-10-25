@@ -59,7 +59,7 @@ REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
 )
 DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
-GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
+GCALCLI_CMDLINE = "gcalcli --nocolor --calendar={calendar} agenda today --nodeclined  --details=end --details=url --tsv "
 TITLE_ELIPSIS_LENGTH = 50
 MAX_CACHED_ENTRIES = 30
 NOTIFY_MIN_BEFORE_EVENTS = 5
@@ -152,7 +152,9 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     #     return process_file(f)
 
     with subprocess.Popen(
-        args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
+        args.gcalcli_cmdline.format(calendar=args.calendar),
+            shell=True,
+            stdout=subprocess.PIPE,
     ) as cmd:
         return process_file(cmd.stdout)
 
@@ -267,10 +269,21 @@ def notify(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE
+        "--calendar",
+        help="Specify the calendar to use",
+        default=DEFAULT_CALENDAR,
     )
+
     parser.add_argument(
-        "--waybar", action="store_true", help="get a json for to display for waybar"
+        "--gcalcli-cmdline",
+        help="gcalcli command line",
+        default=GCALCLI_CMDLINE,
+    )
+
+    parser.add_argument(
+        "--waybar",
+        action="store_true",
+        help="get a json for to display for waybar",
     )
 
     parser.add_argument(
