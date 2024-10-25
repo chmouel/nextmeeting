@@ -152,7 +152,9 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     #     return process_file(f)
 
     with subprocess.Popen(
-        args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
+        args.gcalcli_cmdline.format(calendar=args.calendar),
+            shell=True,
+            stdout=subprocess.PIPE,
     ) as cmd:
         return process_file(cmd.stdout)
 
@@ -272,14 +274,10 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CALENDAR,
     )
 
-    initial_args, _ = parser.parse_known_args()
-
-    calendar = initial_args.calendar
-
     parser.add_argument(
         "--gcalcli-cmdline",
         help="gcalcli command line",
-        default=GCALCLI_CMDLINE.format(calendar=calendar),
+        default=GCALCLI_CMDLINE,
     )
 
     parser.add_argument(
