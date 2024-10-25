@@ -265,22 +265,27 @@ def notify(
 
 
 def parse_args() -> argparse.Namespace:
-    initial_parser = argparse.ArgumentParser(add_help=False)
-    initial_parser.add_argument("--calendar", help="Specify the calendar to use", default=DEFAULT_CALENDAR)
-    initial_args, remaining_argv = initial_parser.parse_known_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--calendar",
+        help="Specify the calendar to use",
+        default=DEFAULT_CALENDAR,
+    )
+
+    initial_args, _ = parser.parse_known_args()
+
     calendar = initial_args.calendar
 
-    # Remove --calendar and its value from sys.argv
-    if "--calendar" in sys.argv:
-        sys.argv.remove("--calendar")
-        sys.argv.remove(calendar)
-    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--gcalcli-cmdline",
+        help="gcalcli command line",
+        default=GCALCLI_CMDLINE.format(calendar=calendar),
+    )
 
     parser.add_argument(
-        "--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE.format(calendar=calendar)
-    )
-    parser.add_argument(
-        "--waybar", action="store_true", help="get a json for to display for waybar"
+        "--waybar",
+        action="store_true",
+        help="get a json for to display for waybar",
     )
 
     parser.add_argument(
