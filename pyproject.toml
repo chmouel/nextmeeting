@@ -1,31 +1,22 @@
-[tool.poetry]
+[project]
 name = "nextmeeting"
 version = "1.5.3"
 description = "Show your nextmeeting in your poly/waybar with gcalcli"
-authors = ["Chmouel Boudjnah <chmouel@chmouel.com>"]
-keywords = ["calendar", "cli"]
 readme = "README.md"
+authors = [{ name = "Chmouel Boudjnah", email = "chmouel@chmouel.com" }]
+requires-python = ">=3.9"
 license = "Apache-2.0"
-homepage = "https://github.com/chmouel/nextmeeting"
-repository = "https://github.com/chmouel/nextmeeting"
-include = ["LICENSE"]
+dependencies = ["python-dateutil>=2.9.0.post0"]
 classifiers = ["License :: OSI Approved :: Apache Software License"]
+keywords = ["calendar", "cli"]
 
-[tool.poetry.dependencies]
-python = "^3.9"
-python-dateutil = "^2.8.2"
-
-[tool.poetry.scripts]
+[project.scripts]
 nextmeeting = "nextmeeting.cli:main"
 
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.0.291"
-mypy = "^0.920"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.ruff.lint]
 ignore = ["E501", "PLR0912"]
 select = ["E", "F", "D4", "PT", "PL"]
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"

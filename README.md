@@ -25,11 +25,11 @@ Use `pip` with:
 
 `pip install -U nextmeeting`
 
-or Checkout the source of this repo and use `poetry` :
+or Checkout the source of this repo by [using uv](https://docs.astral.sh/uv/getting-started/installation/):
 
-`poetry run nextmeeting`
+`uv run nextmeeting`
 
-If you don't want to use poetry you can install the depndences packages from PyPi
+If you don't want to use `uv` you can install the dependences packages from PyPi
 or from your operating system package manager if available:
 
 - <https://pypi.org/project/python-dateutil/>

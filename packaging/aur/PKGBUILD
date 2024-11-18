@@ -9,17 +9,17 @@ arch=('any')
 url="https://github.com/chmouel/nextmeeting"
 license=('Apache')
 depends=('python-dateutil' 'gcalcli')
-makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel' 'python-poetry-core')
 source=("https://github.com/chmouel/${pkgname}/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.gz")
 sha256sums=('edfd9aa245aba16bca2f4d219343e55d7d331f5a7bc3cee2874e14dc15951b63')
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
 
 build() {
-	cd "$pkgname-$pkgver" || exit
-	rm -vf LICENSE
-	python -m build --wheel --no-isolation
+  cd "$pkgname-$pkgver" || exit
+  rm -vf LICENSE
+  python -m build --wheel --no-isolation
 }
 
 package() {
-	cd "${pkgname}-${pkgver}" || exit
-	python -m installer --destdir="$pkgdir" dist/*.whl
+  cd "${pkgname}-${pkgver}" || exit
+  python -m installer --destdir="$pkgdir" dist/*.whl
 }
