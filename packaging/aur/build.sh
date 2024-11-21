@@ -2,8 +2,8 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-POETRY_NAME_VERSION="$(poetry version)"
-PKGNAME=${POETRY_NAME_VERSION% *}
+PKGNAME=$(sed -n '/^name = / { s/name = "\(.*\)"/\1/ ;p;}' pyproject.toml)
+PKGVERSION=$(sed -n '/^version = / { s/version = "\(.*\)"/\1/ ;p;}' pyproject.toml)
 AUTHOR_EMAIL="$(git config --get user.email)"
 AUTHOR_NAME="$(git config --get user.name)"
 RELEASE=1
@@ -13,29 +13,29 @@ gitdir=$(git rev-parse --show-toplevel)
 cd "${gitdir}"
 
 while getopts "d" o; do
-	case "${o}" in
-	d)
-		finalaction="echo done"
-		;;
-	*)
-		echo "Invalid option"
-		exit 1
-		;;
-	esac
+  case "${o}" in
+  d)
+    finalaction="echo done"
+    ;;
+  *)
+    echo "Invalid option"
+    exit 1
+    ;;
+  esac
 done
 shift $((OPTIND - 1))
 
-VERSION=${1:-${POETRY_NAME_VERSION#* }}
+VERSION=${1:-${PKGVERSION}}
 
 sudo docker build -f ./packaging/aur/Dockerfile -t ${image_name} .
 
 sudo docker run --rm \
-	-v ~/.config/copr:/home/builder/.config/copr \
-	-v "${gitdir}":/src \
-	-v $SSH_AUTH_SOCK:/ssh-agent --env SSH_AUTH_SOCK=/ssh-agent \
-	--name ${PKGNAME}-builder \
-	-it ${image_name} \
-	/bin/bash -c "set -x;mkdir -p ~/.ssh/;chmod 0700 ~/.ssh && \
+  -v ~/.config/copr:/home/builder/.config/copr \
+  -v "${gitdir}":/src \
+  -v $SSH_AUTH_SOCK:/ssh-agent --env SSH_AUTH_SOCK=/ssh-agent \
+  --name ${PKGNAME}-builder \
+  -it ${image_name} \
+  /bin/bash -c "set -x;mkdir -p ~/.ssh/;chmod 0700 ~/.ssh && \
                          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts && \
                          git clone --depth=1 ssh://aur@aur.archlinux.org/${PKGNAME} /tmp/${PKGNAME} && \
                          cd /tmp/${PKGNAME} && \
