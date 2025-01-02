@@ -1,6 +1,6 @@
 [project]
 name = "nextmeeting"
-version = "1.5.3"
+version = "1.5.5"
 description = "Show your nextmeeting in your poly/waybar with gcalcli"
 readme = "README.md"
 authors = [{ name = "Chmouel Boudjnah", email = "chmouel@chmouel.com" }]
