@@ -58,8 +58,10 @@ import dateutil.relativedelta as dtrel
 REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
 )
-DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "Work")
-GCALCLI_CMDLINE = f"gcalcli --nocolor --calendar={DEFAULT_CALENDAR} agenda today --nodeclined  --details=end --details=url --tsv "
+DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "")
+GCALCLI_CMDLINE = (
+    "gcalcli --nocolor agenda today --nodeclined  --details=end --details=url --tsv "
+)
 TITLE_ELIPSIS_LENGTH = 50
 MAX_CACHED_ENTRIES = 30
 NOTIFY_MIN_BEFORE_EVENTS = 5
@@ -267,7 +269,9 @@ def notify(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--gcalcli-cmdline", help="gcalcli command line", default=GCALCLI_CMDLINE
+        "--gcalcli-cmdline",
+        help="gcalcli command line used, --calendar will be added if you specify one to nextmeeting",
+        default=GCALCLI_CMDLINE,
     )
     parser.add_argument(
         "--waybar", action="store_true", help="get a json for to display for waybar"
@@ -333,6 +337,11 @@ def parse_args() -> argparse.Namespace:
         default=NOTIFY_ICON,
         help="Notification icon to use for the notify-send",
     )
+    parser.add_argument(
+        "--calendar",
+        default=os.environ.get("GCALCLI_DEFAULT_CALENDAR"),
+        help="calendar to use",
+    )
     return parser.parse_args()
 
 
@@ -393,12 +402,14 @@ def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
 def main():
     args = parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
+    if args.calendar != "":
+        args.gcalcli_cmdline += f" --calendar {args.calendar}"
     matches = gcalcli_output(args)
     rets, cssclass = ret_events(matches, args)
+
     if args.open_meet_url:
         open_meet_url(rets, matches, args)
         return
-
     elif args.waybar:
         if not rets:
             ret = {"text": "No meeting 🏖️"}
@@ -418,6 +429,8 @@ def main():
             if cssclass:
                 ret["class"] = cssclass
         json.dump(ret, sys.stdout)
+    elif not rets:
+        print("No meeting")
     else:
         rets, _ = ret_events(matches, args, hyperlink=True)
         print(bulletize(rets))
