@@ -82,6 +82,12 @@ def elipsis(string: str, length: int) -> str:
     return string
 
 
+def debug(msg: str, args: argparse.Namespace):
+    """Print debug messages if --debug is enabled."""
+    if args.debug:
+        print(f"[DEBUG] {msg}", file=sys.stderr)
+
+
 def open_url(url: str):
     webbrowser.open_new_tab(url)
 
@@ -152,7 +158,7 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
     # TODO: do unittests with this
     # with open("/tmp/debug") as f:
     #     return process_file(f)
-
+    debug(f"Executing gcalcli command: {args.gcalcli_cmdline}", args)
     with subprocess.Popen(
         args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
     ) as cmd:
@@ -238,6 +244,10 @@ def notify(
                 cached = []
             if uuid in cached:
                 notified = True
+            debug(
+                f"Notification status for UUID {uuid}: {'Notified' if notified else 'Not Notified'}",
+                args,
+            )
     if notified:
         return
     cached.append(uuid)
@@ -272,6 +282,10 @@ def parse_args() -> argparse.Namespace:
         "--gcalcli-cmdline",
         help="gcalcli command line used, --calendar will be added if you specify one to nextmeeting",
         default=GCALCLI_CMDLINE,
+    )
+    # Add the --debug flag
+    parser.add_argument(
+        "--debug", action="store_true", help="Enable debug mode to log detailed actions"
     )
     parser.add_argument(
         "--waybar", action="store_true", help="get a json for to display for waybar"
@@ -406,7 +420,7 @@ def main():
         args.gcalcli_cmdline += f" --calendar {args.calendar}"
     matches = gcalcli_output(args)
     rets, cssclass = ret_events(matches, args)
-
+    debug(f"Processed {len(matches)} matches into {len(rets)} events.", args)
     if args.open_meet_url:
         open_meet_url(rets, matches, args)
         return
@@ -430,6 +444,9 @@ def main():
                 ret["class"] = cssclass
         json.dump(ret, sys.stdout)
     elif not rets:
+        debug(
+            "No meeting has been detected perhaps use --calendar to specify another calendar if you don't have any in the default calendar"
+        )
         print("No meeting")
     else:
         rets, _ = ret_events(matches, args, hyperlink=True)
