@@ -56,6 +56,9 @@ the google Oauth integration](https://github.com/insanum/gcalcli?tab=readme-ov-f
 By default you can start `nextmeeting` and it will show the list of meetings you
 have with "human date".
 
+If you don't see any meetings you may need to specify the target calendar, use
+the `--calendar=CALENDAR` flag for that
+
 There is a few options to customize things, see `nextmeeting --help` for more options.
 
 ### Waybar
