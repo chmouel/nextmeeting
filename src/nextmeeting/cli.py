@@ -132,9 +132,9 @@ def make_hyperlink(uri: str, label: None | str = None):
     return escape_mask.format(parameters, uri, label)
 
 
-def process_file(fp) -> list[re.Match]:
+def process_lines(lines: list) -> list[re.Match]:
     ret = []
-    for _line in fp.readlines():  # type: ignore
+    for _line in lines:
         try:
             line = str(_line.strip(), "utf-8")
         except TypeError:
@@ -155,14 +155,32 @@ def process_file(fp) -> list[re.Match]:
 
 
 def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
-    # TODO: do unittests with this
-    # with open("/tmp/debug") as f:
-    #     return process_file(f)
     debug(f"Executing gcalcli command: {args.gcalcli_cmdline}", args)
     with subprocess.Popen(
-        args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE
+        args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     ) as cmd:
-        return process_file(cmd.stdout)
+        stdout, stderr = cmd.communicate()  # Wait for the process to complete
+        if cmd.returncode:
+            calendar_list_cmd = subprocess.run(
+                "gcalcli list",
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            calendar_list = calendar_list_cmd.stdout.decode().strip()
+            debug(stderr.decode(), args)
+            raise RuntimeError(
+                f""""-----
+gcalcli command failed with exit code {cmd.returncode}, command: {args.gcalcli_cmdline}
+Calendar available:
+{calendar_list}
+Try nextmeeting --work=CALENDAR option to target the right calendar.
+
+Use --debug to see the full error message.
+"""
+            )
+        return process_lines(stdout.decode().splitlines())
 
 
 def ret_events(
@@ -416,7 +434,7 @@ def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
 def main():
     args = parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
-    if args.calendar != "":
+    if args.calendar:
         args.gcalcli_cmdline += f" --calendar {args.calendar}"
     matches = gcalcli_output(args)
     rets, cssclass = ret_events(matches, args)
@@ -445,7 +463,8 @@ def main():
         json.dump(ret, sys.stdout)
     elif not rets:
         debug(
-            "No meeting has been detected perhaps use --calendar to specify another calendar if you don't have any in the default calendar"
+            "No meeting has been detected perhaps use --calendar to specify another calendar if you don't have any in the default calendar",
+            args,
         )
         print("No meeting")
     else:
