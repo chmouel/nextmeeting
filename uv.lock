@@ -1,9 +1,10 @@
 version = 1
+revision = 1
 requires-python = ">=3.9"
 
 [[package]]
 name = "nextmeeting"
-version = "1.5.3"
+version = "1.5.5"
 source = { editable = "." }
 dependencies = [
     { name = "python-dateutil" },
