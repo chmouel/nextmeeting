@@ -188,8 +188,17 @@ def ret_events(
 ) -> typing.Tuple[list[str], str]:
     ret = []
     cssclass = ""
+    today = datetime.datetime.now()
     for match in lines:
         title = match.group("title")
+        startdate = dtparse.parse(
+            f"{match.group('startdate')} {match.group('starthour')}"
+        )
+
+        # Skip if --today-only is set and the meeting is not today
+        if args.today_only and startdate.date() != today.date():
+            continue
+
         if args.waybar:
             title = html.escape(title)
         if hyperlink and match.group("meet_url"):
@@ -373,6 +382,11 @@ def parse_args() -> argparse.Namespace:
         "--calendar",
         default=os.environ.get("GCALCLI_DEFAULT_CALENDAR"),
         help="calendar to use",
+    )
+    parser.add_argument(
+        "--today-only",
+        action="store_true",
+        help="Show only meetings scheduled for today",
     )
     return parser.parse_args()
 
