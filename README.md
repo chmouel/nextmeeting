@@ -48,6 +48,37 @@ it to make it more convenient.
 yay -S nextmeeting
 ```
 
+### NixOS
+<details><summary>Flake and Home-Manager install instructions.</summary>
+
+1. Add nextmeeting to your flake.
+
+```nix
+nextmeeting = {
+  url = "github:chmouel/nextmeeting?dir=packaging";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+2. Use Home-manager to add nextmeeting to waybar like this:
+
+```nix
+let 
+  nextmeeting = lib.getExe inputs.nextmeeting.packages.${pkgs.system}.default;
+in
+{
+  "custom/agenda" = {
+      format = "{}";
+      exec = nextmeeting + "--max-title-length 30 --waybar";
+      on-click = nextmeeting + "--open-meet-url";
+      interval = 59;
+      return-type = "json";
+      tooltip = true;
+  };
+}
+```
+3. Follow along with the rest of the instructions.
+</details>
+
 ## How to use it?
 
 You need to install [gcalcli](https://github.com/insanum/gcalcli) and [setup
