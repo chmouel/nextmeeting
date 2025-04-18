@@ -37,6 +37,9 @@
           preferWheelPhase = ''
             export PIP_PREFER_BINARY=1
           '';
+          meta = {
+            mainProgram = "nextmeeting";
+          };
         };
         default = self.packages.${system}.nextmeeting;
       };
