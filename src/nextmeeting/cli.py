@@ -49,11 +49,14 @@ import re
 import shutil
 import subprocess
 import sys
-import typing
 import webbrowser
+from datetime import timedelta
 
 import dateutil.parser as dtparse
 import dateutil.relativedelta as dtrel
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Sequence
 
 REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
@@ -72,6 +75,46 @@ NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
 GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
 ALL_DAYS_MEETING_HOURS = 24
+
+
+@dataclass
+class Meeting:
+    title: str
+    start_time: datetime.datetime
+    end_time: datetime.datetime
+    calendar_url: str
+    meet_url: Optional[str]
+
+    @property
+    def is_all_day(self) -> bool:
+        return (
+            self.end_time - self.start_time
+        ).total_seconds() / 3600 >= ALL_DAYS_MEETING_HOURS
+
+    @property
+    def is_ongoing(self) -> bool:
+        now = datetime.datetime.now()
+        return self.start_time <= now <= self.end_time
+
+    @property
+    def time_until_start(self) -> timedelta:
+        return self.start_time - datetime.datetime.now()
+
+    @property
+    def time_until_end(self) -> timedelta:
+        return self.end_time - datetime.datetime.now()
+
+    @classmethod
+    def from_match(cls, match: re.Match) -> "Meeting":
+        start_time = dtparse.parse(f"{match['startdate']} {match['starthour']}")
+        end_time = dtparse.parse(f"{match['enddate']} {match['endhour']}")
+        return cls(
+            title=match["title"],
+            start_time=start_time,
+            end_time=end_time,
+            calendar_url=match["calendar_url"],
+            meet_url=match["meet_url"] if match["meet_url"] else None,
+        )
 
 
 def elipsis(string: str, length: int) -> str:
@@ -132,29 +175,7 @@ def make_hyperlink(uri: str, label: None | str = None):
     return escape_mask.format(parameters, uri, label)
 
 
-def process_lines(lines: list) -> list[re.Match]:
-    ret = []
-    for _line in lines:
-        try:
-            line = str(_line.strip(), "utf-8")
-        except TypeError:
-            line = _line.strip()
-        match = REG_TSV.match(line)
-        if not match:
-            continue
-        enddate = dtparse.parse(
-            f"{match.group('enddate')} {match.group('endhour')}"  # type: ignore
-        )
-        if datetime.datetime.now() > enddate:
-            continue
-
-        if not match:
-            continue
-        ret.append(match)
-    return ret
-
-
-def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
+def gcalcli_output(args: argparse.Namespace) -> list[Meeting]:
     debug(f"Executing gcalcli command: {args.gcalcli_cmdline}", args)
     with subprocess.Popen(
         args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -171,7 +192,7 @@ def gcalcli_output(args: argparse.Namespace) -> list[re.Match]:
             calendar_list = calendar_list_cmd.stdout.decode().strip()
             debug(stderr.decode(), args)
             raise RuntimeError(
-                f""""-----
+                f"""-----
 gcalcli command failed with exit code {cmd.returncode}, command: {args.gcalcli_cmdline}
 Calendar available:
 {calendar_list}
@@ -183,34 +204,48 @@ Use --debug to see the full error message.
         return process_lines(stdout.decode().splitlines())
 
 
+def process_lines(lines: Sequence[str | bytes]) -> list[Meeting]:
+    """Process gcalcli output lines into Meeting objects."""
+    meetings = []
+    now = datetime.datetime.now()
+
+    for line in lines:
+        try:
+            if isinstance(line, memoryview):
+                line_str = line.tobytes().decode().strip()
+            elif isinstance(line, bytes):
+                line_str = line.decode().strip()
+            else:
+                line_str = line.strip()
+        except (AttributeError, UnicodeDecodeError):
+            continue
+
+        if isinstance(line_str, str) and (match := REG_TSV.match(line_str)):
+            meeting = Meeting.from_match(match)
+            if meeting.end_time > now:
+                meetings.append(meeting)
+
+    return meetings
+
+
 def ret_events(
-    lines: list[re.Match], args: argparse.Namespace, hyperlink: bool = False
-) -> typing.Tuple[list[str], str]:
+    meetings: list[Meeting], args: argparse.Namespace, hyperlink: bool = False
+) -> tuple[list[str], str]:
     ret = []
     cssclass = ""
     today = datetime.datetime.now()
-    for match in lines:
-        title = match.group("title")
-        startdate = dtparse.parse(
-            f"{match.group('startdate')} {match.group('starthour')}"
-        )
-
+    for meeting in meetings:
+        title = meeting.title
+        startdate = meeting.start_time
+        enddate = meeting.end_time
         # Skip if --today-only is set and the meeting is not today
         if args.today_only and startdate.date() != today.date():
             continue
-
         if args.waybar:
             title = html.escape(title)
-        if hyperlink and match.group("meet_url"):
-            title = make_hyperlink(match.group("meet_url"), title)
-        startdate = dtparse.parse(
-            f"{match.group('startdate')} {match.group('starthour')}"
-        )
-        enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
-        if (
-            args.skip_all_day_meeting
-            and dtrel.relativedelta(enddate, startdate).days >= 1
-        ):
+        if hyperlink and meeting.meet_url:
+            title = make_hyperlink(meeting.meet_url, title)
+        if args.skip_all_day_meeting and meeting.is_all_day:
             continue
         if datetime.datetime.now() > startdate:
             cssclass = "current"
@@ -223,14 +258,13 @@ def ret_events(
             if hyperlink:
                 thetime = f"{thetime: <17}"
             if hyperlink:
-                thetime = make_hyperlink(match.group("calendar_url"), thetime)
+                thetime = make_hyperlink(meeting.calendar_url, thetime)
             ret.append(f"{thetime} - {title}")
         else:
             timeuntilstarting = dtrel.relativedelta(
-                startdate + datetime.timedelta(minutes=1), datetime.datetime.now()
+                startdate + timedelta(minutes=1), datetime.datetime.now()
             )
-
-            url = match.group("calendar_url")
+            url = meeting.calendar_url
             if args.google_domain:
                 url = replace_domain_url(args.google_domain, url)
             if (
@@ -240,12 +274,13 @@ def ret_events(
             ):
                 cssclass = "soon"
                 notify(title, startdate, enddate, args)
-
             thetime = pretty_date(timeuntilstarting, startdate, args)
             if hyperlink:
                 thetime = f"{thetime: <17}"
                 thetime = make_hyperlink(
-                    replace_domain_url(args.google_domain, match.group("calendar_url")),
+                    replace_domain_url(args.google_domain, meeting.calendar_url)
+                    if args.google_domain
+                    else meeting.calendar_url,
                     thetime,
                 )
             ret.append(f"{thetime} - {title}")
@@ -403,14 +438,22 @@ def bulletize(rets: list[str]) -> str:
 
 
 def get_next_non_all_day_meeting(
-    matches: list[re.Match], rets: list[str], all_day_meeting_hours: int
+    meetings: list[Meeting], rets: list[str], all_day_meeting_hours: int
 ) -> None | str:
-    for m in matches:
-        start_date = dtparse.parse("%s %s" % (m["startdate"], m["starthour"]))
-        end_date = dtparse.parse("%s %s" % (m["enddate"], m["endhour"]))
-        if end_date > (start_date + datetime.timedelta(hours=all_day_meeting_hours)):
+    for idx, m in enumerate(meetings):
+        start_date = m.start_time
+        end_date = m.end_time
+        if end_date > (start_date + timedelta(hours=all_day_meeting_hours)):
             continue
-        return rets[matches.index(m)]
+        return rets[idx]
+    return None
+
+
+def get_next_meeting(meetings: list[Meeting], skip_all_day: bool) -> Optional[Meeting]:
+    for m in meetings:
+        if skip_all_day and m.is_all_day:
+            continue
+        return m
     return None
 
 
@@ -447,16 +490,32 @@ def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
 
 def main():
     args = parse_args()
-    args.cache_dir.mkdir(parents=True, exist_ok=True)
+    Path(args.cache_dir).mkdir(parents=True, exist_ok=True)
+
     if args.calendar:
-        args.gcalcli_cmdline += f" --calendar {args.calendar}"
-    matches = gcalcli_output(args)
-    rets, cssclass = ret_events(matches, args)
-    debug(f"Processed {len(matches)} matches into {len(rets)} events.", args)
-    if args.open_meet_url:
-        open_meet_url(rets, matches, args)
+        args.gcalcli_cmdline = f"{args.gcalcli_cmdline} --calendar {args.calendar}"
+
+    meetings = gcalcli_output(args)
+
+    if not meetings:
+        if args.waybar:
+            json.dump({"text": "No meeting 🏖️"}, sys.stdout)
+        else:
+            print("No meeting")
         return
-    elif args.waybar:
+
+    if args.open_meet_url:
+        meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
+        if meeting:
+            url = meeting.meet_url or meeting.calendar_url
+            if args.google_domain:
+                url = replace_domain_url(args.google_domain, url)
+            open_url(url)
+        return
+
+    rets, cssclass = ret_events(meetings, args, hyperlink=args.waybar)
+
+    if args.waybar:
         if not rets:
             ret = {"text": "No meeting 🏖️"}
         else:
@@ -464,7 +523,7 @@ def main():
                 coming_up_next = rets[0]
             else:
                 coming_up_next = get_next_non_all_day_meeting(
-                    matches, rets, int(args.all_day_meeting_hours)
+                    meetings, rets, int(args.all_day_meeting_hours)
                 )
                 if not coming_up_next:  # only all days meeting
                     coming_up_next = rets[0]
@@ -482,7 +541,7 @@ def main():
         )
         print("No meeting")
     else:
-        rets, _ = ret_events(matches, args, hyperlink=True)
+        rets, _ = ret_events(meetings, args, hyperlink=True)
         print(bulletize(rets))
 
 
