@@ -6,7 +6,9 @@ readme = "README.md"
 authors = [{ name = "Chmouel Boudjnah", email = "chmouel@chmouel.com" }]
 requires-python = ">=3.9"
 license = "Apache-2.0"
-dependencies = ["python-dateutil>=2.9.0.post0"]
+dependencies = [
+    "python-dateutil>=2.9.0.post0",
+]
 classifiers = ["License :: OSI Approved :: Apache Software License"]
 keywords = ["calendar", "cli"]
 
@@ -20,3 +22,8 @@ build-backend = "hatchling.build"
 [tool.ruff.lint]
 ignore = ["E501", "PLR0912"]
 select = ["E", "F", "D4", "PT", "PL"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]

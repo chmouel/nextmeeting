@@ -121,8 +121,8 @@ def elipsis(string: str, length: int) -> str:
     # remove all html elements first from it
     hstring = re.sub(r"<[^>]*>", "", string)
     if len(hstring) > length:
-        return string[: length - 3] + "..."
-    return string
+        return hstring[: length - 3] + "..."
+    return hstring
 
 
 def debug(msg: str, args: argparse.Namespace):
@@ -151,17 +151,17 @@ def pretty_date(
         )  # pylint: disable=consider-using-f-string
     elif deltad.hours != 0:
         s = date.strftime("%HH%M")
-    else:
-        if (
-            deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
-            and args.notify_min_color
-            and args.waybar
-        ):
-            number = f"""<span background="{args.notify_min_color}" color="{args.notify_min_color_foreground}">{deltad.minutes}</span>"""
-        else:
-            number = f"{deltad.minutes}"
-
+    elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
+        s = "Now"
+    elif (
+        deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
+        and args.notify_min_color
+        and args.waybar
+    ):
+        number = f"""<span background=\"{args.notify_min_color}\" color=\"{args.notify_min_color_foreground}\">{deltad.minutes}</span>"""
         s = f"In {number} minutes"
+    else:
+        s = f"In {deltad.minutes} minutes"
     return s
 
 
@@ -173,6 +173,33 @@ def make_hyperlink(uri: str, label: None | str = None):
     # OSC 8 ; params ; URI ST <name> OSC 8 ;; ST
     escape_mask = "\033]8;{};{}\033\\{}\033]8;;\033\\"
     return escape_mask.format(parameters, uri, label)
+
+
+class MeetingFetcher:
+    def __init__(self, gcalcli_cmdline: str = GCALCLI_CMDLINE):
+        self.gcalcli_cmdline = gcalcli_cmdline
+
+    def fetch_meetings(self, args: argparse.Namespace) -> list[Meeting]:
+        cmdline = args.gcalcli_cmdline if hasattr(args, 'gcalcli_cmdline') else self.gcalcli_cmdline
+        debug(f"Executing gcalcli command: {cmdline}", args)
+        with subprocess.Popen(
+            cmdline, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        ) as cmd:
+            stdout, stderr = cmd.communicate()  # Wait for the process to complete
+            if cmd.returncode:
+                calendar_list_cmd = subprocess.run(
+                    "gcalcli list",
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                calendar_list = calendar_list_cmd.stdout.decode().strip()
+                debug(stderr.decode(), args)
+                raise RuntimeError(
+                    f"""-----\ngcalcli command failed with exit code {cmd.returncode}, command: {cmdline}\nCalendar available:\n{calendar_list}\nTry nextmeeting --work=CALENDAR option to target the right calendar.\n\nUse --debug to see the full error message.\n"""
+                )
+            return process_lines(stdout.decode().splitlines())
 
 
 def gcalcli_output(args: argparse.Namespace) -> list[Meeting]:
@@ -238,8 +265,8 @@ def ret_events(
         title = meeting.title
         startdate = meeting.start_time
         enddate = meeting.end_time
-        # Skip if --today-only is set and the meeting is not today
-        if args.today_only and startdate.date() != today.date():
+        # Skip if --today-only is set and the meeting is not today, unless ongoing
+        if args.today_only and startdate.date() != today.date() and not (startdate <= datetime.datetime.now() <= enddate):
             continue
         if args.waybar:
             title = html.escape(title)
@@ -247,7 +274,7 @@ def ret_events(
             title = make_hyperlink(meeting.meet_url, title)
         if args.skip_all_day_meeting and meeting.is_all_day:
             continue
-        if datetime.datetime.now() > startdate:
+        if datetime.datetime.now() >= startdate and datetime.datetime.now() <= enddate:
             cssclass = "current"
             timetofinish = dtrel.relativedelta(enddate, datetime.datetime.now())
             if timetofinish.hours == 0:
@@ -262,15 +289,16 @@ def ret_events(
             ret.append(f"{thetime} - {title}")
         else:
             timeuntilstarting = dtrel.relativedelta(
-                startdate + timedelta(minutes=1), datetime.datetime.now()
+                startdate, datetime.datetime.now()
             )
             url = meeting.calendar_url
             if args.google_domain:
                 url = replace_domain_url(args.google_domain, url)
+            # Only notify if meeting is in the future
             if (
                 not timeuntilstarting.days
                 and not timeuntilstarting.hours
-                and timeuntilstarting.minutes <= args.notify_min_before_events
+                and 0 <= timeuntilstarting.minutes <= args.notify_min_before_events
             ):
                 cssclass = "soon"
                 notify(title, startdate, enddate, args)
@@ -495,7 +523,8 @@ def main():
     if args.calendar:
         args.gcalcli_cmdline = f"{args.gcalcli_cmdline} --calendar {args.calendar}"
 
-    meetings = gcalcli_output(args)
+    fetcher = MeetingFetcher()
+    meetings = fetcher.fetch_meetings(args)
 
     if not meetings:
         if args.waybar:
