@@ -19,8 +19,8 @@
 # time to go for current meeting
 # change colors if there is 5 minutes to go to the meeting
 # hyperlink in default view to click on terminal
-# notificaiton via notify-send 5 minutes before meeting
-# title elipsis
+# notification via notify-send 5 minutes before meeting
+# title ellipsis
 #
 # Install: configure gcalcli https://github.com/insanum/gcalcli
 # Use it like you want, ie.: waybar
@@ -50,13 +50,14 @@ import shutil
 import subprocess
 import sys
 import webbrowser
-from datetime import timedelta
-
-import dateutil.parser as dtparse
-import dateutil.relativedelta as dtrel
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Sequence
+
+# pylint: disable=import-error
+import dateutil.parser as dtparse
+import dateutil.relativedelta as dtrel
 
 REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
@@ -117,7 +118,7 @@ class Meeting:
         )
 
 
-def elipsis(string: str, length: int) -> str:
+def ellipsis(string: str, length: int) -> str:
     # remove all html elements first from it
     hstring = re.sub(r"<[^>]*>", "", string)
     if len(hstring) > length:
@@ -145,6 +146,7 @@ def pretty_date(
             s = "Tomorrow"
         else:
             s = f"{date.strftime('%a %d')}"
+        # pylint: disable=consider-using-f-string
         s += " at %02dh%02d" % (
             date.hour,
             date.minute,
@@ -175,12 +177,17 @@ def make_hyperlink(uri: str, label: None | str = None):
     return escape_mask.format(parameters, uri, label)
 
 
+# pylint: disable=too-few-public-methods
 class MeetingFetcher:
     def __init__(self, gcalcli_cmdline: str = GCALCLI_CMDLINE):
         self.gcalcli_cmdline = gcalcli_cmdline
 
     def fetch_meetings(self, args: argparse.Namespace) -> list[Meeting]:
-        cmdline = args.gcalcli_cmdline if hasattr(args, 'gcalcli_cmdline') else self.gcalcli_cmdline
+        cmdline = (
+            args.gcalcli_cmdline
+            if hasattr(args, "gcalcli_cmdline")
+            else self.gcalcli_cmdline
+        )
         debug(f"Executing gcalcli command: {cmdline}", args)
         with subprocess.Popen(
             cmdline, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -266,7 +273,11 @@ def ret_events(
         startdate = meeting.start_time
         enddate = meeting.end_time
         # Skip if --today-only is set and the meeting is not today, unless ongoing
-        if args.today_only and startdate.date() != today.date() and not (startdate <= datetime.datetime.now() <= enddate):
+        if (
+            args.today_only
+            and startdate.date() != today.date()
+            and not (startdate <= datetime.datetime.now() <= enddate)
+        ):
             continue
         if args.waybar:
             title = html.escape(title)
@@ -288,9 +299,7 @@ def ret_events(
                 thetime = make_hyperlink(meeting.calendar_url, thetime)
             ret.append(f"{thetime} - {title}")
         else:
-            timeuntilstarting = dtrel.relativedelta(
-                startdate, datetime.datetime.now()
-            )
+            timeuntilstarting = dtrel.relativedelta(startdate, datetime.datetime.now())
             url = meeting.calendar_url
             if args.google_domain:
                 url = replace_domain_url(args.google_domain, url)
@@ -390,14 +399,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--all-day-meeting-hours",
         default=ALL_DAYS_MEETING_HOURS,
-        help="how long is an all day meeting in hours, (default: %s)"
-        % (ALL_DAYS_MEETING_HOURS),
+        help=f"how long is an all day meeting in hours, (default: {ALL_DAYS_MEETING_HOURS})",
     )
 
     parser.add_argument(
         "--notify-expiry",
         type=int,
-        help="notifcation expiration in minutes (0 no expiry, -1 show notification until the meeting sart)",
+        help="notification expiration in minutes (0 no expiry, -1 show notification until the meeting start)",
         default=0,
     )
 
@@ -510,7 +518,7 @@ def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
                 url = replace_domain_url(args.google_domain, url)
         break
     # TODO: we can't do the "domain" switch thing on meet url that are not
-    # calendar, maybe speicfy a /u/number/ for multi accounts ?
+    # calendar, maybe specify a /u/number/ for multi accounts ?
     if url:
         open_url(url)
     sys.exit(0)
@@ -557,7 +565,7 @@ def main():
                 if not coming_up_next:  # only all days meeting
                     coming_up_next = rets[0]
             ret = {
-                "text": elipsis(coming_up_next, args.max_title_length),
+                "text": ellipsis(coming_up_next, args.max_title_length),
                 "tooltip": bulletize(rets),
             }
             if cssclass:

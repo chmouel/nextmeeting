@@ -25,5 +25,8 @@ select = ["E", "F", "D4", "PT", "PL"]
 
 [dependency-groups]
 dev = [
+    "isort>=6.0.1",
     "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "types-python-dateutil>=2.9.0.20250516",
 ]
