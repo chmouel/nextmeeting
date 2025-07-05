@@ -2,18 +2,22 @@
 
 ## What is it?
 
-nextmeeting is a simple CLI leveraging gcalcli to show the next meetings.
+nextmeeting is a simple CLI tool that leverages `gcalcli` to display your
+upcoming meetings.
 
-It has a few features compared to just gcalcli :
+It offers several features beyond basic `gcalcli` functionality:
 
-- bar integration (i.e: [waybar](https://github.com/Alexays/Waybar)/[polybar](https://github.com/polybar/polybar) and probably others)
-- smart date in English (not just the date, tomorrow or others)
-- show the time to go for current meeting
-- change colors if there is 5 minutes to go to the meeting
-- hyperlink in default view to click on terminal
-- notification via notify-send 5 minutes before meeting
-- title ellipsis
-- Exclude next day meetings.
+- **Bar Integration:** Seamlessly integrates with status bars like
+  [Waybar](https://github.com/Alexays/Waybar) and [Polybar](https://github.com/polybar/polybar).
+- **Smart Date Display:** Shows dates in a human-readable English format (e.g.,
+  "tomorrow," "next Monday," not just raw dates).
+- **Time-to-Meeting:** Displays the remaining time until the current meeting starts.
+- **Color-Coded Alerts:** Changes colors when a meeting is 5 minutes away.
+- **Hyperlink Support:** Provides clickable hyperlinks in the default terminal view.
+- **Meeting Notifications:** Sends notifications via `notify-send` 5 minutes
+  before a meeting.
+- **Title Ellipsis:** Truncates long meeting titles for better display.
+- **Next-Day Exclusion:** Option to exclude meetings scheduled for the next day.
 
 ## Screenshot
 
@@ -25,22 +29,34 @@ Use `pip` with:
 
 `pip install -U nextmeeting`
 
-or Checkout the source of this repo by [using uv](https://docs.astral.sh/uv/getting-started/installation/):
+Alternatively, if you prefer to run from source, you can use `uv` (recommended)
+or install dependencies manually.
 
-`uv run nextmeeting`
+### Using uv (recommended)
 
-If you don't want to use `uv` you can install the dependences packages from PyPi
-or from your operating system package manager if available:
+First, install `uv` by following the instructions [uv installation
+guide](https://docs.astral.sh/uv/getting-started/installation/). Then, clone
+this repository and run:
 
-- <https://pypi.org/project/python-dateutil/>
-- <https://pypi.org/project/gcalcli/>
+```shell
+uv run nextmeeting
+```
 
-And the you can run the nextmeeting script:
+### Manual Installation
 
-`python3 ./nextmeeting/cli.py`
+If you don't want to use `uv`, you can install the dependencies manually from
+PyPI or your operating system's package manager:
 
-alternatively you can even just copy the `./nextmeeting/cli.py` script to your path and run
-it to make it more convenient.
+- [python-dateutil](https://pypi.org/project/python-dateutil/)
+- [gcalcli](https://pypi.org/project/gcalcli/)
+
+After installing dependencies, you can run the `nextmeeting` script directly:
+
+```shell
+python3 src/nextmeeting/cli.py
+```
+
+You can also copy `src/nextmeeting/cli.py` to your system's PATH for convenience.
 
 ### [AUR](https://aur.archlinux.org/packages/nextmeeting)
 
@@ -49,9 +65,10 @@ yay -S nextmeeting
 ```
 
 ### NixOS
+
 <details><summary>Flake and Home-Manager install instructions.</summary>
 
-1. Add nextmeeting to your flake.
+- Add nextmeeting to your flake.
 
 ```nix
 nextmeeting = {
@@ -59,7 +76,8 @@ nextmeeting = {
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```
-2. Use Home-manager to add nextmeeting to waybar like this:
+
+- Use Home-manager to add nextmeeting to waybar like this:
 
 ```nix
 let 
@@ -76,48 +94,54 @@ in
   };
 }
 ```
-3. Follow along with the rest of the instructions.
+
+- Follow along with the rest of the instructions.
+
 </details>
 
 ## How to use it?
 
-You need to install [gcalcli](https://github.com/insanum/gcalcli) and [setup
-the google Oauth integration](https://github.com/insanum/gcalcli?tab=readme-ov-file#initial-setup) with google calendar.
+You need to install the [gcalcli](https://github.com/insanum/gcalcli) tool and
+[setup the google Oauth
+integration](https://github.com/insanum/gcalcli?tab=readme-ov-file#initial-setup)
+with google calendar.
 
-By default you can start `nextmeeting` and it will show the list of meetings you
-have with "human date".
+By default, you can start `nextmeeting`, and it will display your list of
+meetings with a human-readable date format.
 
-If you don't see any meetings you may need to specify the target calendar, use
-the `--calendar=CALENDAR` flag for that
+If no meetings are displayed, you might need to specify the target calendar
+using the `--calendar=CALENDAR` flag.
 
-There is a few options to customize things, see `nextmeeting --help` for more options.
+There are a few options to customize its behavior; see `nextmeeting --help` for
+more details.
 
 ### Waybar
 
-A more interesting use of `nextmeeting` is the integration with waybar, to output nicely on your desktop,
-for example my configuration look like this:
+A more interesting use case for `nextmeeting` is its integration with Waybar,
+allowing for a clean output on your desktop. For example, my configuration
+looks like this:
 
 ```json
     "custom/agenda": {
         "format": "{}",
         "exec": "nextmeeting --max-title-length 30 --waybar",
         "on-click": "nextmeeting --open-meet-url",
-        "on-click-right": "kitty -- /bin/bash -c \"batz;echo;cal -3;echo;nextmeeting;read;\";",
+        "on-click-right": "kitty -- /bin/bash -c \"batz;echo;cal -3;echo;nextmeeting;read;\"",
         "interval": 59,
         "return-type": "json",
         "tooltip": "true"
     },
 ```
 
-This will show how long i have until the next meeting. If I click on the item
-it will open the meet URL attached to the event. If I hit via a right click it will launch a
-`kitty` terminal to show the time zones with
-[batz](https://github.com/chmouel/batzconverter) and my next meeting. I can
-click on the title in the terminal and it will open the meet URL.
+This configuration displays the time remaining until my next meeting. Clicking
+the item opens the meeting's URL. A right-click launches a `kitty` terminal to
+show time zones using [batz](https://github.com/chmouel/batzconverter) and my
+next meeting. I can also click on the meeting title within the terminal to open
+its URL.
 
 #### Styling
 
-You can style some of the waybar item with the following CSS:
+You can style the Waybar item using the following CSS:
 
 ```css
 #custom-agenda {
@@ -125,8 +149,9 @@ You can style some of the waybar item with the following CSS:
 }
 ```
 
-If you enable the option "--notify-min-before-events it will output a class
-`soon` if the events is coming soon, you can style it with:
+If you enable the `--notify-min-before-events` option, `nextmeeting` will
+output a `soon` class when an event is approaching, allowing you to style it
+with:
 
 ```css
 #custom-agenda.soon {
