@@ -552,7 +552,7 @@ def main():
         return
 
     if args.waybar:
-        rets_with_hyperlinks, cssclass = ret_events(meetings, args, hyperlink=True)
+        rets_with_hyperlinks, cssclass = ret_events(meetings, args, hyperlink=False)
         if not rets_with_hyperlinks:
             ret = {"text": "No meeting 🏖️"}
         else:
