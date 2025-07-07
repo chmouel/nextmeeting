@@ -550,36 +550,37 @@ def main():
             open_url(url)
         return
 
-    rets, cssclass = ret_events(meetings, args, hyperlink=args.waybar)
-
     if args.waybar:
-        if not rets:
+        rets_with_hyperlinks, cssclass = ret_events(meetings, args, hyperlink=True)
+        if not rets_with_hyperlinks:
             ret = {"text": "No meeting 🏖️"}
         else:
+            rets_no_hyperlinks, _ = ret_events(meetings, args, hyperlink=False)
             if args.waybar_show_all_day_meeting:
-                coming_up_next = rets[0]
+                coming_up_next = rets_no_hyperlinks[0]
             else:
                 coming_up_next = get_next_non_all_day_meeting(
-                    meetings, rets, int(args.all_day_meeting_hours)
+                    meetings, rets_no_hyperlinks, int(args.all_day_meeting_hours)
                 )
                 if not coming_up_next:  # only all days meeting
-                    coming_up_next = rets[0]
+                    coming_up_next = rets_no_hyperlinks[0]
             ret = {
                 "text": ellipsis(coming_up_next, args.max_title_length),
-                "tooltip": bulletize(rets),
+                "tooltip": bulletize(rets_with_hyperlinks),
             }
             if cssclass:
                 ret["class"] = cssclass
         json.dump(ret, sys.stdout)
-    elif not rets:
-        debug(
-            "No meeting has been detected perhaps use --calendar to specify another calendar if you don't have any in the default calendar",
-            args,
-        )
-        print("No meeting")
     else:
         rets, _ = ret_events(meetings, args, hyperlink=True)
-        print(bulletize(rets))
+        if not rets:
+            debug(
+                "No meeting has been detected perhaps use --calendar to specify another calendar if you don't have any in the default calendar",
+                args,
+            )
+            print("No meeting")
+        else:
+            print(bulletize(rets))
 
 
 if __name__ == "__main__":
