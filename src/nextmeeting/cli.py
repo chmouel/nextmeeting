@@ -486,10 +486,11 @@ def get_next_non_all_day_meeting(
 
 
 def get_next_meeting(meetings: list[Meeting], skip_all_day: bool) -> Optional[Meeting]:
+    if not skip_all_day:
+        return meetings[0] if meetings else None
     for m in meetings:
-        if skip_all_day and m.is_all_day:
-            continue
-        return m
+        if not m.is_all_day:
+            return m
     return None
 
 
