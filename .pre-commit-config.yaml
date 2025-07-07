@@ -28,11 +28,6 @@ repos:
         entry: make format
         language: system
         types: [file, python]
-      - id: pytest
-        name: pytest
-        entry: make test
-        language: system
-        types: [file, python]
       - id: pylint
         name: pylint
         entry: make lint

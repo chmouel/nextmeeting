@@ -12,38 +12,13 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-#
-# Features
-#
-# smart date in english (not just the date, tomorrow or others)
-# time to go for current meeting
-# change colors if there is 5 minutes to go to the meeting
-# hyperlink in default view to click on terminal
-# notification via notify-send 5 minutes before meeting
-# title ellipsis
-#
-# Install: configure gcalcli https://github.com/insanum/gcalcli
-# Use it like you want, ie.: waybar
-#
-# "custom/agenda": {
-#     "format": "{}",
-#     "exec": "nextmeeting.py --waybar",
-#     "on-click": "nextmeeting.py --open-meet-url;swaymsg '[app=chromium] focus'",
-#     "on-click-right": "kitty -- /bin/bash -c \"cal -3;echo;nextmeeting;read;\"",
-#     "interval": 59
-# },
-#
-# see --help for other customization
-#
-# Screenshot: https://user-images.githubusercontent.com/98980/192647099-ccfa2002-0db3-4738-a54b-176a03474483.png
-#
 
 import argparse
 import datetime
 import hashlib
 import html
 import json
-import os.path
+import os
 import pathlib
 import re
 import shutil
@@ -55,24 +30,31 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Optional, Sequence
 
-# pylint: disable=import-error
 import dateutil.parser as dtparse
 import dateutil.relativedelta as dtrel
 
+# Constants
 REG_TSV = re.compile(
-    r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<starthour>(\d{2}:\d{2}))\s*(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?(?P<endhour>(\d{2}:\d{2}))\s*(?P<calendar_url>(https://\S+))\s*(?P<meet_url>(https://\S*)?)\s*(?P<title>.*)$"
+    r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?"
+    r"(?P<starthour>(\d{2}:\d{2}))\s*"
+    r"(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?"
+    r"(?P<endhour>(\d{2}:\d{2}))\s*"
+    r"(?P<calendar_url>(https://\S+))\s*"
+    r"(?P<meet_url>(https://\S*)?)?\s*"
+    r"(?P<title>.*)$"
 )
+
 DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "")
 GCALCLI_CMDLINE = (
-    "gcalcli --nocolor agenda today --nodeclined  --details=end --details=url --tsv "
+    "gcalcli --nocolor agenda today --nodeclined --details=end --details=url --tsv"
 )
 TITLE_ELIPSIS_LENGTH = 50
 MAX_CACHED_ENTRIES = 30
 NOTIFY_MIN_BEFORE_EVENTS = 5
-NOTIFY_MIN_COLOR = "#FF5733"  # red
-NOTIFY_MIN_COLOR_FOREGROUND = "#F4F1DE"  # white
+NOTIFY_MIN_COLOR = "#FF5733"
+NOTIFY_MIN_COLOR_FOREGROUND = "#F4F1DE"
 CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
-NOTIFY_PROGRAM: str = shutil.which("notify-send") or ""
+NOTIFY_PROGRAM = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
 GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
 ALL_DAYS_MEETING_HOURS = 24
@@ -84,7 +66,7 @@ class Meeting:
     start_time: datetime.datetime
     end_time: datetime.datetime
     calendar_url: str
-    meet_url: Optional[str]
+    meet_url: Optional[str] = None
 
     @property
     def is_all_day(self) -> bool:
@@ -118,210 +100,341 @@ class Meeting:
         )
 
 
-def ellipsis(string: str, length: int) -> str:
-    # remove all html elements first from it
-    hstring = re.sub(r"<[^>]*>", "", string)
-    if len(hstring) > length:
-        return hstring[: length - 3] + "..."
-    return hstring
-
-
-def debug(msg: str, args: argparse.Namespace):
-    """Print debug messages if --debug is enabled."""
-    if args.debug:
-        print(f"[DEBUG] {msg}", file=sys.stderr)
-
-
-def open_url(url: str):
-    webbrowser.open_new_tab(url)
-
-
-def pretty_date(
-    deltad: dtrel.relativedelta, date: datetime.datetime, args: argparse.Namespace
-) -> str:
-    today = datetime.datetime.now()
-    s = ""
-    if date.day != today.day:
-        if deltad.days == 0:
-            s = "Tomorrow"
-        else:
-            s = f"{date.strftime('%a %d')}"
-        # pylint: disable=consider-using-f-string
-        s += " at %02dh%02d" % (
-            date.hour,
-            date.minute,
-        )  # pylint: disable=consider-using-f-string
-    elif deltad.hours != 0:
-        s = date.strftime("%HH%M")
-    elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
-        s = "Now"
-    elif (
-        deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
-        and args.notify_min_color
-        and args.waybar
-    ):
-        number = f"""<span background=\"{args.notify_min_color}\" color=\"{args.notify_min_color_foreground}\">{deltad.minutes}</span>"""
-        s = f"In {number} minutes"
-    else:
-        s = f"In {deltad.minutes} minutes"
-    return s
-
-
-def make_hyperlink(uri: str, label: None | str = None):
-    if label is None:
-        label = uri
-    parameters = ""
-
-    # OSC 8 ; params ; URI ST <name> OSC 8 ;; ST
-    escape_mask = "\033]8;{};{}\033\\{}\033]8;;\033\\"
-    return escape_mask.format(parameters, uri, label)
-
-
 # pylint: disable=too-few-public-methods
+class MeetingFormatter:
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.today = datetime.datetime.now()
+
+    def format_meeting(
+        self, meeting: Meeting, hyperlink: bool = False
+    ) -> tuple[str, str]:
+        """Format a single meeting and return (formatted_string, css_class)."""
+        title = self._format_title(meeting, hyperlink)
+
+        if meeting.is_ongoing:
+            return self._format_ongoing_meeting(meeting, title, hyperlink)
+        return self._format_upcoming_meeting(meeting, title, hyperlink)
+
+    def _format_title(self, meeting: Meeting, hyperlink: bool) -> str:
+        title = meeting.title
+        if self.args.waybar:
+            title = html.escape(title)
+        if hyperlink and meeting.meet_url:
+            title = make_hyperlink(meeting.meet_url, title)
+        return title
+
+    def _format_ongoing_meeting(
+        self, meeting: Meeting, title: str, hyperlink: bool
+    ) -> tuple[str, str]:
+        timetofinish = dtrel.relativedelta(meeting.end_time, self.today)
+        if timetofinish.hours == 0:
+            time_str = f"{timetofinish.minutes} minutes"
+        else:
+            time_str = f"{timetofinish.hours}H{timetofinish.minutes}"
+
+        thetime = f"{time_str} to go"
+        if hyperlink:
+            thetime = f"{thetime: <17}"
+            thetime = make_hyperlink(meeting.calendar_url, thetime)
+
+        return f"{thetime} - {title}", "current"
+
+    def _format_upcoming_meeting(
+        self, meeting: Meeting, title: str, hyperlink: bool
+    ) -> tuple[str, str]:
+        timeuntilstarting = dtrel.relativedelta(meeting.start_time, self.today)
+        css_class = ""
+
+        # Check if notification is needed
+        if (
+            not timeuntilstarting.days
+            and not timeuntilstarting.hours
+            and 0 <= timeuntilstarting.minutes <= self.args.notify_min_before_events
+        ):
+            css_class = "soon"
+            notify(title, meeting.start_time, meeting.end_time, self.args)
+
+        thetime = self._format_time_until(timeuntilstarting, meeting.start_time)
+        if hyperlink:
+            thetime = f"{thetime: <17}"
+            url = (
+                replace_domain_url(self.args.google_domain, meeting.calendar_url)
+                if self.args.google_domain
+                else meeting.calendar_url
+            )
+            thetime = make_hyperlink(url, thetime)
+
+        return f"{thetime} - {title}", css_class
+
+    def _format_time_until(
+        self, deltad: dtrel.relativedelta, date: datetime.datetime
+    ) -> str:
+        if date.day != self.today.day:
+            if deltad.days == 0:
+                s = "Tomorrow"
+            else:
+                s = f"{date.strftime('%a %d')}"
+            s += f" at {date.hour:02d}h{date.minute:02d}"
+        elif deltad.hours != 0:
+            s = date.strftime("%HH%M")
+        elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
+            s = "Now"
+        elif (
+            deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
+            and self.args.notify_min_color
+            and self.args.waybar
+        ):
+            number = (
+                f'<span background="{self.args.notify_min_color}" '
+                f'color="{self.args.notify_min_color_foreground}">'
+                f"{deltad.minutes}</span>"
+            )
+            s = f"In {number} minutes"
+        else:
+            s = f"In {deltad.minutes} minutes"
+        return s
+
+
 class MeetingFetcher:
     def __init__(self, gcalcli_cmdline: str = GCALCLI_CMDLINE):
         self.gcalcli_cmdline = gcalcli_cmdline
 
     def fetch_meetings(self, args: argparse.Namespace) -> list[Meeting]:
-        cmdline = (
-            args.gcalcli_cmdline
-            if hasattr(args, "gcalcli_cmdline")
-            else self.gcalcli_cmdline
-        )
+        cmdline = getattr(args, "gcalcli_cmdline", self.gcalcli_cmdline)
         debug(f"Executing gcalcli command: {cmdline}", args)
-        with subprocess.Popen(
-            cmdline, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        ) as cmd:
-            stdout, stderr = cmd.communicate()  # Wait for the process to complete
-            if cmd.returncode:
-                calendar_list_cmd = subprocess.run(
-                    "gcalcli list",
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
-                )
-                calendar_list = calendar_list_cmd.stdout.decode().strip()
-                debug(stderr.decode(), args)
-                raise RuntimeError(
-                    f"""-----\ngcalcli command failed with exit code {cmd.returncode}, command: {cmdline}\nCalendar available:\n{calendar_list}\nTry nextmeeting --work=CALENDAR option to target the right calendar.\n\nUse --debug to see the full error message.\n"""
-                )
-            return process_lines(stdout.decode().splitlines())
 
+        try:
+            result = subprocess.run(
+                cmdline,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=True,
+            )
+            return self._process_lines(result.stdout.splitlines())
+        except subprocess.CalledProcessError as e:
+            self._handle_gcalcli_error(e, cmdline, args)
+            return []
 
-def gcalcli_output(args: argparse.Namespace) -> list[Meeting]:
-    debug(f"Executing gcalcli command: {args.gcalcli_cmdline}", args)
-    with subprocess.Popen(
-        args.gcalcli_cmdline, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    ) as cmd:
-        stdout, stderr = cmd.communicate()  # Wait for the process to complete
-        if cmd.returncode:
-            calendar_list_cmd = subprocess.run(
+    def _handle_gcalcli_error(
+        self,
+        error: subprocess.CalledProcessError,
+        cmdline: str,
+        args: argparse.Namespace,
+    ):
+        try:
+            calendar_list_result = subprocess.run(
                 "gcalcli list",
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                text=True,
                 check=False,
             )
-            calendar_list = calendar_list_cmd.stdout.decode().strip()
-            debug(stderr.decode(), args)
-            raise RuntimeError(
-                f"""-----
-gcalcli command failed with exit code {cmd.returncode}, command: {args.gcalcli_cmdline}
-Calendar available:
-{calendar_list}
-Try nextmeeting --work=CALENDAR option to target the right calendar.
+            calendar_list = calendar_list_result.stdout.strip()
+        except Exception:
+            calendar_list = "Unable to retrieve calendar list"
 
-Use --debug to see the full error message.
-"""
-            )
-        return process_lines(stdout.decode().splitlines())
+        debug(error.stderr, args)
+        raise RuntimeError(
+            f"gcalcli command failed with exit code {error.returncode}, command: {cmdline}\n"
+            f"Calendar available:\n{calendar_list}\n"
+            f"Try nextmeeting --calendar=CALENDAR option to target the right calendar.\n"
+            f"Use --debug to see the full error message."
+        )
+
+    def _process_lines(self, lines: Sequence[str]) -> list[Meeting]:
+        meetings = []
+        now = datetime.datetime.now()
+
+        for line in lines:
+            _line = line.strip()
+            if match := REG_TSV.match(_line):
+                meeting = Meeting.from_match(match)
+                if meeting.end_time > now:
+                    meetings.append(meeting)
+
+        return meetings
 
 
-def process_lines(lines: Sequence[str | bytes]) -> list[Meeting]:
-    """Process gcalcli output lines into Meeting objects."""
-    meetings = []
-    now = datetime.datetime.now()
+class NotificationManager:
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.cache_path = Path(args.cache_dir) / "cache.json"
 
-    for line in lines:
+    def notify_if_needed(
+        self, title: str, start_date: datetime.datetime, end_date: datetime.datetime
+    ):
+        if not NOTIFY_PROGRAM:
+            return
+
+        uuid = self._generate_uuid(title, start_date, end_date)
+        if self._is_already_notified(uuid):
+            return
+
+        self._mark_as_notified(uuid)
+        self._send_notification(title, start_date, end_date)
+
+    def _generate_uuid(
+        self, title: str, start_date: datetime.datetime, end_date: datetime.datetime
+    ) -> str:
+        content = f"{title}{start_date}{end_date}".encode("utf-8")
+        return hashlib.md5(content).hexdigest()
+
+    def _is_already_notified(self, uuid: str) -> bool:
+        if not self.cache_path.exists():
+            return False
+
         try:
-            if isinstance(line, memoryview):
-                line_str = line.tobytes().decode().strip()
-            elif isinstance(line, bytes):
-                line_str = line.decode().strip()
-            else:
-                line_str = line.strip()
-        except (AttributeError, UnicodeDecodeError):
-            continue
+            with self.cache_path.open() as f:
+                cached = json.load(f)
+            return uuid in cached
+        except (json.JSONDecodeError, IOError):
+            return False
 
-        if isinstance(line_str, str) and (match := REG_TSV.match(line_str)):
-            meeting = Meeting.from_match(match)
-            if meeting.end_time > now:
-                meetings.append(meeting)
+    def _mark_as_notified(self, uuid: str):
+        cached = []
+        if self.cache_path.exists():
+            try:
+                with self.cache_path.open() as f:
+                    cached = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                cached = []
 
-    return meetings
+        cached.append(uuid)
+        if len(cached) > MAX_CACHED_ENTRIES:
+            cached = cached[-MAX_CACHED_ENTRIES:]
+
+        with self.cache_path.open("w") as f:
+            json.dump(cached, f)
+
+    def _send_notification(
+        self, title: str, start_date: datetime.datetime, end_date: datetime.datetime
+    ):
+        cmd = [
+            NOTIFY_PROGRAM,
+            "-i",
+            os.path.expanduser(self.args.notify_icon),
+            title,
+            f"Start: {start_date.strftime('%H:%M')} End: {end_date.strftime('%H:%M')}",
+        ]
+
+        if self.args.notify_expiry > 0:
+            cmd.extend(["-t", str(self.args.notify_expiry * 60 * 1000)])
+        elif self.args.notify_expiry < 0:
+            cmd.extend(["-t", str(NOTIFY_MIN_BEFORE_EVENTS * 60 * 1000)])
+
+        subprocess.call(cmd)
 
 
-def ret_events(
-    meetings: list[Meeting], args: argparse.Namespace, hyperlink: bool = False
-) -> tuple[list[str], str]:
-    ret = []
-    cssclass = ""
-    today = datetime.datetime.now()
-    for meeting in meetings:
-        title = meeting.title
-        startdate = meeting.start_time
-        enddate = meeting.end_time
-        # Skip if --today-only is set and the meeting is not today, unless ongoing
+class OutputFormatter:
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.formatter = MeetingFormatter(args)
+
+    def format_meetings(self, meetings: list[Meeting]) -> tuple[list[str], str]:
+        """Format meetings for output."""
+        results = []
+        css_class = ""
+
+        for meeting in meetings:
+            if self._should_skip_meeting(meeting):
+                continue
+
+            formatted_meeting, meeting_css = self.formatter.format_meeting(
+                meeting, hyperlink=not self.args.waybar
+            )
+            results.append(formatted_meeting)
+
+            if meeting_css and not css_class:  # Use first non-empty CSS class
+                css_class = meeting_css
+
+        return results, css_class
+
+    def _should_skip_meeting(self, meeting: Meeting) -> bool:
+        today = datetime.datetime.now()
+
+        # Skip if --today-only is set and meeting is not today (unless ongoing)
         if (
-            args.today_only
-            and startdate.date() != today.date()
-            and not (startdate <= datetime.datetime.now() <= enddate)
+            self.args.today_only
+            and meeting.start_time.date() != today.date()
+            and not meeting.is_ongoing
         ):
-            continue
-        if args.waybar:
-            title = html.escape(title)
-        if hyperlink and meeting.meet_url:
-            title = make_hyperlink(meeting.meet_url, title)
-        if args.skip_all_day_meeting and meeting.is_all_day:
-            continue
-        if datetime.datetime.now() >= startdate and datetime.datetime.now() <= enddate:
-            cssclass = "current"
-            timetofinish = dtrel.relativedelta(enddate, datetime.datetime.now())
-            if timetofinish.hours == 0:
-                s = f"{timetofinish.minutes} minutes"
-            else:
-                s = f"{timetofinish.hours}H{timetofinish.minutes}"
-            thetime = f"{s} to go"
-            if hyperlink:
-                thetime = f"{thetime: <17}"
-            if hyperlink:
-                thetime = make_hyperlink(meeting.calendar_url, thetime)
-            ret.append(f"{thetime} - {title}")
-        else:
-            timeuntilstarting = dtrel.relativedelta(startdate, datetime.datetime.now())
-            url = meeting.calendar_url
-            if args.google_domain:
-                url = replace_domain_url(args.google_domain, url)
-            # Only notify if meeting is in the future
-            if (
-                not timeuntilstarting.days
-                and not timeuntilstarting.hours
-                and 0 <= timeuntilstarting.minutes <= args.notify_min_before_events
-            ):
-                cssclass = "soon"
-                notify(title, startdate, enddate, args)
-            thetime = pretty_date(timeuntilstarting, startdate, args)
-            if hyperlink:
-                thetime = f"{thetime: <17}"
-                thetime = make_hyperlink(
-                    replace_domain_url(args.google_domain, meeting.calendar_url)
-                    if args.google_domain
-                    else meeting.calendar_url,
-                    thetime,
-                )
-            ret.append(f"{thetime} - {title}")
-    return ret, cssclass
+            return True
+
+        # Skip all-day meetings if requested
+        if self.args.skip_all_day_meeting and meeting.is_all_day:
+            return True
+
+        return False
+
+    def format_for_waybar(self, meetings: list[Meeting]) -> dict:
+        """Format meetings for waybar output."""
+        if not meetings:
+            return {"text": "No meeting 🏖️"}
+
+        formatted_meetings, css_class = self.format_meetings(meetings)
+        if not formatted_meetings:
+            return {"text": "No meeting 🏖️"}
+
+        # Get the next meeting to display
+        next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
+
+        result = {
+            "text": ellipsis(next_meeting, self.args.max_title_length),
+            "tooltip": bulletize(formatted_meetings),
+        }
+
+        if css_class:
+            result["class"] = css_class
+
+        return result
+
+    def _get_next_meeting_for_display(
+        self, meetings: list[Meeting], formatted_meetings: list[str]
+    ) -> str:
+        """Get the next meeting to display in waybar."""
+        if self.args.waybar_show_all_day_meeting:
+            return formatted_meetings[0]
+
+        # Find next non-all-day meeting
+        for idx, meeting in enumerate(meetings):
+            if not meeting.is_all_day:
+                return formatted_meetings[idx]
+
+        # If only all-day meetings, return the first one
+        return formatted_meetings[0]
+
+
+# Utility functions
+def ellipsis(string: str, length: int) -> str:
+    clean_string = re.sub(r"<[^>]*>", "", string)
+    return (
+        clean_string[: length - 3] + "..."
+        if len(clean_string) > length
+        else clean_string
+    )
+
+
+def debug(msg: str, args: argparse.Namespace):
+    if args.debug:
+        print(f"[DEBUG] {msg}", file=sys.stderr)
+
+
+def make_hyperlink(uri: str, label: str = "") -> str:
+    if label is None:
+        label = uri
+    return f"\033]8;;{uri}\033\\{label}\033]8;;\033\\"
+
+
+def replace_domain_url(domain: str, url: str) -> str:
+    return url.replace(GOOGLE_CALENDAR_PUBLIC_URL, f"calendar.google.com/a/{domain}")
+
+
+def bulletize(items: list[str]) -> str:
+    return "• " + "\n• ".join(items)
 
 
 def notify(
@@ -330,218 +443,122 @@ def notify(
     end_date: datetime.datetime,
     args: argparse.Namespace,
 ):
-    t = f"{title}{start_date}{end_date}".encode("utf-8")
-    uuid = hashlib.md5(t).hexdigest()
-    notified = False
-    cached = []
-    cache_path = args.cache_dir / "cache.json"
-    if cache_path.exists():
-        with cache_path.open() as f:
-            try:
-                cached = json.load(f)
-            except json.JSONDecodeError:
-                cached = []
-            if uuid in cached:
-                notified = True
-            debug(
-                f"Notification status for UUID {uuid}: {'Notified' if notified else 'Not Notified'}",
-                args,
-            )
-    if notified:
-        return
-    cached.append(uuid)
-    with cache_path.open("w") as f:
-        if len(cached) >= MAX_CACHED_ENTRIES:
-            cached = cached[-MAX_CACHED_ENTRIES:]
-        json.dump(cached, f)
-    if NOTIFY_PROGRAM == "":
-        return
-    other_args = []
-    if args.notify_expiry > 0:
-        milliseconds = args.notify_expiry * 60 * 1000
-        other_args += ["-t", str(milliseconds)]
-    elif args.notify_expiry < 0:
-        milliseconds = NOTIFY_MIN_BEFORE_EVENTS * 60 * 1000
-        other_args += ["-t", str(milliseconds)]
-    subprocess.call(
-        [
-            NOTIFY_PROGRAM,
-            "-i",
-            os.path.expanduser(args.notify_icon),
-            *other_args,
-            title,
-            f"Start: {start_date.strftime('%H:%M')} End: {end_date.strftime('%H:%M')}",
-        ]
-    )
+    """Legacy notification function for backward compatibility."""
+    notification_manager = NotificationManager(args)
+    notification_manager.notify_if_needed(title, start_date, end_date)
+
+
+def get_next_meeting(meetings: list[Meeting], skip_all_day: bool) -> Optional[Meeting]:
+    if not meetings:
+        return None
+    if not skip_all_day:
+        return meetings[0]
+    return next((m for m in meetings if not m.is_all_day), None)
+
+
+def open_url(url: str):
+    webbrowser.open_new_tab(url)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--gcalcli-cmdline",
-        help="gcalcli command line used, --calendar will be added if you specify one to nextmeeting",
-        default=GCALCLI_CMDLINE,
-    )
-    # Add the --debug flag
-    parser.add_argument(
-        "--debug", action="store_true", help="Enable debug mode to log detailed actions"
-    )
-    parser.add_argument(
-        "--waybar", action="store_true", help="get a json for to display for waybar"
-    )
+    parser = argparse.ArgumentParser(description="Next meeting scheduler")
 
+    # Core options
+    parser.add_argument(
+        "--gcalcli-cmdline", default=GCALCLI_CMDLINE, help="gcalcli command line used"
+    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--calendar", default=DEFAULT_CALENDAR, help="Calendar to use")
+
+    # Display options
+    parser.add_argument("--waybar", action="store_true", help="Output JSON for waybar")
     parser.add_argument(
         "--waybar-show-all-day-meeting",
         action="store_true",
-        help="show all day meeting in next event for waybar",
+        help="Show all-day meetings in waybar",
+    )
+    parser.add_argument(
+        "--max-title-length",
+        type=int,
+        default=TITLE_ELIPSIS_LENGTH,
+        help="Maximum title length",
+    )
+    parser.add_argument(
+        "--today-only", action="store_true", help="Show only today's meetings"
     )
 
+    # Meeting filtering
+    parser.add_argument(
+        "--skip-all-day-meeting",
+        "-S",
+        action="store_true",
+        help="Skip all-day meetings",
+    )
     parser.add_argument(
         "--all-day-meeting-hours",
-        default=ALL_DAYS_MEETING_HOURS,
-        help=f"how long is an all day meeting in hours, (default: {ALL_DAYS_MEETING_HOURS})",
-    )
-
-    parser.add_argument(
-        "--notify-expiry",
         type=int,
-        help="notification expiration in minutes (0 no expiry, -1 show notification until the meeting start)",
-        default=0,
+        default=ALL_DAYS_MEETING_HOURS,
+        help="Hours that constitute an all-day meeting",
     )
 
-    parser.add_argument(
-        "--open-meet-url", action="store_true", help="click on invite url"
-    )
-    parser.add_argument("--max-title-length", type=int, default=TITLE_ELIPSIS_LENGTH)
-    parser.add_argument(
-        "--cache-dir", default=CACHE_DIR.expanduser(), help="cache dir location"
-    )
-
-    parser.add_argument(
-        "--skip-all-day-meeting", "-S", action="store_true", help="skip all day meeting"
-    )
-
-    parser.add_argument(
-        "--google-domain",
-        help="let you specify your google domain instead of the default google.com one",
-        default=os.environ.get("NEXTMEETING_GOOGLE_DOMAIN"),
-    )
+    # Notification options
     parser.add_argument(
         "--notify-min-before-events",
         type=int,
         default=NOTIFY_MIN_BEFORE_EVENTS,
-        help="How many before minutes to notify the events is coming up",
+        help="Minutes before event to notify",
     )
+    parser.add_argument(
+        "--notify-expiry", type=int, default=0, help="Notification expiry in minutes"
+    )
+    parser.add_argument("--notify-icon", default=NOTIFY_ICON, help="Notification icon")
     parser.add_argument(
         "--notify-min-color",
         default=NOTIFY_MIN_COLOR,
-        help="How many before minutes to notify the events is coming up",
+        help="Color for urgent notifications",
     )
-
     parser.add_argument(
         "--notify-min-color-foreground",
         default=NOTIFY_MIN_COLOR_FOREGROUND,
-        help="How many before minutes to notify the events is coming up",
+        help="Foreground color for urgent notifications",
     )
 
+    # URL options
+    parser.add_argument("--open-meet-url", action="store_true", help="Open meeting URL")
     parser.add_argument(
-        "--notify-icon",
-        default=NOTIFY_ICON,
-        help="Notification icon to use for the notify-send",
+        "--google-domain",
+        default=os.environ.get("NEXTMEETING_GOOGLE_DOMAIN"),
+        help="Google domain for calendar URLs",
     )
+
+    # Cache options
     parser.add_argument(
-        "--calendar",
-        default=os.environ.get("GCALCLI_DEFAULT_CALENDAR"),
-        help="calendar to use",
+        "--cache-dir", type=Path, default=CACHE_DIR, help="Cache directory location"
     )
-    parser.add_argument(
-        "--today-only",
-        action="store_true",
-        help="Show only meetings scheduled for today",
-    )
+
     return parser.parse_args()
-
-
-def replace_domain_url(domain, url: str) -> str:
-    return url.replace(
-        GOOGLE_CALENDAR_PUBLIC_URL,
-        f"calendar.google.com/a/{domain}",
-    )
-
-
-def bulletize(rets: list[str]) -> str:
-    return "• " + "\n• ".join(rets)
-
-
-def get_next_non_all_day_meeting(
-    meetings: list[Meeting], rets: list[str], all_day_meeting_hours: int
-) -> None | str:
-    for idx, m in enumerate(meetings):
-        start_date = m.start_time
-        end_date = m.end_time
-        if end_date > (start_date + timedelta(hours=all_day_meeting_hours)):
-            continue
-        return rets[idx]
-    return None
-
-
-def get_next_meeting(meetings: list[Meeting], skip_all_day: bool) -> Optional[Meeting]:
-    if not skip_all_day:
-        return meetings[0] if meetings else None
-    for m in meetings:
-        if not m.is_all_day:
-            return m
-    return None
-
-
-def open_meet_url(rets, matches: list[re.Match], args: argparse.Namespace):
-    url = ""
-    if not rets:
-        print("No meeting 🏖️")
-        return
-    for match in matches:
-        startdate = dtparse.parse(
-            f"{match.group('startdate')} {match.group('starthour')}"
-        )
-        enddate = dtparse.parse(f"{match.group('enddate')} {match.group('endhour')}")
-        if (
-            args.skip_all_day_meeting
-            and dtrel.relativedelta(enddate, startdate).days >= 1
-        ):
-            continue
-        url = match.group("meet_url")
-        if not url:
-            url = match.group("calendar_url")
-            # TODO: go over the description and detect zoom and other stuff
-            # gnome-next-meeting-applet has a huge amount of regexp for that already we can reuse
-            # Maybe show a dialog with the description and the user can click on the link with some gtk
-            if args.google_domain:
-                url = replace_domain_url(args.google_domain, url)
-        break
-    # TODO: we can't do the "domain" switch thing on meet url that are not
-    # calendar, maybe specify a /u/number/ for multi accounts ?
-    if url:
-        open_url(url)
-    sys.exit(0)
 
 
 def main():
     args = parse_args()
-    Path(args.cache_dir).mkdir(parents=True, exist_ok=True)
+    args.cache_dir.mkdir(parents=True, exist_ok=True)
 
     if args.calendar:
         args.gcalcli_cmdline = f"{args.gcalcli_cmdline} --calendar {args.calendar}"
 
+    # Fetch meetings
     fetcher = MeetingFetcher()
     meetings = fetcher.fetch_meetings(args)
 
     if not meetings:
+        output = {"text": "No meeting 🏖️"} if args.waybar else "No meeting"
         if args.waybar:
-            json.dump({"text": "No meeting 🏖️"}, sys.stdout)
+            json.dump(output, sys.stdout)
         else:
-            print("No meeting")
+            print(output)
         return
 
+    # Handle URL opening
     if args.open_meet_url:
         meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
         if meeting:
@@ -551,37 +568,21 @@ def main():
             open_url(url)
         return
 
+    # Format and output meetings
+    formatter = OutputFormatter(args)
+
     if args.waybar:
-        rets_with_hyperlinks, cssclass = ret_events(meetings, args, hyperlink=False)
-        if not rets_with_hyperlinks:
-            ret = {"text": "No meeting 🏖️"}
-        else:
-            rets_no_hyperlinks, _ = ret_events(meetings, args, hyperlink=False)
-            if args.waybar_show_all_day_meeting:
-                coming_up_next = rets_no_hyperlinks[0]
-            else:
-                coming_up_next = get_next_non_all_day_meeting(
-                    meetings, rets_no_hyperlinks, int(args.all_day_meeting_hours)
-                )
-                if not coming_up_next:  # only all days meeting
-                    coming_up_next = rets_no_hyperlinks[0]
-            ret = {
-                "text": ellipsis(coming_up_next, args.max_title_length),
-                "tooltip": bulletize(rets_with_hyperlinks),
-            }
-            if cssclass:
-                ret["class"] = cssclass
-        json.dump(ret, sys.stdout)
+        result = formatter.format_for_waybar(meetings)
+        json.dump(result, sys.stdout)
     else:
-        rets, _ = ret_events(meetings, args, hyperlink=True)
-        if not rets:
+        formatted_meetings, _ = formatter.format_meetings(meetings)
+        if not formatted_meetings:
             debug(
-                "No meeting has been detected perhaps use --calendar to specify another calendar if you don't have any in the default calendar",
-                args,
+                "No meetings detected. Try --calendar to specify another calendar", args
             )
             print("No meeting")
         else:
-            print(bulletize(rets))
+            print(bulletize(formatted_meetings))
 
 
 if __name__ == "__main__":
