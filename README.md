@@ -125,6 +125,17 @@ same JSON shape as `--waybar` (keys like `text`, `tooltip`, and optional
 nextmeeting --json
 ```
 
+### Polybar output
+
+For Polybar, print a single-line text with the next meeting:
+
+```shell
+nextmeeting --polybar
+```
+
+It uses the same formatting and filters as other modes and respects
+`--max-title-length`.
+
 ### Title filters
 
 You can include or exclude meetings based on title substrings (case-insensitive):

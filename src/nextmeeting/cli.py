@@ -401,6 +401,19 @@ class OutputFormatter:
 
         return result
 
+    def format_for_polybar(self, meetings: list[Meeting]) -> str:
+        """Format a single-line string for Polybar."""
+        if not meetings:
+            return "No meeting"
+
+        formatted_meetings, _ = self.format_meetings(meetings)
+        if not formatted_meetings:
+            return "No meeting"
+
+        # Reuse the same selection logic as Waybar
+        next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
+        return ellipsis(next_meeting, self.args.max_title_length)
+
     def _get_next_meeting_for_display(
         self, meetings: list[Meeting], formatted_meetings: list[str]
     ) -> str:
@@ -481,6 +494,9 @@ def parse_args() -> argparse.Namespace:
 
     # Display options
     parser.add_argument("--waybar", action="store_true", help="Output JSON for waybar")
+    parser.add_argument(
+        "--polybar", action="store_true", help="Output text for Polybar"
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -580,7 +596,9 @@ def main():
         output = (
             {"text": "No meeting 🏖️"} if (args.waybar or args.json) else "No meeting"
         )
-        if args.waybar or args.json:
+        if args.polybar and not (args.waybar or args.json):
+            print("No meeting")
+        elif args.waybar or args.json:
             json.dump(output, sys.stdout)
         else:
             print(output)
@@ -599,7 +617,10 @@ def main():
     # Format and output meetings
     formatter = OutputFormatter(args)
 
-    if args.waybar or args.json:
+    if args.polybar and not (args.waybar or args.json):
+        result = formatter.format_for_polybar(meetings)
+        print(result)
+    elif args.waybar or args.json:
         result = formatter.format_for_waybar(meetings)
         json.dump(result, sys.stdout)
     else:
