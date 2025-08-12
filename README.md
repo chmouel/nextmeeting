@@ -146,6 +146,14 @@ privacy = false
 
 CLI flags always override config values.
 
+### Event caching
+
+Reduce calls to `gcalcli` by caching its raw output for a short period:
+
+```shell
+nextmeeting --cache-events-ttl 2   # cache for 2 minutes
+```
+
 ### Polybar output
 
 For Polybar, print a single-line text with the next meeting:

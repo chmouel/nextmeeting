@@ -257,6 +257,19 @@ class MeetingFetcher:
     def fetch_meetings(self, args: argparse.Namespace) -> list[Meeting]:
         cmdline = getattr(args, "gcalcli_cmdline", self.gcalcli_cmdline)
         debug(f"Executing gcalcli command: {cmdline}", args)
+        cache_file = Path(args.cache_dir) / "events.tsv"
+        ttl_min = getattr(args, "cache_events_ttl", 0) or 0
+        now = datetime.datetime.now().timestamp()
+
+        # Use cache if valid
+        if ttl_min > 0 and cache_file.exists():
+            try:
+                mtime = cache_file.stat().st_mtime
+                if now - mtime <= ttl_min * 60:
+                    with cache_file.open() as f:
+                        return self._process_lines(f.read().splitlines())
+            except Exception:  # noqa: BLE001
+                pass
 
         try:
             result = subprocess.run(
@@ -267,6 +280,13 @@ class MeetingFetcher:
                 text=True,
                 check=True,
             )
+            # Write cache if enabled
+            if ttl_min > 0:
+                try:
+                    with cache_file.open("w") as f:
+                        f.write(result.stdout)
+                except Exception:  # noqa: BLE001
+                    pass
             return self._process_lines(result.stdout.splitlines())
         except subprocess.CalledProcessError as e:
             self._handle_gcalcli_error(e, cmdline, args)
@@ -766,6 +786,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # Cache options
     parser.add_argument(
         "--cache-dir", type=Path, default=CACHE_DIR, help="Cache directory location"
+    )
+    parser.add_argument(
+        "--cache-events-ttl",
+        type=int,
+        default=0,
+        help="Cache gcalcli events for N minutes (0 disables)",
     )
 
     # Config
