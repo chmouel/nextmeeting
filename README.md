@@ -136,6 +136,20 @@ nextmeeting --polybar
 It uses the same formatting and filters as other modes and respects
 `--max-title-length`.
 
+### Custom formatting
+
+You can customize how each line is rendered using templates. Available
+placeholders: `{when}`, `{title}`, `{start_time}`, `{end_time}`, `{meet_url}`,
+`{calendar_url}`, `{minutes_until}`, `{is_all_day}`, `{is_ongoing}`.
+
+```shell
+# Single-line formatting (TTY, Polybar, and Waybar text)
+nextmeeting --format "{when} • {title}"
+
+# Waybar tooltip formatting (applies to the tooltip only)
+nextmeeting --waybar --tooltip-format "{start_time:%H:%M}-{end_time:%H:%M} · {title}"
+```
+
 ### Title filters
 
 You can include or exclude meetings based on title substrings (case-insensitive):

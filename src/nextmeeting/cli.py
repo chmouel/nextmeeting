@@ -110,11 +110,24 @@ class MeetingFormatter:
         self, meeting: Meeting, hyperlink: bool = False
     ) -> tuple[str, str]:
         """Format a single meeting and return (formatted_string, css_class)."""
-        title = self._format_title(meeting, hyperlink)
-
-        if meeting.is_ongoing:
-            return self._format_ongoing_meeting(meeting, title, hyperlink)
-        return self._format_upcoming_meeting(meeting, title, hyperlink)
+        fields, css = self._compute_fields(meeting, hyperlink)
+        # Template support (plain text fields)
+        template = getattr(self.args, "format", None)
+        if template:
+            formatted = template.format(
+                when=fields["when"],
+                title=fields["title"],
+                start_time=fields["start_time"],
+                end_time=fields["end_time"],
+                meet_url=fields.get("meet_url"),
+                calendar_url=fields.get("calendar_url"),
+                minutes_until=fields.get("minutes_until"),
+                is_all_day=fields.get("is_all_day"),
+                is_ongoing=fields.get("is_ongoing"),
+            )
+        else:
+            formatted = f"{fields['when']} - {fields['title']}"
+        return formatted, css
 
     def _format_title(self, meeting: Meeting, hyperlink: bool) -> str:
         title = meeting.title
@@ -125,8 +138,8 @@ class MeetingFormatter:
         return title
 
     def _format_ongoing_meeting(
-        self, meeting: Meeting, title: str, hyperlink: bool
-    ) -> tuple[str, str]:
+        self, meeting: Meeting, title: str
+    ) -> tuple[str, str, str]:
         timetofinish = dtrel.relativedelta(meeting.end_time, self.today)
         if timetofinish.hours == 0:
             time_str = f"{timetofinish.minutes} minutes"
@@ -134,15 +147,11 @@ class MeetingFormatter:
             time_str = f"{timetofinish.hours}H{timetofinish.minutes}"
 
         thetime = f"{time_str} to go"
-        if hyperlink:
-            thetime = f"{thetime: <17}"
-            thetime = make_hyperlink(meeting.calendar_url, thetime)
-
-        return f"{thetime} - {title}", "current"
+        return thetime, title, "current"
 
     def _format_upcoming_meeting(
-        self, meeting: Meeting, title: str, hyperlink: bool
-    ) -> tuple[str, str]:
+        self, meeting: Meeting, title: str
+    ) -> tuple[str, str, str]:
         timeuntilstarting = dtrel.relativedelta(meeting.start_time, self.today)
         css_class = ""
 
@@ -156,16 +165,30 @@ class MeetingFormatter:
             notify(title, meeting.start_time, meeting.end_time, self.args)
 
         thetime = self._format_time_until(timeuntilstarting, meeting.start_time)
-        if hyperlink:
-            thetime = f"{thetime: <17}"
-            url = (
-                replace_domain_url(self.args.google_domain, meeting.calendar_url)
-                if self.args.google_domain
-                else meeting.calendar_url
-            )
-            thetime = make_hyperlink(url, thetime)
+        return thetime, title, css_class
 
-        return f"{thetime} - {title}", css_class
+    def _compute_fields(self, meeting: Meeting, hyperlink: bool) -> tuple[dict, str]:
+        title = self._format_title(meeting, hyperlink)
+        if meeting.is_ongoing:
+            when_text, title_text, css = self._format_ongoing_meeting(meeting, title)
+        else:
+            when_text, title_text, css = self._format_upcoming_meeting(meeting, title)
+
+        fields: dict = {
+            "when": when_text,
+            "title": title_text,
+            "start_time": meeting.start_time,
+            "end_time": meeting.end_time,
+            "calendar_url": meeting.calendar_url,
+            "meet_url": meeting.meet_url,
+            "is_all_day": meeting.is_all_day,
+            "is_ongoing": meeting.is_ongoing,
+            "minutes_until": int(
+                max(0, (meeting.start_time - datetime.datetime.now()).total_seconds())
+                // 60
+            ),
+        }
+        return fields, css
 
     def _format_time_until(
         self, deltad: dtrel.relativedelta, date: datetime.datetime
@@ -391,9 +414,33 @@ class OutputFormatter:
         # Get the next meeting to display
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
 
+        # Tooltip formatting: allow a separate template
+        tooltip_lines = formatted_meetings
+        if getattr(self.args, "tooltip_format", None):
+            tooltip_lines = []
+            for meeting in meetings:
+                if self._should_skip_meeting(meeting):
+                    continue
+                fields, _ = self.formatter._compute_fields(  # pylint: disable=protected-access
+                    meeting, hyperlink=False
+                )
+                tooltip_lines.append(
+                    self.args.tooltip_format.format(
+                        when=fields["when"],
+                        title=fields["title"],
+                        start_time=fields["start_time"],
+                        end_time=fields["end_time"],
+                        meet_url=fields.get("meet_url"),
+                        calendar_url=fields.get("calendar_url"),
+                        minutes_until=fields.get("minutes_until"),
+                        is_all_day=fields.get("is_all_day"),
+                        is_ongoing=fields.get("is_ongoing"),
+                    )
+                )
+
         result = {
             "text": ellipsis(next_meeting, self.args.max_title_length),
-            "tooltip": bulletize(formatted_meetings),
+            "tooltip": bulletize(tooltip_lines),
         }
 
         if css_class:
@@ -515,6 +562,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--today-only", action="store_true", help="Show only today's meetings"
+    )
+    parser.add_argument(
+        "--format",
+        help=(
+            "Custom line template, placeholders: {when}, {title}, {start_time}, {end_time}, "
+            "{meet_url}, {calendar_url}, {minutes_until}, {is_all_day}, {is_ongoing}"
+        ),
+    )
+    parser.add_argument(
+        "--tooltip-format",
+        help=("Custom tooltip template (Waybar), placeholders same as --format"),
     )
 
     # Meeting filtering
