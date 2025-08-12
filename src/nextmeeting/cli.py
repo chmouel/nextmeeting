@@ -530,6 +530,16 @@ def replace_domain_url(domain: str, url: str) -> str:
     return url.replace(GOOGLE_CALENDAR_PUBLIC_URL, f"calendar.google.com/a/{domain}")
 
 
+def build_calendar_day_url(
+    date: datetime.datetime, domain: Optional[str] = None
+) -> str:
+    y, m, d = date.year, date.month, date.day
+    base = f"https://calendar.google.com/calendar/u/0/r/day/{y}/{m}/{d}"
+    if domain:
+        base = f"https://calendar.google.com/a/{domain}/r/day/{y}/{m}/{d}"
+    return base
+
+
 def bulletize(items: list[str]) -> str:
     return "• " + "\n• ".join(items)
 
@@ -714,6 +724,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("NEXTMEETING_GOOGLE_DOMAIN"),
         help="Google domain for calendar URLs",
     )
+    parser.add_argument(
+        "--open-calendar-day",
+        action="store_true",
+        help="Open Google Calendar day view of the next meeting",
+    )
 
     # Cache options
     parser.add_argument(
@@ -747,7 +762,7 @@ def main():
         return
 
     # Handle URL opening
-    if args.open_meet_url or args.copy_meeting_url:
+    if args.open_meet_url or args.copy_meeting_url or args.open_calendar_day:
         meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
         if meeting:
             url = meeting.meet_url or meeting.calendar_url
@@ -755,6 +770,9 @@ def main():
                 url = replace_domain_url(args.google_domain, url)
             if args.open_meet_url:
                 open_url(url)
+            if args.open_calendar_day:
+                day_url = build_calendar_day_url(meeting.start_time, args.google_domain)
+                open_url(day_url)
             if args.copy_meeting_url:
                 if not copy_to_clipboard(url):
                     print(url)

@@ -191,6 +191,13 @@ nextmeeting --privacy --privacy-title "Busy 🗓️"
 nextmeeting --copy-meeting-url
 ```
 
+- Open the Google Calendar day view for the next meeting (respects
+  `--google-domain` if set):
+
+```shell
+nextmeeting --open-calendar-day
+```
+
 ### Waybar
 
 A more interesting use case for `nextmeeting` is its integration with Waybar,
