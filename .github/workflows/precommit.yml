@@ -14,5 +14,5 @@ jobs:
           pip install -U uv
           uv sync
           export PATH="$PATH:$(pwd)/.venv/bin"
-          pip install ruff pylint pre-commit 
-          pre-commit run -a
+          .venv/bin/pip install ruff pylint pre-commit 
+          .venv/bin/pre-commit run -a
