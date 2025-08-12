@@ -173,6 +173,15 @@ nextmeeting --exclude-title ooo --exclude-title holiday
 
 Filters apply across modes (TTY, `--json`, `--waybar`).
 
+### Privacy mode
+
+Redact meeting titles to a static label to avoid leaking details:
+
+```shell
+nextmeeting --privacy               # titles become "Busy"
+nextmeeting --privacy --privacy-title "Busy 🗓️"
+```
+
 ### Waybar
 
 A more interesting use case for `nextmeeting` is its integration with Waybar,

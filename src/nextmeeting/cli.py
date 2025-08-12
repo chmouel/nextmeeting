@@ -131,6 +131,8 @@ class MeetingFormatter:
 
     def _format_title(self, meeting: Meeting, hyperlink: bool) -> str:
         title = meeting.title
+        if getattr(self.args, "privacy", False):
+            title = getattr(self.args, "privacy_title", "Busy")
         if self.args.waybar:
             title = html.escape(title)
         if hyperlink and meeting.meet_url:
@@ -566,6 +568,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--today-only", action="store_true", help="Show only today's meetings"
+    )
+    parser.add_argument(
+        "--privacy",
+        action="store_true",
+        help="Redact meeting titles (display as Busy)",
+    )
+    parser.add_argument(
+        "--privacy-title",
+        default="Busy",
+        help="Replacement title when --privacy is enabled",
     )
     parser.add_argument(
         "--limit",
