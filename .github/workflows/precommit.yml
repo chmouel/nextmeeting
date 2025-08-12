@@ -11,8 +11,8 @@ jobs:
       - uses: actions/setup-python@v5
       - name: Install dependencies
         run: |
-          pip install -U uv
+          python3 -mpip install -U uv
           uv sync
           export PATH="$PATH:$(pwd)/.venv/bin"
-          .venv/bin/pip install ruff pylint pre-commit 
+          .venv/bin/python3 -mpip install ruff pylint pre-commit 
           .venv/bin/pre-commit run -a
