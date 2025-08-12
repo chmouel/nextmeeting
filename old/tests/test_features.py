@@ -1,4 +1,4 @@
-import datetime
+import datetime  # legacy tests archived
 from argparse import Namespace
 
 from nextmeeting.cli import Meeting, OutputFormatter, MeetingFormatter

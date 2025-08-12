@@ -1,0 +1,15 @@
+## Systemd user service for nextmeeting server
+[Unit]
+Description=Nextmeeting server daemon
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.venv/bin/nextmeetingd --socket-path %h/.cache/nextmeeting/socket --poll-interval 60
+Restart=on-failure
+RestartSec=2
+Environment=GCALCLI_DEFAULT_CALENDAR=
+
+[Install]
+WantedBy=default.target
+

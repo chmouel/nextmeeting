@@ -12,6 +12,7 @@ keywords = ["calendar", "cli"]
 
 [project.scripts]
 nextmeeting = "nextmeeting.cli:main"
+nextmeetingd = "nextmeeting.server:main"
 
 [build-system]
 requires = ["hatchling"]
