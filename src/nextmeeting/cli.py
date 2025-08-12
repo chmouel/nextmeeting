@@ -429,6 +429,18 @@ class OutputFormatter:
             if any(term.lower() in title_lc for term in self.args.exclude_title):
                 return True
 
+        # Working hours filter HH:MM-HH:MM
+        if getattr(self.args, "work_hours", None):
+            try:
+                start_s, end_s = str(self.args.work_hours).split("-")
+                wh_start = datetime.time(*[int(x) for x in start_s.split(":")[:2]])
+                wh_end = datetime.time(*[int(x) for x in end_s.split(":")[:2]])
+                st = meeting.start_time.time()
+                if not meeting.is_ongoing and not wh_start <= st <= wh_end:
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+
         return False
 
     def format_for_waybar(self, meetings: list[Meeting]) -> dict:
@@ -656,6 +668,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tooltip-format",
         help=("Custom tooltip template (Waybar), placeholders same as --format"),
+    )
+    parser.add_argument(
+        "--work-hours",
+        help="Only show meetings whose start time is within HH:MM-HH:MM",
     )
 
     # Meeting filtering

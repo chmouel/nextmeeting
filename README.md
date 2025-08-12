@@ -194,6 +194,12 @@ nextmeeting --exclude-title ooo --exclude-title holiday
 
 Filters apply across modes (TTY, `--json`, `--waybar`).
 
+You can also restrict to working hours by start time:
+
+```shell
+nextmeeting --work-hours 09:00-18:00
+```
+
 ### Privacy mode
 
 Redact meeting titles to a static label to avoid leaking details:
