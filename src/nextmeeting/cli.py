@@ -368,6 +368,15 @@ class OutputFormatter:
         if self.args.skip_all_day_meeting and meeting.is_all_day:
             return True
 
+        # Title include/exclude filters
+        title_lc = meeting.title.lower()
+        if self.args.include_title:
+            if not any(term.lower() in title_lc for term in self.args.include_title):
+                return True
+        if self.args.exclude_title:
+            if any(term.lower() in title_lc for term in self.args.exclude_title):
+                return True
+
         return False
 
     def format_for_waybar(self, meetings: list[Meeting]) -> dict:
@@ -498,6 +507,18 @@ def parse_args() -> argparse.Namespace:
         "-S",
         action="store_true",
         help="Skip all-day meetings",
+    )
+    parser.add_argument(
+        "--include-title",
+        action="append",
+        default=[],
+        help="Only include meetings whose title contains any of these terms (repeatable)",
+    )
+    parser.add_argument(
+        "--exclude-title",
+        action="append",
+        default=[],
+        help="Exclude meetings whose title contains any of these terms (repeatable)",
     )
     parser.add_argument(
         "--all-day-meeting-hours",

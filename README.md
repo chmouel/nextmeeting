@@ -125,6 +125,20 @@ same JSON shape as `--waybar` (keys like `text`, `tooltip`, and optional
 nextmeeting --json
 ```
 
+### Title filters
+
+You can include or exclude meetings based on title substrings (case-insensitive):
+
+```shell
+# Only include meetings containing either "standup" or "1:1"
+nextmeeting --include-title standup --include-title "1:1"
+
+# Exclude meetings containing "OOO" or "holiday"
+nextmeeting --exclude-title ooo --exclude-title holiday
+```
+
+Filters apply across modes (TTY, `--json`, `--waybar`).
+
 ### Waybar
 
 A more interesting use case for `nextmeeting` is its integration with Waybar,
