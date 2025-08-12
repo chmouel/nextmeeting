@@ -473,6 +473,11 @@ def parse_args() -> argparse.Namespace:
     # Display options
     parser.add_argument("--waybar", action="store_true", help="Output JSON for waybar")
     parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output JSON (same structure as --waybar)",
+    )
+    parser.add_argument(
         "--waybar-show-all-day-meeting",
         action="store_true",
         help="Show all-day meetings in waybar",
@@ -551,8 +556,10 @@ def main():
     meetings = fetcher.fetch_meetings(args)
 
     if not meetings:
-        output = {"text": "No meeting 🏖️"} if args.waybar else "No meeting"
-        if args.waybar:
+        output = (
+            {"text": "No meeting 🏖️"} if (args.waybar or args.json) else "No meeting"
+        )
+        if args.waybar or args.json:
             json.dump(output, sys.stdout)
         else:
             print(output)
@@ -571,7 +578,7 @@ def main():
     # Format and output meetings
     formatter = OutputFormatter(args)
 
-    if args.waybar:
+    if args.waybar or args.json:
         result = formatter.format_for_waybar(meetings)
         json.dump(result, sys.stdout)
     else:

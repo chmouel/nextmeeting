@@ -115,6 +115,16 @@ using the `--calendar=CALENDAR` flag.
 There are a few options to customize its behavior; see `nextmeeting --help` for
 more details.
 
+### JSON output
+
+If you need machine-readable output outside Waybar, use `--json` to print the
+same JSON shape as `--waybar` (keys like `text`, `tooltip`, and optional
+`class`). This is useful for other bars or scripts:
+
+```shell
+nextmeeting --json
+```
+
 ### Waybar
 
 A more interesting use case for `nextmeeting` is its integration with Waybar,
