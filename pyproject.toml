@@ -6,9 +6,7 @@ readme = "README.md"
 authors = [{ name = "Chmouel Boudjnah", email = "chmouel@chmouel.com" }]
 requires-python = ">=3.9"
 license = "Apache-2.0"
-dependencies = [
-    "python-dateutil>=2.9.0.post0",
-]
+dependencies = ["python-dateutil>=2.9.0.post0"]
 classifiers = ["License :: OSI Approved :: Apache Software License"]
 keywords = ["calendar", "cli"]
 
@@ -23,10 +21,21 @@ build-backend = "hatchling.build"
 ignore = ["E501", "PLR0912"]
 select = ["E", "F", "D4", "PT", "PL"]
 
+[tool.pylint]
+disable = [
+  "missing-module-docstring",
+  "missing-class-docstring",
+  "missing-function-docstring",
+  "broad-exception-caught",
+  "invalid-name",
+  "too-many-branches",
+]
+max-line-length = 101
+
 [dependency-groups]
 dev = [
-    "isort>=6.0.1",
-    "pytest>=8.4.1",
-    "pytest-cov>=6.2.1",
-    "types-python-dateutil>=2.9.0.20250516",
+  "isort>=6.0.1",
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+  "types-python-dateutil>=2.9.0.20250516",
 ]
