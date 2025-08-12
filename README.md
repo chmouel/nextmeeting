@@ -125,6 +125,27 @@ same JSON shape as `--waybar` (keys like `text`, `tooltip`, and optional
 nextmeeting --json
 ```
 
+### Configuration file
+
+You can set defaults in a TOML file. By default, `~/.config/nextmeeting/config.toml`
+is loaded if present, or you can point to a custom file with `--config`.
+
+Example `~/.config/nextmeeting/config.toml`:
+
+```toml
+[nextmeeting]
+calendar = "Work"
+max-title-length = 30
+today-only = true
+include-title = ["standup", "1:1"]
+exclude-title = ["OOO"]
+notify-min-before-events = 5
+notify-offsets = [15, 5]
+privacy = false
+```
+
+CLI flags always override config values.
+
 ### Polybar output
 
 For Polybar, print a single-line text with the next meeting:

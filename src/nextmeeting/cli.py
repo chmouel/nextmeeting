@@ -33,6 +33,11 @@ from typing import Optional, Sequence
 import dateutil.parser as dtparse
 import dateutil.relativedelta as dtrel
 
+try:  # Python 3.11+
+    import tomllib  # type: ignore[import-not-found]
+except Exception:  # noqa: BLE001
+    tomllib = None  # type: ignore[assignment]
+
 # Constants
 REG_TSV = re.compile(
     r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?"
@@ -592,7 +597,7 @@ def copy_to_clipboard(text: str) -> bool:
     return False
 
 
-def parse_args() -> argparse.Namespace:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Next meeting scheduler")
 
     # Core options
@@ -735,6 +740,43 @@ def parse_args() -> argparse.Namespace:
         "--cache-dir", type=Path, default=CACHE_DIR, help="Cache directory location"
     )
 
+    # Config
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="Path to a TOML config file (defaults to ~/.config/nextmeeting/config.toml if present)",
+    )
+
+    return parser
+
+
+def _load_config(path: Path) -> dict:
+    if not path.exists() or not path.is_file():
+        return {}
+    if not tomllib:
+        return {}
+    try:
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+        # Allow a top-level [nextmeeting] table or flat keys
+        if "nextmeeting" in data and isinstance(data["nextmeeting"], dict):
+            return data["nextmeeting"]
+        return data
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = _build_parser()
+    # First pass to discover --config or default file
+    preliminary, _ = parser.parse_known_args()
+    config_path = preliminary.config or Path(
+        os.path.expanduser("~/.config/nextmeeting/config.toml")
+    )
+    cfg = _load_config(config_path)
+    if cfg:
+        # Set defaults from config for any matching keys
+        parser.set_defaults(**cfg)
     return parser.parse_args()
 
 
