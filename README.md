@@ -214,6 +214,13 @@ You can also restrict to working hours by start time:
 nextmeeting --work-hours 09:00-18:00
 ```
 
+Filter by calendar using substrings of the event URL (useful when you have
+multiple accounts/calendars):
+
+```shell
+nextmeeting --include-calendar "primary" --exclude-calendar "personal"
+```
+
 ### Privacy mode
 
 Redact meeting titles to a static label to avoid leaking details:

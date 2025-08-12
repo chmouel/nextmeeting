@@ -433,41 +433,52 @@ class OutputFormatter:
 
     def _should_skip_meeting(self, meeting: Meeting) -> bool:
         today = datetime.datetime.now()
+        skip = False
 
-        # Skip if --today-only is set and meeting is not today (unless ongoing)
         if (
             self.args.today_only
             and meeting.start_time.date() != today.date()
             and not meeting.is_ongoing
         ):
-            return True
+            skip = True
 
-        # Skip all-day meetings if requested
-        if self.args.skip_all_day_meeting and meeting.is_all_day:
-            return True
+        if not skip and self.args.skip_all_day_meeting and meeting.is_all_day:
+            skip = True
 
-        # Title include/exclude filters
-        title_lc = meeting.title.lower()
-        if self.args.include_title:
-            if not any(term.lower() in title_lc for term in self.args.include_title):
-                return True
-        if self.args.exclude_title:
-            if any(term.lower() in title_lc for term in self.args.exclude_title):
-                return True
+        if not skip:
+            title_lc = meeting.title.lower()
+            if self.args.include_title and not any(
+                term.lower() in title_lc for term in self.args.include_title
+            ):
+                skip = True
+            if self.args.exclude_title and any(
+                term.lower() in title_lc for term in self.args.exclude_title
+            ):
+                skip = True
 
-        # Working hours filter HH:MM-HH:MM
-        if getattr(self.args, "work_hours", None):
+        if not skip:
+            cal_url_lc = meeting.calendar_url.lower()
+            if self.args.include_calendar and not any(
+                term.lower() in cal_url_lc for term in self.args.include_calendar
+            ):
+                skip = True
+            if self.args.exclude_calendar and any(
+                term.lower() in cal_url_lc for term in self.args.exclude_calendar
+            ):
+                skip = True
+
+        if not skip and getattr(self.args, "work_hours", None):
             try:
                 start_s, end_s = str(self.args.work_hours).split("-")
                 wh_start = datetime.time(*[int(x) for x in start_s.split(":")[:2]])
                 wh_end = datetime.time(*[int(x) for x in end_s.split(":")[:2]])
                 st = meeting.start_time.time()
                 if not meeting.is_ongoing and not wh_start <= st <= wh_end:
-                    return True
+                    skip = True
             except Exception:  # noqa: BLE001
                 pass
 
-        return False
+        return skip
 
     def format_for_waybar(self, meetings: list[Meeting]) -> dict:
         """Format meetings for waybar output."""
@@ -724,6 +735,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Exclude meetings whose title contains any of these terms (repeatable)",
+    )
+    parser.add_argument(
+        "--include-calendar",
+        action="append",
+        default=[],
+        help="Only include meetings whose calendar URL contains any of these terms (repeatable)",
+    )
+    parser.add_argument(
+        "--exclude-calendar",
+        action="append",
+        default=[],
+        help="Exclude meetings whose calendar URL contains any of these terms (repeatable)",
     )
     parser.add_argument(
         "--all-day-meeting-hours",
