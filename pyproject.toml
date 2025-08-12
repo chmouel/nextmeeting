@@ -18,7 +18,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.ruff.lint]
-ignore = ["E501", "PLR0912"]
+ignore = ["E501", "PLR0912", "PLR0915"]
 select = ["E", "F", "D4", "PT", "PL"]
 
 [tool.pylint]

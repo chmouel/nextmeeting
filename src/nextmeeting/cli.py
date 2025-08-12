@@ -12,7 +12,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-# pylint: disable=too-many-lines
+# pylint: disable=too-many-lines disable=too-many-locals disable=too-many-statements disable=line-too-long
 
 import argparse
 import datetime
@@ -22,9 +22,11 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import urllib.parse as urlparse
 import webbrowser
 from dataclasses import dataclass
 from datetime import timedelta
@@ -114,8 +116,10 @@ class MeetingFormatter:
         self.today = datetime.datetime.now()
 
     def format_meeting(
-        self, meeting: Meeting, hyperlink: bool = False
-    ) -> tuple[str, str]:
+        self,
+        meeting: Meeting,
+        hyperlink: bool = False,  # pylint: disable=line-too-long
+    ) -> tuple[str, str]:  # pylint: disable=line-too-long
         """Format a single meeting and return (formatted_string, css_class)."""
         fields, css = self._compute_fields(meeting, hyperlink)
         # Template support (plain text fields)
@@ -335,6 +339,119 @@ class MeetingFetcher:
         return meetings
 
 
+@dataclass
+class SanitizedLink:
+    service: Optional[str]
+    url: str
+    meeting_id: Optional[str] = None
+    passcode: Optional[str] = None
+
+
+OUTLOOK_SAFELINK_RE = re.compile(
+    r"https://[^\s]+\.safelinks\.protection\.outlook\.com/[^\s]+url=([^\s&]+)",
+    re.IGNORECASE,
+)
+
+
+def _cleanup_outlook_safelinks(text: str) -> str:
+    match = OUTLOOK_SAFELINK_RE.search(text)
+    if not match:
+        return text
+    try:
+        encoded = match.group(1)
+        decoded = urlparse.unquote(encoded)
+        return decoded
+    except Exception:  # noqa: BLE001
+        return text
+
+
+def _normalize_zoom(u: str) -> SanitizedLink:
+    parsed = urlparse.urlsplit(u)
+    query = dict(urlparse.parse_qsl(parsed.query))
+    host = parsed.netloc.lower()
+    is_zoomgov = host.endswith("zoomgov.com")
+    service = "zoomgov" if is_zoomgov else "zoom"
+
+    meeting_id = None
+    passcode = query.get("pwd") or query.get("passcode")
+
+    # Convert /join?confno= to /j/<id>
+    path = parsed.path
+    if "/join" in path and "confno" in query:
+        meeting_id = query.get("confno")
+        path = f"/j/{meeting_id}"
+        query.pop("confno", None)
+    # Extract /j/<id>
+    parts = [p for p in path.split("/") if p]
+    if parts and parts[0] in {"j", "wc", "w"}:
+        meeting_id = next(iter(parts[1:]), None)
+
+    new_query = urlparse.urlencode(
+        {k: v for k, v in query.items() if k in {"pwd", "passcode"}}
+    )
+    normalized = urlparse.urlunsplit(
+        (parsed.scheme, parsed.netloc, path, new_query, "")
+    )
+    return SanitizedLink(
+        service=service, url=normalized, meeting_id=meeting_id, passcode=passcode
+    )
+
+
+def _normalize_meet(u: str) -> SanitizedLink:
+    # https://meet.google.com/abc-defg-hij
+    parsed = urlparse.urlsplit(u)
+    service = "google_meet"
+    parts = [p for p in parsed.path.split("/") if p]
+    meeting_id = parts[0] if parts else None
+    normalized = urlparse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, "", "")
+    )
+    return SanitizedLink(service=service, url=normalized, meeting_id=meeting_id)
+
+
+def _normalize_teams(u: str) -> SanitizedLink:
+    # Keep as-is; teams links are long and signed
+    return SanitizedLink(service="teams", url=u)
+
+
+def _normalize_jitsi(u: str) -> SanitizedLink:
+    parsed = urlparse.urlsplit(u)
+    parts = [p for p in parsed.path.split("/") if p]
+    meeting_id = parts[0] if parts else None
+    normalized = urlparse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, "", "")
+    )
+    return SanitizedLink(service="jitsi", url=normalized, meeting_id=meeting_id)
+
+
+def sanitize_meeting_link(raw_url: Optional[str]) -> Optional[SanitizedLink]:
+    """Return normalized meeting link and extracted details.
+
+    - Unwrap Outlook SafeLinks
+    - Normalize Zoom /join?confno= to /j/<id> and keep pwd
+    - Strip tracking params for Meet/Jitsi
+    """
+    if not raw_url:
+        return None
+    url = _cleanup_outlook_safelinks(raw_url)
+    low = url.lower()
+    result: SanitizedLink
+    try:
+        if "zoom.us/" in low or low.startswith("zoommtg://") or "zoomgov.com/" in low:
+            result = _normalize_zoom(url)
+        elif "meet.google.com" in low:
+            result = _normalize_meet(url)
+        elif "teams.microsoft.com" in low:
+            result = _normalize_teams(url)
+        elif "meet.jit.si" in low:
+            result = _normalize_jitsi(url)
+        else:
+            result = SanitizedLink(service=None, url=url)
+    except Exception:  # noqa: BLE001
+        result = SanitizedLink(service=None, url=url)
+    return result
+
+
 class NotificationManager:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -521,25 +638,54 @@ class OutputFormatter:
 
         if not skip:
             cal_url_lc = meeting.calendar_url.lower()
-            if self.args.include_calendar and not any(
-                term.lower() in cal_url_lc for term in self.args.include_calendar
+            include_cal = getattr(self.args, "include_calendar", []) or []
+            exclude_cal = getattr(self.args, "exclude_calendar", []) or []
+            if include_cal and not any(
+                term.lower() in cal_url_lc for term in include_cal
             ):
                 skip = True
-            if self.args.exclude_calendar and any(
-                term.lower() in cal_url_lc for term in self.args.exclude_calendar
-            ):
+            if exclude_cal and any(term.lower() in cal_url_lc for term in exclude_cal):
                 skip = True
 
         if not skip and getattr(self.args, "work_hours", None):
             try:
                 start_s, end_s = str(self.args.work_hours).split("-")
-                wh_start = datetime.time(*[int(x) for x in start_s.split(":")[:2]])
-                wh_end = datetime.time(*[int(x) for x in end_s.split(":")[:2]])
+                try:
+                    hour, minute = map(int, start_s.split(":")[:2])
+                    wh_start = datetime.time(hour, minute)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Invalid time format for start_s: {repr(start_s)}. Expected format: 'HH:MM' (e.g., '09:00')."
+                    ) from exc
+                try:
+                    hour, minute = map(int, end_s.split(":")[:2])
+                    wh_end = datetime.time(hour, minute)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Invalid time format for end_s: '{end_s}'. Expected 'HH:MM'."
+                    ) from exc
                 st = meeting.start_time.time()
                 if not meeting.is_ongoing and not wh_start <= st <= wh_end:
                     skip = True
             except Exception:  # noqa: BLE001
                 pass
+
+        # Only-within-window filter
+        if not skip and getattr(self.args, "within_mins", None):
+            try:
+                mins = int(self.args.within_mins)
+                if mins >= 0:
+                    delta = (meeting.start_time - today).total_seconds() / 60.0
+                    if not meeting.is_ongoing and delta > mins:
+                        skip = True
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Only events that have a meeting link
+        if not skip and getattr(self.args, "only_with_link", False):
+            link = sanitize_meeting_link(meeting.meet_url)
+            if not link or not link.url:
+                skip = True
 
         return skip
 
@@ -680,7 +826,18 @@ def get_next_meeting(meetings: list[Meeting], skip_all_day: bool) -> Optional[Me
     return next((m for m in meetings if not m.is_all_day), None)
 
 
-def open_url(url: str):
+def open_url(url: str, args: Optional[argparse.Namespace] = None):
+    # Allow routing to a specific command (e.g., browser profile)
+    if args and getattr(args, "open_with", None):
+        try:
+            cmd = shlex.split(str(args.open_with)) + [url]
+            with subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            ):
+                pass
+            return
+        except Exception:  # noqa: BLE001
+            pass
     webbrowser.open_new_tab(url)
 
 
@@ -779,6 +936,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--work-hours",
         help="Only show meetings whose start time is within HH:MM-HH:MM",
     )
+    parser.add_argument(
+        "--within-mins",
+        type=int,
+        help="Only show meetings starting within N minutes (ongoing always shown)",
+    )
+    parser.add_argument(
+        "--only-with-link",
+        action="store_true",
+        help="Show only events that have a meeting link",
+    )
 
     # Meeting filtering
     parser.add_argument(
@@ -868,6 +1035,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Copy next meeting URL to clipboard",
     )
     parser.add_argument(
+        "--copy-meeting-id",
+        action="store_true",
+        help="Copy next meeting ID to clipboard (if detected)",
+    )
+    parser.add_argument(
+        "--copy-meeting-passcode",
+        action="store_true",
+        help="Copy next meeting passcode to clipboard (if detected)",
+    )
+    parser.add_argument(
         "--google-domain",
         default=os.environ.get("NEXTMEETING_GOOGLE_DOMAIN"),
         help="Google domain for calendar URLs",
@@ -876,6 +1053,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--open-calendar-day",
         action="store_true",
         help="Open Google Calendar day view of the next meeting",
+    )
+    parser.add_argument(
+        "--open-with",
+        help="Open links with a specific command (e.g., 'firefox -P Work')",
+    )
+    parser.add_argument(
+        "--open-link-from-clipboard",
+        action="store_true",
+        help="Detect a meeting link in clipboard and open it",
+    )
+    parser.add_argument(
+        "--create",
+        choices=["meet", "zoom", "teams", "gcal"],
+        help="Quick-create a meeting in the chosen service",
+    )
+    parser.add_argument(
+        "--create-url",
+        help="Custom URL for --create (overrides service URL)",
     )
 
     # Cache options
@@ -996,19 +1191,86 @@ if __name__ == "__main__":
 
 def _handle_url_actions(args: argparse.Namespace, meetings: list[Meeting]) -> bool:
     """Handle open/copy actions; return True if action was taken and program should exit."""
-    if args.open_meet_url or args.copy_meeting_url or args.open_calendar_day:
+    # Quick-create action
+    if args.create:
+        create_urls = {
+            "meet": "https://meet.google.com/new",
+            "zoom": "https://zoom.us/start",
+            "teams": "https://teams.microsoft.com/l/meeting/new?subject=",
+            "gcal": "https://calendar.google.com/calendar/u/0/r/eventedit",
+        }
+        target = args.create_url or create_urls.get(args.create)
+        if target:
+            open_url(target, args)
+            return True
+
+    # Open link from clipboard
+    if args.open_link_from_clipboard:
+        clip = _read_clipboard()
+        if clip:
+            link = sanitize_meeting_link(clip)
+            if link:
+                open_url(link.url, args)
+                return True
+        return False
+
+    if (
+        args.open_meet_url
+        or args.copy_meeting_url
+        or args.copy_meeting_id
+        or args.copy_meeting_passcode
+        or args.open_calendar_day
+    ):
         meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
         if meeting:
-            url = meeting.meet_url or meeting.calendar_url
+            sanitized = sanitize_meeting_link(meeting.meet_url) or SanitizedLink(
+                service=None, url=meeting.meet_url or meeting.calendar_url
+            )
+            url = sanitized.url or meeting.calendar_url
             if args.google_domain:
                 url = replace_domain_url(args.google_domain, url)
             if args.open_meet_url:
-                open_url(url)
+                open_url(url, args)
             if args.open_calendar_day:
                 day_url = build_calendar_day_url(meeting.start_time, args.google_domain)
-                open_url(day_url)
+                open_url(day_url, args)
             if args.copy_meeting_url:
                 if not copy_to_clipboard(url):
                     print(url)
+            if args.copy_meeting_id:
+                value = sanitized.meeting_id or ""
+                if not copy_to_clipboard(value):
+                    print(value)
+            if args.copy_meeting_passcode:
+                value = sanitized.passcode or ""
+                if not copy_to_clipboard(value):
+                    print(value)
         return True
     return False
+
+
+def _read_clipboard() -> str | None:
+    """Return clipboard text using common tools; None on failure."""
+    candidates = []
+    if shutil.which("wl-paste"):
+        candidates.append(["wl-paste", "-n"])
+    if shutil.which("xclip"):
+        candidates.append(["xclip", "-selection", "clipboard", "-o"])
+    if shutil.which("pbpaste"):
+        candidates.append(["pbpaste"])
+    for cmd in candidates:
+        try:
+            res = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                text = (res.stdout or "").strip()
+                if text:
+                    return text
+        except Exception:  # noqa: BLE001
+            continue
+    return None
