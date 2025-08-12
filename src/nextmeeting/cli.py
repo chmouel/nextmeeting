@@ -167,6 +167,24 @@ class MeetingFormatter:
             notify(title, meeting.start_time, meeting.end_time, self.args)
 
         thetime = self._format_time_until(timeuntilstarting, meeting.start_time)
+        # Additional notification offsets
+        offsets: list[int] = []
+        if getattr(self.args, "notify_offsets", None):
+            # Support comma-separated values and repeated flags
+            raw: list[str] = []
+            for item in self.args.notify_offsets:
+                raw.extend(str(item).split(","))
+            try:
+                offsets = [int(x) for x in raw if str(x).strip()]
+            except ValueError:
+                offsets = []
+        if (
+            not timeuntilstarting.days
+            and not timeuntilstarting.hours
+            and timeuntilstarting.minutes in offsets
+            and timeuntilstarting.minutes >= 0
+        ):
+            notify(title, meeting.start_time, meeting.end_time, self.args)
         return thetime, title, css_class
 
     def _compute_fields(self, meeting: Meeting, hyperlink: bool) -> tuple[dict, str]:
@@ -345,6 +363,10 @@ class NotificationManager:
             title,
             f"Start: {start_date.strftime('%H:%M')} End: {end_date.strftime('%H:%M')}",
         ]
+
+        # Urgency level
+        if getattr(self.args, "notify_urgency", None):
+            cmd.extend(["-u", self.args.notify_urgency])
 
         if self.args.notify_expiry > 0:
             cmd.extend(["-t", str(self.args.notify_expiry * 60 * 1000)])
@@ -633,6 +655,17 @@ def parse_args() -> argparse.Namespace:
         "--notify-expiry", type=int, default=0, help="Notification expiry in minutes"
     )
     parser.add_argument("--notify-icon", default=NOTIFY_ICON, help="Notification icon")
+    parser.add_argument(
+        "--notify-offsets",
+        action="append",
+        default=[],
+        help="Additional minute offsets to notify before start (repeatable or comma-separated)",
+    )
+    parser.add_argument(
+        "--notify-urgency",
+        choices=["low", "normal", "critical"],
+        help="Set notification urgency level",
+    )
     parser.add_argument(
         "--notify-min-color",
         default=NOTIFY_MIN_COLOR,

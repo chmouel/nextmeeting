@@ -226,6 +226,18 @@ with:
 }
 ```
 
+### Notifications
+
+- Keep the existing “soon” visual cue with `--notify-min-before-events`.
+- Add more reminder moments using `--notify-offsets` (repeatable or CSV):
+
+```shell
+nextmeeting --notify-offsets 15 --notify-offsets 5   # 15 and 5 minutes
+nextmeeting --notify-offsets 20,10,5                 # CSV variant
+```
+
+Control the urgency with `--notify-urgency low|normal|critical`.
+
 ### Related
 
 - For Gnome: [gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
