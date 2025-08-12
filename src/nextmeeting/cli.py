@@ -12,6 +12,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
+# pylint: disable=too-many-lines
 
 import argparse
 import datetime
@@ -63,6 +64,7 @@ NOTIFY_PROGRAM = shutil.which("notify-send") or ""
 NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
 GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
 ALL_DAYS_MEETING_HOURS = 24
+AGENDA_MINUTE_TOLERANCE = 2
 
 
 @dataclass
@@ -337,11 +339,14 @@ class NotificationManager:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.cache_path = Path(args.cache_dir) / "cache.json"
+        self.snooze_path = Path(args.cache_dir) / "snooze_until"
 
     def notify_if_needed(
         self, title: str, start_date: datetime.datetime, end_date: datetime.datetime
     ):
         if not NOTIFY_PROGRAM:
+            return
+        if self._is_snoozed():
             return
 
         uuid = self._generate_uuid(title, start_date, end_date)
@@ -404,6 +409,64 @@ class NotificationManager:
         elif self.args.notify_expiry < 0:
             cmd.extend(["-t", str(NOTIFY_MIN_BEFORE_EVENTS * 60 * 1000)])
 
+        subprocess.call(cmd)
+
+    def _is_snoozed(self) -> bool:
+        try:
+            if not self.snooze_path.exists():
+                return False
+            until = float(self.snooze_path.read_text().strip())
+            return datetime.datetime.now().timestamp() < until
+        except Exception:  # noqa: BLE001
+            return False
+
+    def set_snooze(self, minutes: int):
+        until = datetime.datetime.now().timestamp() + minutes * 60
+        try:
+            self.snooze_path.write_text(str(until))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def notify_morning_agenda_if_needed(self, meetings: list[Meeting]):
+        target = getattr(self.args, "morning_agenda", None)
+        if not target or not NOTIFY_PROGRAM or self._is_snoozed():
+            return
+        try:
+            hour, minute = [int(x) for x in str(target).split(":")[:2]]
+        except Exception:  # noqa: BLE001
+            return
+        now = datetime.datetime.now()
+        if not (
+            now.hour == hour and abs(now.minute - minute) <= AGENDA_MINUTE_TOLERANCE
+        ):
+            return
+        # ensure only once per day using cache uuid
+        today_key = f"agenda-{now.strftime('%Y%m%d')}"
+        try:
+            with self.cache_path.open() as f:
+                cached = json.load(f)
+        except Exception:  # noqa: BLE001
+            cached = []
+        if today_key in cached:
+            return
+        cached.append(today_key)
+        with self.cache_path.open("w") as f:
+            json.dump(cached, f)
+        # Build body from today's meetings only
+        today_meetings = [m for m in meetings if m.start_time.date() == now.date()]
+        if not today_meetings:
+            return
+        lines = [f"{m.start_time.strftime('%H:%M')} {m.title}" for m in today_meetings]
+        body = "\n".join(lines)
+        cmd = [
+            NOTIFY_PROGRAM,
+            "-i",
+            os.path.expanduser(self.args.notify_icon),
+            "Today's meetings",
+            body,
+        ]
+        if getattr(self.args, "notify_urgency", None):
+            cmd.extend(["-u", self.args.notify_urgency])
         subprocess.call(cmd)
 
 
@@ -778,6 +841,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Set notification urgency level",
     )
     parser.add_argument(
+        "--snooze",
+        type=int,
+        help="Snooze notifications for N minutes and exit",
+    )
+    parser.add_argument(
+        "--morning-agenda",
+        help="Send a once-per-day agenda notification at HH:MM",
+    )
+    parser.add_argument(
         "--notify-min-color",
         default=NOTIFY_MIN_COLOR,
         help="Color for urgent notifications",
@@ -861,12 +933,24 @@ def main():
     args = parse_args()
     args.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # Handle snooze action
+    if args.snooze and args.snooze > 0:
+        NotificationManager(args).set_snooze(args.snooze)
+        print(f"Snoozed notifications for {args.snooze} minutes")
+        return
+
     if args.calendar:
         args.gcalcli_cmdline = f"{args.gcalcli_cmdline} --calendar {args.calendar}"
 
     # Fetch meetings
     fetcher = MeetingFetcher()
     meetings = fetcher.fetch_meetings(args)
+
+    # Morning agenda (best-effort, once per day)
+    try:
+        NotificationManager(args).notify_morning_agenda_if_needed(meetings)
+    except Exception:
+        pass
 
     if not meetings:
         output = (
@@ -880,21 +964,8 @@ def main():
             print(output)
         return
 
-    # Handle URL opening
-    if args.open_meet_url or args.copy_meeting_url or args.open_calendar_day:
-        meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
-        if meeting:
-            url = meeting.meet_url or meeting.calendar_url
-            if args.google_domain:
-                url = replace_domain_url(args.google_domain, url)
-            if args.open_meet_url:
-                open_url(url)
-            if args.open_calendar_day:
-                day_url = build_calendar_day_url(meeting.start_time, args.google_domain)
-                open_url(day_url)
-            if args.copy_meeting_url:
-                if not copy_to_clipboard(url):
-                    print(url)
+    # Handle URL-related actions
+    if _handle_url_actions(args, meetings):
         return
 
     # Format and output meetings
@@ -921,3 +992,23 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def _handle_url_actions(args: argparse.Namespace, meetings: list[Meeting]) -> bool:
+    """Handle open/copy actions; return True if action was taken and program should exit."""
+    if args.open_meet_url or args.copy_meeting_url or args.open_calendar_day:
+        meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
+        if meeting:
+            url = meeting.meet_url or meeting.calendar_url
+            if args.google_domain:
+                url = replace_domain_url(args.google_domain, url)
+            if args.open_meet_url:
+                open_url(url)
+            if args.open_calendar_day:
+                day_url = build_calendar_day_url(meeting.start_time, args.google_domain)
+                open_url(day_url)
+            if args.copy_meeting_url:
+                if not copy_to_clipboard(url):
+                    print(url)
+        return True
+    return False

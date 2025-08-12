@@ -302,6 +302,18 @@ nextmeeting --notify-offsets 20,10,5                 # CSV variant
 
 Control the urgency with `--notify-urgency low|normal|critical`.
 
+Snooze all notifications for a period and exit:
+
+```shell
+nextmeeting --snooze 30    # minutes
+```
+
+Send a once-per-day morning agenda summary at a given time:
+
+```shell
+nextmeeting --morning-agenda 09:00
+```
+
 ### Related
 
 - For Gnome: [gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
