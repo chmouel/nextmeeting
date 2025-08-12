@@ -182,6 +182,15 @@ nextmeeting --privacy               # titles become "Busy"
 nextmeeting --privacy --privacy-title "Busy 🗓️"
 ```
 
+### Quick actions
+
+- Open the next meeting URL: `nextmeeting --open-meet-url`
+- Copy the next meeting URL to the clipboard (tries `wl-copy`, `xclip`, or `pbcopy`; falls back to printing):
+
+```shell
+nextmeeting --copy-meeting-url
+```
+
 ### Waybar
 
 A more interesting use case for `nextmeeting` is its integration with Waybar,

@@ -557,6 +557,31 @@ def open_url(url: str):
     webbrowser.open_new_tab(url)
 
 
+def copy_to_clipboard(text: str) -> bool:
+    """Copy text to clipboard using common tools. Returns True on success."""
+    candidates = []
+    if shutil.which("wl-copy"):
+        candidates.append(["wl-copy"])
+    if shutil.which("xclip"):
+        candidates.append(["xclip", "-selection", "clipboard"])
+    if shutil.which("pbcopy"):
+        candidates.append(["pbcopy"])
+    for cmd in candidates:
+        try:
+            res = subprocess.run(
+                cmd,
+                input=text.encode("utf-8"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if res.returncode == 0:
+                return True
+        except Exception:  # noqa: BLE001 - best effort
+            continue
+    return False
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Next meeting scheduler")
 
@@ -680,6 +705,11 @@ def parse_args() -> argparse.Namespace:
     # URL options
     parser.add_argument("--open-meet-url", action="store_true", help="Open meeting URL")
     parser.add_argument(
+        "--copy-meeting-url",
+        action="store_true",
+        help="Copy next meeting URL to clipboard",
+    )
+    parser.add_argument(
         "--google-domain",
         default=os.environ.get("NEXTMEETING_GOOGLE_DOMAIN"),
         help="Google domain for calendar URLs",
@@ -717,13 +747,17 @@ def main():
         return
 
     # Handle URL opening
-    if args.open_meet_url:
+    if args.open_meet_url or args.copy_meeting_url:
         meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
         if meeting:
             url = meeting.meet_url or meeting.calendar_url
             if args.google_domain:
                 url = replace_domain_url(args.google_domain, url)
-            open_url(url)
+            if args.open_meet_url:
+                open_url(url)
+            if args.copy_meeting_url:
+                if not copy_to_clipboard(url):
+                    print(url)
         return
 
     # Format and output meetings
