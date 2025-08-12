@@ -438,6 +438,10 @@ class OutputFormatter:
                     )
                 )
 
+        # Apply limit to tooltip if requested
+        if getattr(self.args, "limit", None):
+            tooltip_lines = tooltip_lines[: self.args.limit]
+
         result = {
             "text": ellipsis(next_meeting, self.args.max_title_length),
             "tooltip": bulletize(tooltip_lines),
@@ -564,6 +568,11 @@ def parse_args() -> argparse.Namespace:
         "--today-only", action="store_true", help="Show only today's meetings"
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        help="Limit the number of meetings shown in lists/tooltips",
+    )
+    parser.add_argument(
         "--format",
         help=(
             "Custom line template, placeholders: {when}, {title}, {start_time}, {end_time}, "
@@ -683,6 +692,8 @@ def main():
         json.dump(result, sys.stdout)
     else:
         formatted_meetings, _ = formatter.format_meetings(meetings)
+        if args.limit:
+            formatted_meetings = formatted_meetings[: args.limit]
         if not formatted_meetings:
             debug(
                 "No meetings detected. Try --calendar to specify another calendar", args

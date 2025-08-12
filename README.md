@@ -150,6 +150,15 @@ nextmeeting --format "{when} • {title}"
 nextmeeting --waybar --tooltip-format "{start_time:%H:%M}-{end_time:%H:%M} · {title}"
 ```
 
+### Showing multiple items
+
+Limit the number of meetings shown in list-style outputs (TTY and Waybar
+tooltip):
+
+```shell
+nextmeeting --limit 3
+```
+
 ### Title filters
 
 You can include or exclude meetings based on title substrings (case-insensitive):
