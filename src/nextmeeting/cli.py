@@ -223,9 +223,15 @@ class MeetingFormatter:
                 s = "Tomorrow"
             else:
                 s = f"{date.strftime('%a %d')}"
-            s += f" at {date.hour:02d}h{date.minute:02d}"
+            if getattr(self.args, "time_format", "24h") == "12h":
+                s += f" at {date.strftime('%I:%M %p')}"
+            else:
+                s += f" at {date.hour:02d}h{date.minute:02d}"
         elif deltad.hours != 0:
-            s = date.strftime("%HH%M")
+            if getattr(self.args, "time_format", "24h") == "12h":
+                s = date.strftime("%I:%M %p")
+            else:
+                s = date.strftime("%HH%M")
         elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
             s = "Now"
         elif (
@@ -642,6 +648,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--today-only", action="store_true", help="Show only today's meetings"
+    )
+    parser.add_argument(
+        "--time-format",
+        choices=["24h", "12h"],
+        default="24h",
+        help="Time display format for absolute times",
     )
     parser.add_argument(
         "--privacy",

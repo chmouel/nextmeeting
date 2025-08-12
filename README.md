@@ -171,6 +171,12 @@ nextmeeting --format "{when} • {title}"
 nextmeeting --waybar --tooltip-format "{start_time:%H:%M}-{end_time:%H:%M} · {title}"
 ```
 
+Use 12-hour timestamps for absolute times:
+
+```shell
+nextmeeting --time-format 12h
+```
+
 ### Showing multiple items
 
 Limit the number of meetings shown in list-style outputs (TTY and Waybar
