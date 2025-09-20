@@ -74,6 +74,8 @@ NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
 GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
 ALL_DAYS_MEETING_HOURS = 24
 AGENDA_MINUTE_TOLERANCE = 2
+HOUR_SEPARATOR = "H"
+UNTIL_OFFSET = 60  # minutes before event to start showing "until" info
 
 
 @dataclass
@@ -231,20 +233,24 @@ class MeetingFormatter:
     def _format_time_until(
         self, deltad: dtrel.relativedelta, date: datetime.datetime
     ) -> str:
+        total_minutes = deltad.days * 24 * 60 + deltad.hours * 60 + deltad.minutes
+
         if date.day != self.today.day:
             if deltad.days == 0:
                 s = "Tomorrow"
             else:
                 s = f"{date.strftime('%a %d')}"
             if getattr(self.args, "time_format", "24h") == "12h":
-                s += f" at {date.strftime('%I:%M %p')}"
+                s += f" at {date.strftime(f'%I{getattr(self.args, "hour_separator", ":")}%M %p')}"
             else:
-                s += f" at {date.hour:02d}h{date.minute:02d}"
-        elif deltad.hours != 0:
+                s += f" at {date.hour:02d}{getattr(self.args, "hour_separator", "h")}{date.minute:02d}"
+        # elif deltad.hours != 0:
+        elif total_minutes > int(f"{getattr(self.args, "until_offset", UNTIL_OFFSET)}"):
+
             if getattr(self.args, "time_format", "24h") == "12h":
-                s = date.strftime("%I:%M %p")
+                s = date.strftime(f"%I{getattr(self.args, "hour_separator", ":")}%M %p")
             else:
-                s = date.strftime("%HH%M")
+                s = date.strftime(f"%H{getattr(self.args, "hour_separator", "H")}%M")
         elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
             s = "Now"
         elif (
@@ -259,7 +265,12 @@ class MeetingFormatter:
             )
             s = f"In {number} minutes"
         else:
-            s = f"In {deltad.minutes} minutes"
+            s = "In "
+            if deltad.days != 0:
+                s += f"{deltad.days} Days, "
+            if deltad.hours != 0:
+                s += f"{deltad.hours} Hours and "
+            s += f"{deltad.minutes} minutes"
         return s
 
 
@@ -715,8 +726,10 @@ class OutputFormatter:
             for meeting in meetings:
                 if self._should_skip_meeting(meeting):
                     continue
-                fields, _ = self.formatter._compute_fields(  # pylint: disable=protected-access
-                    meeting, hyperlink=False
+                fields, _ = (
+                    self.formatter._compute_fields(  # pylint: disable=protected-access
+                        meeting, hyperlink=False
+                    )
                 )
                 tooltip_lines.append(
                     self.args.tooltip_format.format(
@@ -984,6 +997,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--only-with-link",
         action="store_true",
         help="Show only events that have a meeting link",
+    )
+    parser.add_argument(
+        "--hour-separator",
+        default=f"{HOUR_SEPARATOR}",
+        help=f"Hour separator in time display (default '{HOUR_SEPARATOR}')",
+    )
+    parser.add_argument(
+        "--until-offset",
+        type=int,
+        default=UNTIL_OFFSET,
+        help=f"How many minutes before event before we start showing until information (default '{UNTIL_OFFSET}')",
     )
 
     # Meeting filtering
