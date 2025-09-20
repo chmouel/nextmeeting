@@ -69,6 +69,8 @@ ALL_DAYS_MEETING_HOURS = 24
 AGENDA_MINUTE_TOLERANCE = 2
 HOUR_SEPARATOR = "H"
 UNTIL_OFFSET = 60  # minutes before event to start showing "until" info
+NO_MEETING_TEXT = "No meeting"
+NO_MEETING_ICON = "🏖️"
 
 
 @dataclass
@@ -703,11 +705,11 @@ class OutputFormatter:
     def format_for_waybar(self, meetings: list[Meeting]) -> dict:
         """Format meetings for waybar output."""
         if not meetings:
-            return {"text": "No meeting 🏖️"}
+            return {"text": f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"}
 
         formatted_meetings, css_class = self.format_meetings(meetings)
         if not formatted_meetings:
-            return {"text": "No meeting 🏖️"}
+            return {"text": f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"}
 
         # Get the next meeting to display
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
@@ -755,11 +757,11 @@ class OutputFormatter:
     def format_for_polybar(self, meetings: list[Meeting]) -> str:
         """Format a single-line string for Polybar."""
         if not meetings:
-            return "No meeting"
+            return f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)}"
 
         formatted_meetings, _ = self.format_meetings(meetings)
         if not formatted_meetings:
-            return "No meeting"
+            return f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)}"
 
         # Reuse the same selection logic as Waybar
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
@@ -970,6 +972,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=UNTIL_OFFSET,
         help=f"How many minutes before event before we start showing until information (default '{UNTIL_OFFSET}')",
     )
+    parser.add_argument(
+        "--no-meeting-text",
+        default=NO_MEETING_TEXT,
+        help="Text to display when there is no meeting",
+    )
 
     # Meeting filtering
     parser.add_argument(
@@ -1173,10 +1180,10 @@ def main():
 
     if not meetings:
         output = (
-            {"text": "No meeting 🏖️"} if (args.waybar or args.json) else "No meeting"
+            {"text": f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"} if (args.waybar or args.json) else f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}"
         )
         if args.polybar and not (args.waybar or args.json):
-            print("No meeting")
+            print(f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}")
         elif args.waybar or args.json:
             json.dump(output, sys.stdout)
         else:
@@ -1204,7 +1211,7 @@ def main():
             debug(
                 "No meetings detected. Try --calendar to specify another calendar", args
             )
-            print("No meeting")
+            print(f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}")
         else:
             print(bulletize(formatted_meetings))
 
