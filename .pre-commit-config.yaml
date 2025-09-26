@@ -16,11 +16,6 @@ repos:
     hooks:
       - id: codespell
         files: ".*\\.py$"
-  - repo: https://github.com/pycqa/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-        name: isort (python)
   - repo: local
     hooks:
       - id: ruff
