@@ -74,6 +74,10 @@ NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
 GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
 ALL_DAYS_MEETING_HOURS = 24
 AGENDA_MINUTE_TOLERANCE = 2
+HOUR_SEPARATOR = "H"
+UNTIL_OFFSET = 60  # minutes before event to start showing "until" info
+NO_MEETING_TEXT = "No meeting"
+NO_MEETING_ICON = "🏖️"
 
 
 @dataclass
@@ -231,20 +235,24 @@ class MeetingFormatter:
     def _format_time_until(
         self, deltad: dtrel.relativedelta, date: datetime.datetime
     ) -> str:
+        total_minutes = deltad.days * 24 * 60 + deltad.hours * 60 + deltad.minutes
+
         if date.day != self.today.day:
             if deltad.days == 0:
                 s = "Tomorrow"
             else:
                 s = f"{date.strftime('%a %d')}"
             if getattr(self.args, "time_format", "24h") == "12h":
-                s += f" at {date.strftime('%I:%M %p')}"
+                s += f" at {date.strftime(f'%I{getattr(self.args, "hour_separator", ":")}%M %p')}"
             else:
-                s += f" at {date.hour:02d}h{date.minute:02d}"
-        elif deltad.hours != 0:
+                s += f" at {date.hour:02d}{getattr(self.args, "hour_separator", "h")}{date.minute:02d}"
+        # elif deltad.hours != 0:
+        elif total_minutes > int(f"{getattr(self.args, "until_offset", UNTIL_OFFSET)}"):
+
             if getattr(self.args, "time_format", "24h") == "12h":
-                s = date.strftime("%I:%M %p")
+                s = date.strftime(f"%I{getattr(self.args, "hour_separator", ":")}%M %p")
             else:
-                s = date.strftime("%HH%M")
+                s = date.strftime(f"%H{getattr(self.args, "hour_separator", "H")}%M")
         elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
             s = "Now"
         elif (
@@ -259,7 +267,12 @@ class MeetingFormatter:
             )
             s = f"In {number} minutes"
         else:
-            s = f"In {deltad.minutes} minutes"
+            s = "In "
+            if deltad.days != 0:
+                s += f"{deltad.days} Days, "
+            if deltad.hours != 0:
+                s += f"{deltad.hours} Hours and "
+            s += f"{deltad.minutes} minutes"
         return s
 
 
@@ -699,11 +712,11 @@ class OutputFormatter:
     def format_for_waybar(self, meetings: list[Meeting]) -> dict:
         """Format meetings for waybar output."""
         if not meetings:
-            return {"text": "No meeting 🏖️"}
+            return {"text": f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"}
 
         formatted_meetings, css_class = self.format_meetings(meetings)
         if not formatted_meetings:
-            return {"text": "No meeting 🏖️"}
+            return {"text": f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"}
 
         # Get the next meeting to display
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
@@ -715,8 +728,10 @@ class OutputFormatter:
             for meeting in meetings:
                 if self._should_skip_meeting(meeting):
                     continue
-                fields, _ = self.formatter._compute_fields(  # pylint: disable=protected-access
-                    meeting, hyperlink=False
+                fields, _ = (
+                    self.formatter._compute_fields(  # pylint: disable=protected-access
+                        meeting, hyperlink=False
+                    )
                 )
                 tooltip_lines.append(
                     self.args.tooltip_format.format(
@@ -749,11 +764,11 @@ class OutputFormatter:
     def format_for_polybar(self, meetings: list[Meeting]) -> str:
         """Format a single-line string for Polybar."""
         if not meetings:
-            return "No meeting"
+            return f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)}"
 
         formatted_meetings, _ = self.format_meetings(meetings)
         if not formatted_meetings:
-            return "No meeting"
+            return f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)}"
 
         # Reuse the same selection logic as Waybar
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
@@ -985,6 +1000,22 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show only events that have a meeting link",
     )
+    parser.add_argument(
+        "--hour-separator",
+        default=f"{HOUR_SEPARATOR}",
+        help=f"Hour separator in time display (default '{HOUR_SEPARATOR}')",
+    )
+    parser.add_argument(
+        "--until-offset",
+        type=int,
+        default=UNTIL_OFFSET,
+        help=f"How many minutes before event before we start showing until information (default '{UNTIL_OFFSET}')",
+    )
+    parser.add_argument(
+        "--no-meeting-text",
+        default=NO_MEETING_TEXT,
+        help="Text to display when there is no meeting",
+    )
 
     # Meeting filtering
     parser.add_argument(
@@ -1207,10 +1238,10 @@ def _run(args: argparse.Namespace):
 
     if not meetings:
         output = (
-            {"text": "No meeting 🏖️"} if (args.waybar or args.json) else "No meeting"
+            {"text": f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"} if (args.waybar or args.json) else f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}"
         )
         if args.polybar and not (args.waybar or args.json):
-            print("No meeting")
+            print(f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}")
         elif args.waybar or args.json:
             json.dump(output, sys.stdout)
         else:
@@ -1238,7 +1269,7 @@ def _run(args: argparse.Namespace):
             debug(
                 "No meetings detected. Try --calendar to specify another calendar", args
             )
-            print("No meeting")
+            print(f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}")
         else:
             print(bulletize(formatted_meetings))
 
