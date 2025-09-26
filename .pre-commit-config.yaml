@@ -4,7 +4,7 @@ default_install_hook_types: ["pre-push"]
 exclude: '(^docs/themes/hugo-book|^vendor|.*golden$|^\.vale)'
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-toml
@@ -16,6 +16,11 @@ repos:
     hooks:
       - id: codespell
         files: ".*\\.py$"
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        name: isort (python)
   - repo: local
     hooks:
       - id: ruff
