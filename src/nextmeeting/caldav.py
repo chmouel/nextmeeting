@@ -9,13 +9,13 @@ from typing import Callable, Optional
 try:
     from caldav import DAVClient  # type: ignore[import-not-found]
     from caldav.lib import error as caldav_error  # type: ignore[import-not-found]
-except Exception:  # noqa: BLE001
+except ImportError:  # noqa: BLE001
     DAVClient = None  # type: ignore[assignment]
     caldav_error = None  # type: ignore[assignment]
 
 try:
     from icalendar import Calendar  # type: ignore[import-not-found]
-except Exception:  # noqa: BLE001
+except ImportError:  # noqa: BLE001
     Calendar = None  # type: ignore[assignment]
 
 CALDAV_DEFAULT_LOOKAHEAD_HOURS = 48
@@ -65,7 +65,7 @@ class CalDavMeetingFetcher:
 
         try:
             raw_events = calendar.date_search(start, end)  # type: ignore[union-attr]
-        except Exception as exc:  # noqa: BLE001
+        except caldav_error.DAVError as exc:  # noqa: BLE001
             raw_events = self._retry_date_search(client, args, (start, end), exc)
 
         meetings: list[object] = []
