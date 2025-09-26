@@ -1,7 +1,7 @@
 import datetime
 from argparse import Namespace
 
-from nextmeeting.cli import Meeting, OutputFormatter, MeetingFormatter
+from nextmeeting.cli import Meeting, MeetingFormatter, OutputFormatter
 
 
 def _args(**overrides):
