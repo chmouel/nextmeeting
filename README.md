@@ -18,6 +18,8 @@ It offers several features beyond basic `gcalcli` functionality:
   before a meeting.
 - **Title Ellipsis:** Truncates long meeting titles for better display.
 - **Next-Day Exclusion:** Option to exclude meetings scheduled for the next day.
+- **Generic Server Support:** Query CalDAV-compatible calendars with the
+  `--caldav-*` flags.
 
 ## Screenshot
 
@@ -49,6 +51,8 @@ PyPI or your operating system's package manager:
 
 - [python-dateutil](https://pypi.org/project/python-dateutil/)
 - [gcalcli](https://pypi.org/project/gcalcli/)
+- [caldav](https://pypi.org/project/caldav/) *(required when you use the
+  `--caldav-*` options)*
 
 After installing dependencies, you can run the `nextmeeting` script directly:
 
@@ -114,6 +118,42 @@ using the `--calendar=CALENDAR` flag.
 
 There are a few options to customize its behavior; see `nextmeeting --help` for
 more details.
+
+### Working with other calendar servers
+
+Point nextmeeting straight at a CalDAV-compatible server when you do not want
+to rely on `gcalcli`:
+
+```shell
+nextmeeting \
+  --caldav-url https://example.com/dav/calendars/user/work/ \
+  --caldav-username user \
+  --caldav-password secret
+```
+
+Every filter and output mode still applies. If your server exposes several
+collections, pass `--caldav-calendar` with the specific collection URL. For
+basic-auth deployments the username and password flags are enough; for token
+auth just put the token in `--caldav-password`.
+
+The fetch window defaults to “12 hours back, 48 hours ahead”. Tune it with:
+
+- `--caldav-lookbehind-hours` to include ongoing meetings that started up to N
+  hours ago (default `12`).
+- `--caldav-lookahead-hours` to look N hours into the future (default `48`).
+
+To avoid typing the flags each time, drop them in your config file:
+
+```toml
+[nextmeeting]
+caldav-url = "https://example.com/dav/calendars/user/work/"
+caldav-username = "user"
+caldav-password = "secret"
+today-only = true
+```
+
+If a request fails, rerun with `-v` (or `--debug`) to see the full traceback and
+the endpoints that were attempted.
 
 ### JSON output
 
