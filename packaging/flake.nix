@@ -28,7 +28,7 @@
           nextmeeting = pkgs.python3Packages.buildPythonPackage {
             pname = "nextmeeting";
             version = projectData.project.version;
-            src = ../.;
+            src = pkgs.lib.cleanSource ../.;
             propagatedBuildInputs = [ pythonEnv ];
             pythonImportsCheck = [ "nextmeeting" ];
             format = "pyproject";
