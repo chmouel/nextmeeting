@@ -14,6 +14,7 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        projectData = builtins.fromTOML (builtins.readFile ../pyproject.toml);
         python = pkgs.python3;
         pythonEnv = python.withPackages (
           ps: with ps; [
@@ -26,7 +27,7 @@
         packages = {
           nextmeeting = pkgs.python3Packages.buildPythonPackage {
             pname = "nextmeeting";
-            version = "1.5.5";
+            version = projectData.project.version;
             src = ../.;
             propagatedBuildInputs = [ pythonEnv ];
             pythonImportsCheck = [ "nextmeeting" ];
