@@ -26,6 +26,7 @@ def _args(**overrides):
         tooltip_format=None,
         limit=None,
         debug=False,
+        verbose=False,
         cache_dir=".",
         notify_icon="",
         notify_expiry=0,

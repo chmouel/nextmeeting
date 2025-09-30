@@ -2,16 +2,19 @@
 set -euf
 VERSION=${1-""}
 PKGNAME=$(sed -n '/^name = / { s/name = "\(.*\)"/\1/ ;p;}' pyproject.toml)
-
-docker ps -q >/dev/null || exit 1
+PKGNAME=${PKGNAME//-/_} # replace dashes with underscores
+echo "Package name is ${PKGNAME}"
 
 bumpversion() {
-  current=$(git describe --tags $(git rev-list --tags --max-count=1))
+  current=$(git describe --tags $(git rev-list --tags --max-count=1) || true)
+  if [[ -z ${current} ]]; then
+    current=0.0.0
+  fi
   echo "Current version is ${current}"
 
-  major=$(python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_major()))" ${current})
-  minor=$(python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_minor()))" ${current})
-  patch=$(python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_patch()))" ${current})
+  major=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_major()))" ${current})
+  minor=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_minor()))" ${current})
+  patch=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_patch()))" ${current})
 
   echo "If we bump we get, Major: ${major} Minor: ${minor} Patch: ${patch}"
   read -p "To which version you would like to bump [M]ajor, Mi[n]or, [P]atch or Manua[l]: " ANSWER
@@ -28,7 +31,7 @@ bumpversion() {
     print "no or bad reply??"
     exit
   fi
-  VERSION=$(python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_${mode}()))" ${current})
+  VERSION=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_${mode}()))" ${current})
   [[ -z ${VERSION} ]] && {
     echo "could not bump version automatically"
     exit
@@ -53,5 +56,3 @@ mkdir dist
 uv build
 gh release create ${VERSION} ./dist/${PKGNAME}-${VERSION}.tar.gz
 uv publish -u __token__ -p $(pass show pypi/token)
-
-./packaging/aur/build.sh

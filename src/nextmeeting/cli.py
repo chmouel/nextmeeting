@@ -26,6 +26,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import traceback
 import urllib.parse as urlparse
 import webbrowser
 from dataclasses import dataclass
@@ -35,6 +36,12 @@ from typing import Optional, Sequence
 
 import dateutil.parser as dtparse
 import dateutil.relativedelta as dtrel
+
+from .caldav import (
+    CALDAV_DEFAULT_LOOKAHEAD_HOURS,
+    CALDAV_DEFAULT_LOOKBEHIND_HOURS,
+    CalDavMeetingFetcher,
+)
 
 try:  # Python 3.11+
     import tomllib  # type: ignore[import-not-found]
@@ -906,6 +913,38 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--calendar", default=DEFAULT_CALENDAR, help="Calendar to use")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Print detailed error tracebacks"
+    )
+
+    # CalDAV options
+    parser.add_argument(
+        "--caldav-url",
+        help="CalDAV server URL (e.g., https://localhost:5232/user/calendar/)",
+    )
+    parser.add_argument("--caldav-username", help="CalDAV username")
+    parser.add_argument("--caldav-password", help="CalDAV password")
+    parser.add_argument(
+        "--caldav-calendar",
+        help="CalDAV calendar name or full URL (defaults to first available)",
+    )
+    parser.add_argument(
+        "--caldav-lookahead-hours",
+        type=int,
+        default=CALDAV_DEFAULT_LOOKAHEAD_HOURS,
+        help="Hours ahead of now to include CalDAV events",
+    )
+    parser.add_argument(
+        "--caldav-lookbehind-hours",
+        type=int,
+        default=CALDAV_DEFAULT_LOOKBEHIND_HOURS,
+        help="Hours before now to include CalDAV events (captures ongoing meetings)",
+    )
+    parser.add_argument(
+        "--caldav-disable-tls-verify",
+        action="store_true",
+        help="Disable TLS certificate verification for CalDAV requests",
+    )
 
     # Display options
     parser.add_argument("--waybar", action="store_true", help="Output JSON for waybar")
@@ -1173,6 +1212,17 @@ def parse_args() -> argparse.Namespace:
 
 def main():
     args = parse_args()
+    try:
+        return _run(args)
+    except Exception as exc:  # noqa: BLE001
+        if getattr(args, "verbose", False) or getattr(args, "debug", False):
+            traceback.print_exc()
+        else:
+            print(str(exc), file=sys.stderr)
+        return 1
+
+
+def _run(args: argparse.Namespace):
     args.cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Handle snooze action
@@ -1181,11 +1231,19 @@ def main():
         print(f"Snoozed notifications for {args.snooze} minutes")
         return
 
-    if args.calendar:
+    use_caldav = bool(getattr(args, "caldav_url", None))
+
+    if use_caldav and args.calendar and not getattr(args, "caldav_calendar", None):
+        args.caldav_calendar = args.calendar
+
+    if args.calendar and not use_caldav:
         args.gcalcli_cmdline = f"{args.gcalcli_cmdline} --calendar {args.calendar}"
 
     # Fetch meetings
-    fetcher = MeetingFetcher()
+    if use_caldav:
+        fetcher = CalDavMeetingFetcher(meeting_factory=Meeting)
+    else:
+        fetcher = MeetingFetcher()
     meetings = fetcher.fetch_meetings(args)
 
     # Morning agenda (best-effort, once per day)
@@ -1237,7 +1295,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 
 
 def _handle_url_actions(args: argparse.Namespace, meetings: list[Meeting]) -> bool:
