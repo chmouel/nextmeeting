@@ -15,7 +15,12 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python3;
-        pythonEnv = python.withPackages (ps: with ps; [ python-dateutil ]);
+        pythonEnv = python.withPackages (
+          ps: with ps; [
+            python-dateutil
+            caldav
+          ]
+        );
       in
       {
         packages = {
