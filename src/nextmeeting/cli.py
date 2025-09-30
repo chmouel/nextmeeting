@@ -237,22 +237,30 @@ class MeetingFormatter:
     ) -> str:
         total_minutes = deltad.days * 24 * 60 + deltad.hours * 60 + deltad.minutes
 
+        time_format_pref = getattr(self.args, "time_format", "24h")
+
         if date.day != self.today.day:
             if deltad.days == 0:
                 s = "Tomorrow"
             else:
                 s = f"{date.strftime('%a %d')}"
-            if getattr(self.args, "time_format", "24h") == "12h":
-                s += f" at {date.strftime(f'%I{getattr(self.args, "hour_separator", ":")}%M %p')}"
+            if time_format_pref == "12h":
+                separator = getattr(self.args, "hour_separator", ":")
+                time_fmt = f"%I{separator}%M %p"
+                s += f" at {date.strftime(time_fmt)}"
             else:
-                s += f" at {date.hour:02d}{getattr(self.args, "hour_separator", "h")}{date.minute:02d}"
+                separator = getattr(self.args, "hour_separator", "h")
+                s += f" at {date.hour:02d}{separator}{date.minute:02d}"
         # elif deltad.hours != 0:
-        elif total_minutes > int(f"{getattr(self.args, "until_offset", UNTIL_OFFSET)}"):
-
-            if getattr(self.args, "time_format", "24h") == "12h":
-                s = date.strftime(f"%I{getattr(self.args, "hour_separator", ":")}%M %p")
+        elif total_minutes > getattr(self.args, "until_offset", UNTIL_OFFSET):
+            if time_format_pref == "12h":
+                separator = getattr(self.args, "hour_separator", ":")
+                time_fmt = f"%I{separator}%M %p"
+                s = date.strftime(time_fmt)
             else:
-                s = date.strftime(f"%H{getattr(self.args, "hour_separator", "H")}%M")
+                separator = getattr(self.args, "hour_separator", "H")
+                time_fmt = f"%H{separator}%M"
+                s = date.strftime(time_fmt)
         elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
             s = "Now"
         elif (
@@ -267,12 +275,20 @@ class MeetingFormatter:
             )
             s = f"In {number} minutes"
         else:
-            s = "In "
-            if deltad.days != 0:
-                s += f"{deltad.days} Days, "
-            if deltad.hours != 0:
-                s += f"{deltad.hours} Hours and "
-            s += f"{deltad.minutes} minutes"
+            parts = []
+            if deltad.days:
+                parts.append(f"{deltad.days} day{'s' if deltad.days != 1 else ''}")
+            if deltad.hours:
+                parts.append(f"{deltad.hours} hour{'s' if deltad.hours != 1 else ''}")
+            if deltad.minutes or not parts:
+                parts.append(
+                    f"{deltad.minutes} minute{'s' if deltad.minutes != 1 else ''}"
+                )
+
+            if len(parts) == 1:
+                s = f"In {parts[0]}"
+            else:
+                s = f"In {', '.join(parts[:-1])} and {parts[-1]}"
         return s
 
 
@@ -711,12 +727,13 @@ class OutputFormatter:
 
     def format_for_waybar(self, meetings: list[Meeting]) -> dict:
         """Format meetings for waybar output."""
+        no_meeting_text = getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)
         if not meetings:
-            return {"text": f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"}
+            return {"text": f"{no_meeting_text} {NO_MEETING_ICON}"}
 
         formatted_meetings, css_class = self.format_meetings(meetings)
         if not formatted_meetings:
-            return {"text": f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"}
+            return {"text": f"{no_meeting_text} {NO_MEETING_ICON}"}
 
         # Get the next meeting to display
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
@@ -728,10 +745,8 @@ class OutputFormatter:
             for meeting in meetings:
                 if self._should_skip_meeting(meeting):
                     continue
-                fields, _ = (
-                    self.formatter._compute_fields(  # pylint: disable=protected-access
-                        meeting, hyperlink=False
-                    )
+                fields, _ = self.formatter._compute_fields(  # pylint: disable=protected-access
+                    meeting, hyperlink=False
                 )
                 tooltip_lines.append(
                     self.args.tooltip_format.format(
@@ -763,12 +778,13 @@ class OutputFormatter:
 
     def format_for_polybar(self, meetings: list[Meeting]) -> str:
         """Format a single-line string for Polybar."""
+        no_meeting_text = getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)
         if not meetings:
-            return f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)}"
+            return f"{no_meeting_text}"
 
         formatted_meetings, _ = self.format_meetings(meetings)
         if not formatted_meetings:
-            return f"{getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)}"
+            return f"{no_meeting_text}"
 
         # Reuse the same selection logic as Waybar
         next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
@@ -1002,7 +1018,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--hour-separator",
-        default=f"{HOUR_SEPARATOR}",
+        default=HOUR_SEPARATOR,
         help=f"Hour separator in time display (default '{HOUR_SEPARATOR}')",
     )
     parser.add_argument(
@@ -1237,11 +1253,14 @@ def _run(args: argparse.Namespace):
         pass
 
     if not meetings:
+        no_meeting_text = getattr(args, "no_meeting_text", NO_MEETING_TEXT)
         output = (
-            {"text": f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)} {NO_MEETING_ICON}"} if (args.waybar or args.json) else f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}"
+            {"text": f"{no_meeting_text} {NO_MEETING_ICON}"}
+            if (args.waybar or args.json)
+            else f"{no_meeting_text}"
         )
         if args.polybar and not (args.waybar or args.json):
-            print(f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}")
+            print(f"{no_meeting_text}")
         elif args.waybar or args.json:
             json.dump(output, sys.stdout)
         else:
@@ -1269,7 +1288,8 @@ def _run(args: argparse.Namespace):
             debug(
                 "No meetings detected. Try --calendar to specify another calendar", args
             )
-            print(f"{getattr(args, "no_meeting_text", NO_MEETING_TEXT)}")
+            no_meeting_text = getattr(args, "no_meeting_text", NO_MEETING_TEXT)
+            print(f"{no_meeting_text}")
         else:
             print(bulletize(formatted_meetings))
 
