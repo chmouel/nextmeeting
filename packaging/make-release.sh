@@ -56,3 +56,5 @@ mkdir dist
 uv build
 gh release create ${VERSION} ./dist/${PKGNAME}-${VERSION}.tar.gz
 uv publish -u __token__ -p $(pass show pypi/token)
+
+./packaging/aur/build.sh
