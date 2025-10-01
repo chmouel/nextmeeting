@@ -1,29 +1,24 @@
-# nextmeeting - Show your calendar next meeting in your waybar or polybar
+# nextmeeting: Calendar Widget for Waybar and Polybar
 
-## What is it?
+## Overview
 
 nextmeeting is a simple CLI tool that leverages `gcalcli` to display your
-upcoming meetings.
+upcoming meetings in bars, terminals, and other scripts.
 
-It offers several features beyond basic `gcalcli` functionality:
+It goes beyond basic `gcalcli` output:
 
-- **Bar Integration:** Seamlessly integrates with status bars like
-  [Waybar](https://github.com/Alexays/Waybar) and [Polybar](https://github.com/polybar/polybar).
-- **Smart Date Display:** Shows dates in a human-readable English format (e.g.,
-  "tomorrow," "next Monday," not just raw dates).
-- **Time-to-Meeting:** Displays the remaining time until the current meeting starts.
-- **Color-Coded Alerts:** Changes colors when a meeting is 5 minutes away.
-- **Hyperlink Support:** Provides clickable hyperlinks in the default terminal view.
-- **Meeting Notifications:** Sends notifications via `notify-send` 5 minutes
-  before a meeting.
-- **Title Ellipsis:** Truncates long meeting titles for better display.
-- **Next-Day Exclusion:** Option to exclude meetings scheduled for the next day.
-- **Generic Server Support:** Query CalDAV-compatible calendars with the
-  `--caldav-*` flags.
+- Integrates with status bars like [Waybar](https://github.com/Alexays/Waybar) and [Polybar](https://github.com/polybar/polybar).
+- Displays dates in natural English ("tomorrow", "next Monday") instead of raw timestamps.
+- Shows time-to-meeting countdowns and changes color when events are imminent.
+- Provides clickable hyperlinks in the default terminal view.
+- Sends configurable notifications via `notify-send`.
+- Truncates long meeting titles for tighter layouts.
+- Excludes next-day events when you only care about today.
+- Queries CalDAV-compatible calendars with the `--caldav-*` flags.
 
 ## Screenshot
 
-![192647099-ccfa2002-0db3-4738-a54b-176a03474483](https://user-images.githubusercontent.com/98980/212869786-1acd56e2-2e8a-4255-98c3-ebbb45b28d6e.png)
+![Screenshot of Waybar displaying nextmeeting output](https://user-images.githubusercontent.com/98980/212869786-1acd56e2-2e8a-4255-98c3-ebbb45b28d6e.png)
 
 ## Installation
 
@@ -46,13 +41,19 @@ uv run nextmeeting
 
 ### Manual Installation
 
-If you don't want to use `uv`, you can install the dependencies manually from
-PyPI or your operating system's package manager:
+If you don't want to use `uv`, install the dependencies manually from PyPI or
+your operating system's package manager:
 
 - [python-dateutil](https://pypi.org/project/python-dateutil/)
 - [gcalcli](https://pypi.org/project/gcalcli/)
 - [caldav](https://pypi.org/project/caldav/) *(required when you use the
   `--caldav-*` options)*
+
+Then install nextmeeting itself:
+
+```shell
+pip install nextmeeting
+```
 
 After installing dependencies, you can run the `nextmeeting` script directly:
 
@@ -69,6 +70,9 @@ yay -S nextmeeting
 ```
 
 ### NixOS
+
+For Nix users, the repository includes ready-to-use flake inputs and a
+Home-Manager module. Expand below for details.
 
 <details><summary>Flake and Home-Manager install instructions.</summary>
 
@@ -103,21 +107,22 @@ in
 
 </details>
 
-## How to use it?
+## Prerequisites
 
-You need to install the [gcalcli](https://github.com/insanum/gcalcli) tool and
-[setup the google Oauth
-integration](https://github.com/insanum/gcalcli?tab=readme-ov-file#initial-setup)
-with google calendar.
+- Install [gcalcli](https://github.com/insanum/gcalcli).
+- [Set up the Google OAuth integration](https://github.com/insanum/gcalcli?tab=readme-ov-file#initial-setup)
+  so gcalcli can read your calendar.
 
-By default, you can start `nextmeeting`, and it will display your list of
-meetings with a human-readable date format.
+## Quick Start
 
-If no meetings are displayed, you might need to specify the target calendar
-using the `--calendar=CALENDAR` flag.
+Run `uv sync` once, then display upcoming meetings:
 
-There are a few options to customize its behavior; see `nextmeeting --help` for
-more details.
+```shell
+uv run nextmeeting
+```
+
+If no meetings show up, specify a calendar with `--calendar=CALENDAR`. Explore
+`nextmeeting --help` for every option.
 
 ### Working with other calendar servers
 
@@ -169,6 +174,9 @@ nextmeeting --json
 
 You can set defaults in a TOML file. By default, `~/.config/nextmeeting/config.toml`
 is loaded if present, or you can point to a custom file with `--config`.
+
+Command-line flags map directly to keys in the `[nextmeeting]` table: remove the
+leading `--` and keep hyphen separators (`--max-title-length` → `max-title-length`).
 
 Example `~/.config/nextmeeting/config.toml`:
 
@@ -270,21 +278,28 @@ nextmeeting --privacy               # titles become "Busy"
 nextmeeting --privacy --privacy-title "Busy 🗓️"
 ```
 
+Unicode titles like the emoji example work fine, but sticking to ASCII keeps the
+output consistent across limited fonts.
+
 ### Quick actions
 
-- Open the next meeting URL: `nextmeeting --open-meet-url`
-- Copy the next meeting URL to the clipboard (tries `wl-copy`, `xclip`, or `pbcopy`; falls back to printing):
+- Open the next meeting URL
 
-```shell
-nextmeeting --copy-meeting-url
-```
+  ```shell
+  nextmeeting --open-meet-url
+  ```
 
-- Open the Google Calendar day view for the next meeting (respects
-  `--google-domain` if set):
+- Copy the next meeting URL to the clipboard (tries `wl-copy`, `xclip`, or `pbcopy`; falls back to printing)
 
-```shell
-nextmeeting --open-calendar-day
-```
+  ```shell
+  nextmeeting --copy-meeting-url
+  ```
+
+- Open the Google Calendar day view for the next meeting (respects `--google-domain` if set)
+
+  ```shell
+  nextmeeting --open-calendar-day
+  ```
 
 ### Waybar
 
@@ -332,31 +347,36 @@ with:
 
 ### Notifications
 
-- Keep the existing “soon” visual cue with `--notify-min-before-events`.
-- Add more reminder moments using `--notify-offsets` (repeatable or CSV):
+- Choose how many minutes before a meeting to trigger the built-in notification
+  and the `soon` CSS class with `--notify-min-before-events` (default `5`).
+- Add extra reminder offsets with `--notify-offsets` (repeatable or comma separated):
 
-```shell
-nextmeeting --notify-offsets 15 --notify-offsets 5   # 15 and 5 minutes
-nextmeeting --notify-offsets 20,10,5                 # CSV variant
-```
+  ```shell
+  nextmeeting --notify-offsets 15 --notify-offsets 5   # 15 and 5 minutes
+  nextmeeting --notify-offsets 20,10,5                 # CSV variant
+  ```
 
-Control the urgency with `--notify-urgency low|normal|critical`.
+- Customize the highlighted countdown in Waybar with `--notify-min-color` and
+  `--notify-min-color-foreground`.
+- Control notification urgency with `--notify-urgency low|normal|critical`.
+- Snooze all notifications and exit:
 
-Snooze all notifications for a period and exit:
+  ```shell
+  nextmeeting --snooze 30    # minutes
+  ```
 
-```shell
-nextmeeting --snooze 30    # minutes
-```
+- Send a once-per-day morning agenda near a specific time (±2 minutes window):
 
-Send a once-per-day morning agenda summary at a given time:
-
-```shell
-nextmeeting --morning-agenda 09:00
-```
+  ```shell
+  nextmeeting --morning-agenda 09:00
+  ```
 
 ### Related
 
-- For Gnome: [gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
+- For GNOME users,
+[gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
+provides similar information inside the desktop shell if you prefer an applet
+over a status bar widget but the project has been discontinued.
 
 ## Copyright
 
