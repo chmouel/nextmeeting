@@ -1190,8 +1190,18 @@ def _load_config(path: Path) -> dict:
             data = tomllib.load(f)
         # Allow a top-level [nextmeeting] table or flat keys
         if "nextmeeting" in data and isinstance(data["nextmeeting"], dict):
-            return data["nextmeeting"]
-        return data
+            config_data = data["nextmeeting"]
+        else:
+            config_data = data
+
+        # Normalize keys: convert hyphens to underscores to match argparse behavior
+        # This allows both caldav-url and caldav_url in config files
+        normalized_config = {}
+        for key, value in config_data.items():
+            normalized_key = key.replace("-", "_")
+            normalized_config[normalized_key] = value
+
+        return normalized_config
     except Exception:  # noqa: BLE001
         return {}
 
