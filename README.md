@@ -177,6 +177,7 @@ is loaded if present, or you can point to a custom file with `--config`.
 
 Command-line flags map directly to keys in the `[nextmeeting]` table: remove the
 leading `--` and keep hyphen separators (`--max-title-length` → `max-title-length`).
+Both hyphens and underscores work in configuration keys (`caldav-url` and `caldav_url` are equivalent).
 
 Example `~/.config/nextmeeting/config.toml`:
 
