@@ -1196,10 +1196,9 @@ def _load_config(path: Path) -> dict:
 
         # Normalize keys: convert hyphens to underscores to match argparse behavior
         # This allows both caldav-url and caldav_url in config files
-        normalized_config = {}
-        for key, value in config_data.items():
-            normalized_key = key.replace("-", "_")
-            normalized_config[normalized_key] = value
+        normalized_config = {
+            key.replace("-", "_"): value for key, value in config_data.items()
+        }
 
         return normalized_config
     except Exception:  # noqa: BLE001
