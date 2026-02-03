@@ -6,6 +6,8 @@ import datetime
 import re
 from typing import Callable, Optional
 
+from .meeting_services import detect_meeting_link
+
 try:
     from caldav import DAVClient  # type: ignore[import-not-found]
     from caldav.lib import error as caldav_error  # type: ignore[import-not-found]
@@ -188,6 +190,7 @@ class CalDavMeetingFetcher:
         )
 
     def _extract_meeting_url(self, component) -> Optional[str]:
+
         if component.get("url"):
             return str(component.get("url"))
         for key in ("description", "location"):
@@ -198,8 +201,9 @@ class CalDavMeetingFetcher:
                 text = content.to_ical().decode()
             else:
                 text = str(content)
-            if match := URL_RE.search(text):
-                return match.group(0)
+            detected = detect_meeting_link(text)
+            if detected:
+                return detected.url
         return None
 
     def _retry_date_search(
