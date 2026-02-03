@@ -1,7 +1,7 @@
 import datetime
 from argparse import Namespace
 
-from nextmeeting.cli import Meeting, MeetingFormatter, OutputFormatter
+from nextmeeting.cli import Meeting, MeetingFormatter, OutputFormatter, ellipsis
 
 
 def _args(**overrides):
@@ -114,3 +114,41 @@ def test_waybar_tooltip_limit():
     out = OutputFormatter(args)
     result = out.format_for_waybar(meetings)
     assert result["tooltip"].count("\n") == 1  # 2 bullets -> 1 newline
+
+
+def test_ellipsis_no_truncation_needed():
+    assert ellipsis("short", 10) == "short"
+
+
+def test_ellipsis_basic_truncation():
+    result = ellipsis("this is a long string", 10)
+    assert result == "this is..."
+    assert len(result) == 10
+
+
+def test_ellipsis_html_entity_not_broken():
+    # &amp; should count as 1 display char and not be split
+    result = ellipsis("Perf&amp;Scale meeting", 15)
+    assert "&amp;" in result or result.endswith("...")
+    # Ensure no broken entity like &amp without semicolon
+    assert "&amp" not in result or "&amp;" in result
+
+
+def test_ellipsis_html_entity_counts_as_one_char():
+    # "Test&amp;Go" has display length 9 (Test&Go + 2 chars for entity displayed as 1)
+    # With length=12, should not truncate
+    result = ellipsis("Test&amp;Go", 12)
+    assert result == "Test&amp;Go"
+
+
+def test_ellipsis_numeric_entity_not_broken():
+    # &#x27; is apostrophe, should count as 1 display char
+    result = ellipsis("What&#x27;s New in Tech", 15)
+    # Should not have broken entity
+    assert "&#x27" not in result or "&#x27;" in result
+
+
+def test_ellipsis_strips_html_tags():
+    result = ellipsis("<span>Hello</span> World", 15)
+    assert "<span>" not in result
+    assert "Hello World" in result or "Hello Wor..." in result

@@ -809,11 +809,32 @@ class OutputFormatter:
 # Utility functions
 def ellipsis(string: str, length: int) -> str:
     clean_string = re.sub(r"<[^>]*>", "", string)
-    return (
-        clean_string[: length - 3] + "..."
-        if len(clean_string) > length
-        else clean_string
-    )
+
+    # Calculate display length (HTML entities count as 1 char)
+    display_len = len(re.sub(r"&[^;]+;", "X", clean_string))
+
+    if display_len <= length:
+        return clean_string
+
+    # Truncate based on display length, keeping entities intact
+    result = []
+    current_display_len = 0
+    target_len = length - 3  # Leave room for "..."
+    i = 0
+
+    while i < len(clean_string) and current_display_len < target_len:
+        if clean_string[i] == "&":
+            end = clean_string.find(";", i)
+            if end != -1:
+                result.append(clean_string[i : end + 1])
+                i = end + 1
+                current_display_len += 1
+                continue
+        result.append(clean_string[i])
+        current_display_len += 1
+        i += 1
+
+    return "".join(result) + "..."
 
 
 def debug(msg: str, args: argparse.Namespace):
