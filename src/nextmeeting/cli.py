@@ -42,7 +42,6 @@ from .caldav import (
     CALDAV_DEFAULT_LOOKBEHIND_HOURS,
     CalDavMeetingFetcher,
 )
-from .meeting_services import detect_meeting_link
 
 try:  # Python 3.11+
     import tomllib  # type: ignore[import-not-found]
@@ -50,25 +49,19 @@ except Exception:  # noqa: BLE001
     tomllib = None  # type: ignore[assignment]
 
 # Constants
-# gcalcli TSV columns with --details=end --details=url --details=conference --details=description:
-# start_date, start_time, end_date, end_time, html_link, hangout_link, conference_type, conference_uri, title, description
 REG_TSV = re.compile(
-    r"(?P<startdate>\d{4}-\d{2}-\d{2})\t"
-    r"(?P<starthour>\d{2}:\d{2})?\t"
-    r"(?P<enddate>\d{4}-\d{2}-\d{2})\t"
-    r"(?P<endhour>\d{2}:\d{2})?\t"
-    r"(?P<calendar_url>https://\S+)\t"
-    r"(?P<hangout_link>[^\t]*)\t"
-    r"(?P<conference_type>[^\t]*)\t"
-    r"(?P<conference_uri>[^\t]*)\t"
-    r"(?P<title>[^\t]*)"
-    r"(?:\t(?P<description>.*))?$"
+    r"(?P<startdate>(\d{4})-(\d{2})-(\d{2}))\s*?"
+    r"(?P<starthour>(\d{2}:\d{2}))\s*"
+    r"(?P<enddate>(\d{4})-(\d{2})-(\d{2}))\s*?"
+    r"(?P<endhour>(\d{2}:\d{2}))\s*"
+    r"(?P<calendar_url>(https://\S+))\s*"
+    r"(?P<meet_url>(https://\S*)?)?\s*"
+    r"(?P<title>.*)$"
 )
 
 DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "")
 GCALCLI_CMDLINE = (
-    "gcalcli --nocolor agenda today --nodeclined --details=end --details=url "
-    "--details=conference --details=description --tsv"
+    "gcalcli --nocolor agenda today --nodeclined --details=end --details=url --tsv"
 )
 TITLE_ELIPSIS_LENGTH = 50
 MAX_CACHED_ENTRIES = 30
@@ -116,32 +109,14 @@ class Meeting:
 
     @classmethod
     def from_match(cls, match: re.Match) -> "Meeting":
-        starthour = match["starthour"] or "00:00"
-        endhour = match["endhour"] or "00:00"
-        start_time = dtparse.parse(f"{match['startdate']} {starthour}")
-        end_time = dtparse.parse(f"{match['enddate']} {endhour}")
-
-        # Priority: conference_uri > hangout_link > detected from description
-        meet_url = None
-        conference_uri = match.group("conference_uri") or ""
-        hangout_link = match.group("hangout_link") or ""
-        description = match.group("description") or ""
-
-        if conference_uri:
-            meet_url = conference_uri
-        elif hangout_link:
-            meet_url = hangout_link
-        elif description:
-            detected = detect_meeting_link(description)
-            if detected:
-                meet_url = detected.url
-
+        start_time = dtparse.parse(f"{match['startdate']} {match['starthour']}")
+        end_time = dtparse.parse(f"{match['enddate']} {match['endhour']}")
         return cls(
             title=match["title"],
             start_time=start_time,
             end_time=end_time,
             calendar_url=match["calendar_url"],
-            meet_url=meet_url,
+            meet_url=match["meet_url"] if match["meet_url"] else None,
         )
 
 
