@@ -298,7 +298,7 @@ class MeetingFormatter:
                 f'color="{self.args.notify_min_color_foreground}">'
                 f"{deltad.minutes}</span>"
             )
-            s = f"In {number} minutes"
+            s = "Now 🏃" if number == 0 else f"In {number} minutes"
         else:
             parts = []
             if deltad.days:
