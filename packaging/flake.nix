@@ -56,6 +56,8 @@
             # Development tools
             pkgs.ruff
             pkgs.python3Packages.mypy
+            pkgs.python3Packages.pytest
+            pkgs.python3Packages.pylint
           ];
           shellHook = ''
             export PYTHONPATH="$PWD:$PYTHONPATH"
