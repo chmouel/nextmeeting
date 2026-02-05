@@ -1,0 +1,1 @@
+//! CalendarProvider trait and implementations

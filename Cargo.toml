@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nextmeeting-core",
+    "crates/nextmeeting-protocol",
+    "crates/nextmeeting-providers",
+    "crates/nextmeeting-server",
+    "crates/nextmeeting-client",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/chmouel/nextmeeting"
+
+[workspace.dependencies]
+# Shared dependencies will be added as needed
