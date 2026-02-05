@@ -293,14 +293,14 @@ impl CalendarProvider for ErrorProvider {
 
     fn fetch_events(&self, _options: FetchOptions) -> BoxFuture<'_, ProviderResult<FetchResult>> {
         // Clone the error details since we can't clone ProviderError directly
-        let error = ProviderError::new(self.error.code(), self.error.message())
-            .with_provider(&self.name);
+        let error =
+            ProviderError::new(self.error.code(), self.error.message()).with_provider(&self.name);
         Box::pin(async move { Err(error) })
     }
 
     fn list_calendars(&self) -> BoxFuture<'_, ProviderResult<Vec<CalendarInfo>>> {
-        let error = ProviderError::new(self.error.code(), self.error.message())
-            .with_provider(&self.name);
+        let error =
+            ProviderError::new(self.error.code(), self.error.message()).with_provider(&self.name);
         Box::pin(async move { Err(error) })
     }
 
@@ -311,8 +311,8 @@ impl CalendarProvider for ErrorProvider {
     }
 
     fn refresh_auth(&self) -> BoxFuture<'_, ProviderResult<()>> {
-        let error = ProviderError::new(self.error.code(), self.error.message())
-            .with_provider(&self.name);
+        let error =
+            ProviderError::new(self.error.code(), self.error.message()).with_provider(&self.name);
         Box::pin(async move { Err(error) })
     }
 
@@ -340,8 +340,7 @@ mod tests {
 
     #[test]
     fn fetch_result_creation() {
-        let result = FetchResult::with_events(vec![])
-            .with_sync_token("token-abc");
+        let result = FetchResult::with_events(vec![]).with_sync_token("token-abc");
 
         assert!(result.events.is_empty());
         assert_eq!(result.sync_token, Some("token-abc".to_string()));
@@ -389,10 +388,7 @@ mod tests {
 
     #[tokio::test]
     async fn error_provider_returns_error() {
-        let provider = ErrorProvider::new(
-            "test",
-            ProviderError::configuration("not configured"),
-        );
+        let provider = ErrorProvider::new("test", ProviderError::configuration("not configured"));
 
         assert_eq!(provider.name(), "test");
         assert!(!provider.is_authenticated());
@@ -412,6 +408,9 @@ mod tests {
         );
 
         // Should use default interval
-        assert_eq!(provider.suggested_poll_interval(), std::time::Duration::from_secs(60));
+        assert_eq!(
+            provider.suggested_poll_interval(),
+            std::time::Duration::from_secs(60)
+        );
     }
 }

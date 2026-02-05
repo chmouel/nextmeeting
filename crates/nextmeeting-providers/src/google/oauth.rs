@@ -26,8 +26,8 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::Rng as _;
 use sha2::{Digest, Sha256};
 use tracing::{debug, error, info, warn};
@@ -102,11 +102,7 @@ impl OAuthClient {
         let redirect_uri = format!("http://127.0.0.1:{}/callback", port);
 
         // Build the authorization URL
-        let auth_url = pkce.build_auth_url(
-            &self.credentials.client_id,
-            &redirect_uri,
-            scopes,
-        );
+        let auth_url = pkce.build_auth_url(&self.credentials.client_id, &redirect_uri, scopes);
 
         info!("starting OAuth flow, opening browser...");
         debug!("authorization URL: {}", auth_url);
@@ -170,8 +166,9 @@ impl OAuthClient {
             )));
         }
 
-        let token_response: TokenResponse = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::invalid_response(format!("invalid token response: {}", e)))?;
+        let token_response: TokenResponse = serde_json::from_str(&body).map_err(|e| {
+            ProviderError::invalid_response(format!("invalid token response: {}", e))
+        })?;
 
         info!("successfully refreshed access token");
         Ok((token_response.access_token, token_response.expires_in))
@@ -215,8 +212,9 @@ impl OAuthClient {
             )));
         }
 
-        let token_response: TokenResponse = serde_json::from_str(&body)
-            .map_err(|e| ProviderError::invalid_response(format!("invalid token response: {}", e)))?;
+        let token_response: TokenResponse = serde_json::from_str(&body).map_err(|e| {
+            ProviderError::invalid_response(format!("invalid token response: {}", e))
+        })?;
 
         info!("successfully obtained tokens");
         Ok(TokenInfo::new(
@@ -313,9 +311,15 @@ impl OAuthClient {
             let mut kv = param.splitn(2, '=');
             if let (Some(key), Some(value)) = (kv.next(), kv.next()) {
                 match key {
-                    "code" => code = Some(urlencoding::decode(value).unwrap_or_default().into_owned()),
-                    "state" => state = Some(urlencoding::decode(value).unwrap_or_default().into_owned()),
-                    "error" => error = Some(urlencoding::decode(value).unwrap_or_default().into_owned()),
+                    "code" => {
+                        code = Some(urlencoding::decode(value).unwrap_or_default().into_owned())
+                    }
+                    "state" => {
+                        state = Some(urlencoding::decode(value).unwrap_or_default().into_owned())
+                    }
+                    "error" => {
+                        error = Some(urlencoding::decode(value).unwrap_or_default().into_owned())
+                    }
                     _ => {}
                 }
             }
@@ -383,9 +387,7 @@ impl PkceFlow {
     /// Generates a cryptographically random code verifier.
     fn generate_verifier() -> String {
         let mut rng = rand::rng();
-        let bytes: Vec<u8> = (0..CODE_VERIFIER_LENGTH)
-            .map(|_| rng.random())
-            .collect();
+        let bytes: Vec<u8> = (0..CODE_VERIFIER_LENGTH).map(|_| rng.random()).collect();
         URL_SAFE_NO_PAD.encode(&bytes)
     }
 
@@ -403,12 +405,7 @@ impl PkceFlow {
     }
 
     /// Builds the Google OAuth authorization URL.
-    pub fn build_auth_url(
-        &self,
-        client_id: &str,
-        redirect_uri: &str,
-        scopes: &[String],
-    ) -> String {
+    pub fn build_auth_url(&self, client_id: &str, redirect_uri: &str, scopes: &[String]) -> String {
         let scope = scopes.join(" ");
 
         format!(

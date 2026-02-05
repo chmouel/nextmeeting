@@ -46,9 +46,9 @@
 
 #[cfg(feature = "caldav")]
 pub mod caldav;
+pub mod error;
 #[cfg(feature = "google")]
 pub mod google;
-pub mod error;
 pub mod normalize;
 pub mod provider;
 pub mod raw_event;

@@ -15,8 +15,8 @@ use super::client::CalDavClient;
 use super::config::CalDavConfig;
 use super::ics::parse_ics_content;
 use super::xml::{
-    calendar_query_body, parse_propfind_response, parse_report_response, propfind_calendars_body,
-    DiscoveredCalendar,
+    DiscoveredCalendar, calendar_query_body, parse_propfind_response, parse_report_response,
+    propfind_calendars_body,
 };
 
 /// CalDAV calendar provider.

@@ -49,7 +49,10 @@ impl GoogleProvider {
         // Create API client if we have valid tokens
         let api_client = if let Some(tokens) = token_storage.get() {
             if !tokens.is_expired() {
-                Some(GoogleCalendarClient::new(&tokens.access_token, config.timeout))
+                Some(GoogleCalendarClient::new(
+                    &tokens.access_token,
+                    config.timeout,
+                ))
             } else {
                 None
             }
@@ -127,10 +130,8 @@ impl GoogleProvider {
 
             debug!("refreshing expired access token");
 
-            let (new_access_token, expires_in) = self
-                .oauth_client
-                .refresh_token(refresh_token)
-                .await?;
+            let (new_access_token, expires_in) =
+                self.oauth_client.refresh_token(refresh_token).await?;
 
             // Update storage
             self.token_storage
@@ -162,10 +163,7 @@ impl GoogleProvider {
     }
 
     /// Fetches events from all configured calendars.
-    async fn fetch_all_calendars(
-        &self,
-        options: &FetchOptions,
-    ) -> ProviderResult<FetchResult> {
+    async fn fetch_all_calendars(&self, options: &FetchOptions) -> ProviderResult<FetchResult> {
         self.ensure_client().await?;
 
         // Determine time window
@@ -201,9 +199,9 @@ impl GoogleProvider {
             // Acquire read lock only for the API call, then release
             let (events, response_etag, not_modified) = {
                 let client = self.api_client.read().await;
-                let client = client.as_ref().ok_or_else(|| {
-                    ProviderError::internal("API client not available")
-                })?;
+                let client = client
+                    .as_ref()
+                    .ok_or_else(|| ProviderError::internal("API client not available"))?;
 
                 client
                     .list_events(
@@ -247,9 +245,9 @@ impl GoogleProvider {
         self.ensure_client().await?;
 
         let client = self.api_client.read().await;
-        let client = client.as_ref().ok_or_else(|| {
-            ProviderError::internal("API client not available")
-        })?;
+        let client = client
+            .as_ref()
+            .ok_or_else(|| ProviderError::internal("API client not available"))?;
 
         let calendars = client.list_calendars().await?;
 
@@ -336,12 +334,9 @@ mod tests {
     use crate::google::config::OAuthCredentials;
 
     fn test_config() -> GoogleConfig {
-        let credentials = OAuthCredentials::new(
-            "test-client.apps.googleusercontent.com",
-            "test-secret",
-        );
-        GoogleConfig::new(credentials)
-            .with_token_path("/tmp/nonexistent-tokens.json")
+        let credentials =
+            OAuthCredentials::new("test-client.apps.googleusercontent.com", "test-secret");
+        GoogleConfig::new(credentials).with_token_path("/tmp/nonexistent-tokens.json")
     }
 
     #[test]

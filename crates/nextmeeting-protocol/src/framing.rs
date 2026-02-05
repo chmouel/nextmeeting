@@ -11,10 +11,10 @@
 
 use std::io::{Read, Write};
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
-use crate::error::{ProtocolError, ProtocolResult};
 use crate::MAX_MESSAGE_SIZE;
+use crate::error::{ProtocolError, ProtocolResult};
 
 /// Encodes a message to bytes with length prefix.
 ///

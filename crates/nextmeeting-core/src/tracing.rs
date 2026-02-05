@@ -24,9 +24,9 @@
 use thiserror::Error;
 use tracing::Level;
 use tracing_subscriber::{
+    EnvFilter,
     fmt::{self, format::FmtSpan},
     prelude::*,
-    EnvFilter,
 };
 
 /// Errors that can occur during tracing initialization

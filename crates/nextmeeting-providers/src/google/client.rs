@@ -115,7 +115,11 @@ impl GoogleCalendarClient {
             }
         }
 
-        debug!("fetched {} events from calendar {}", all_events.len(), calendar_id);
+        debug!(
+            "fetched {} events from calendar {}",
+            all_events.len(),
+            calendar_id
+        );
         Ok((all_events, response_etag, false))
     }
 
@@ -198,7 +202,9 @@ impl GoogleCalendarClient {
 
         // Handle authentication errors
         if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(ProviderError::authentication("access token expired or invalid"));
+            return Err(ProviderError::authentication(
+                "access token expired or invalid",
+            ));
         }
 
         if status == reqwest::StatusCode::FORBIDDEN {
@@ -222,9 +228,10 @@ impl GoogleCalendarClient {
             .map(String::from);
 
         // Parse response
-        let body = response.text().await.map_err(|e| {
-            ProviderError::network(format!("failed to read response: {}", e))
-        })?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ProviderError::network(format!("failed to read response: {}", e)))?;
 
         let mut list_response: EventListResponse = serde_json::from_str(&body).map_err(|e| {
             ProviderError::invalid_response(format!("failed to parse response: {}", e))
@@ -251,7 +258,9 @@ impl GoogleCalendarClient {
         let status = response.status();
 
         if status == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(ProviderError::authentication("access token expired or invalid"));
+            return Err(ProviderError::authentication(
+                "access token expired or invalid",
+            ));
         }
 
         if !status.is_success() {
@@ -262,9 +271,10 @@ impl GoogleCalendarClient {
             )));
         }
 
-        let body = response.text().await.map_err(|e| {
-            ProviderError::network(format!("failed to read response: {}", e))
-        })?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| ProviderError::network(format!("failed to read response: {}", e)))?;
 
         let list: CalendarListResponse = serde_json::from_str(&body).map_err(|e| {
             ProviderError::invalid_response(format!("failed to parse response: {}", e))

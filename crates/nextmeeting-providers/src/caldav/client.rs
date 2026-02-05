@@ -10,7 +10,7 @@ use tracing::{debug, trace, warn};
 
 use crate::error::{ProviderError, ProviderResult};
 
-use super::auth::{basic_auth, DigestAuth};
+use super::auth::{DigestAuth, basic_auth};
 use super::config::CalDavConfig;
 
 /// HTTP client for CalDAV operations.
@@ -86,13 +86,17 @@ impl CalDavClient {
                 if auth_header.starts_with("Digest ") {
                     if let Some(digest) = DigestAuth::parse(&auth_header) {
                         self.digest_auth = Some(digest);
-                        return self.send_authenticated_request(method, url, body, depth).await;
+                        return self
+                            .send_authenticated_request(method, url, body, depth)
+                            .await;
                     }
                 }
 
                 // Fall back to Basic auth
                 if auth_header.contains("Basic") || self.config.has_credentials() {
-                    return self.send_authenticated_request(method, url, body, depth).await;
+                    return self
+                        .send_authenticated_request(method, url, body, depth)
+                        .await;
                 }
 
                 return Err(ProviderError::authentication(
@@ -153,7 +157,7 @@ impl CalDavClient {
             _ => {
                 return Err(ProviderError::authentication(
                     "Credentials required but not configured",
-                ))
+                ));
             }
         };
 
@@ -206,19 +210,17 @@ impl CalDavClient {
         trace!(status = %status, "Received response");
 
         match status {
-            StatusCode::OK | StatusCode::MULTI_STATUS => {
-                response
-                    .text()
-                    .await
-                    .map_err(|e| ProviderError::network(format!("Failed to read response: {}", e)))
-            }
+            StatusCode::OK | StatusCode::MULTI_STATUS => response
+                .text()
+                .await
+                .map_err(|e| ProviderError::network(format!("Failed to read response: {}", e))),
             StatusCode::UNAUTHORIZED => Err(ProviderError::authentication(
                 "Authentication failed: invalid credentials",
             )),
-            StatusCode::FORBIDDEN => {
-                Err(ProviderError::authorization("Access denied to calendar"))
+            StatusCode::FORBIDDEN => Err(ProviderError::authorization("Access denied to calendar")),
+            StatusCode::NOT_FOUND => {
+                Err(ProviderError::not_found("Calendar or resource not found"))
             }
-            StatusCode::NOT_FOUND => Err(ProviderError::not_found("Calendar or resource not found")),
             StatusCode::TOO_MANY_REQUESTS => {
                 Err(ProviderError::rate_limited("Too many requests to server"))
             }

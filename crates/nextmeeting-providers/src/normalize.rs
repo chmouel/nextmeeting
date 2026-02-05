@@ -9,7 +9,7 @@
 //! 2. Extracts and normalizes meeting links from description, location, and conference data
 //! 3. Builds the final [`NormalizedEvent`] with all relevant fields
 
-use nextmeeting_core::{extract_links_from_text, EventLink, EventTime, LinkKind, NormalizedEvent};
+use nextmeeting_core::{EventLink, EventTime, LinkKind, NormalizedEvent, extract_links_from_text};
 
 use crate::raw_event::{RawConferenceData, RawEvent, RawEventTime};
 

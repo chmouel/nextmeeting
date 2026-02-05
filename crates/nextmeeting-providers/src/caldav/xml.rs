@@ -3,8 +3,8 @@
 //! This module handles parsing and generating XML for WebDAV operations
 //! like PROPFIND and REPORT.
 
-use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
+use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use chrono::{DateTime, Utc};
 use std::io::Cursor;

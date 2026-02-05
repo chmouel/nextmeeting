@@ -8,9 +8,9 @@ pub mod tracing;
 
 pub use event::{EventLink, LinkKind, MeetingView, NormalizedEvent};
 pub use format::{
-    bulletize, ellipsis, html_escape, make_hyperlink, FormatOptions, FormattedMeeting, JsonMeeting,
-    JsonOutput, OutputFormat, OutputFormatter, TimeFormat, UrgencyClass, WaybarOutput,
+    FormatOptions, FormattedMeeting, JsonMeeting, JsonOutput, OutputFormat, OutputFormatter,
+    TimeFormat, UrgencyClass, WaybarOutput, bulletize, ellipsis, html_escape, make_hyperlink,
 };
-pub use links::{detect_link, extract_links_from_text, LinkDetector};
+pub use links::{LinkDetector, detect_link, extract_links_from_text};
 pub use time::{EventTime, TimeWindow};
-pub use tracing::{init_tracing, TracingConfig, TracingError, TracingOutputFormat};
+pub use tracing::{TracingConfig, TracingError, TracingOutputFormat, init_tracing};
