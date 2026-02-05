@@ -16,5 +16,8 @@ repository = "https://github.com/chmouel/nextmeeting"
 
 [workspace.dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
+url = "2.5"
+urlencoding = "2.1"

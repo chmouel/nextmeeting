@@ -47,8 +47,8 @@ nextmeeting/
 - [x] Workspace with 5 crates
 - [x] `EventTime` (DateTime/AllDay), `TimeWindow`
 - [x] `NormalizedEvent`, `EventLink`, `LinkKind`, `MeetingView`
-- [ ] Link detection (Zoom, Meet, Teams, Jitsi, SafeLinks)
-- [ ] Link test corpus
+- [x] Link detection (Zoom, Meet, Teams, Jitsi, SafeLinks)
+- [x] Link test corpus
 - [ ] Output formatting (TTY/Waybar/Polybar/JSON)
 - [ ] Golden tests for outputs
 - [ ] Protocol v1 framing + types
