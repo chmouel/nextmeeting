@@ -45,7 +45,7 @@ nextmeeting/
 ### Phase 0 — Foundations
 
 - [x] Workspace with 5 crates
-- [ ] `EventTime` (DateTime/AllDay), `TimeWindow`
+- [x] `EventTime` (DateTime/AllDay), `TimeWindow`
 - [ ] `NormalizedEvent`, `EventLink`, `LinkKind`, `MeetingView`
 - [ ] Link detection (Zoom, Meet, Teams, Jitsi, SafeLinks)
 - [ ] Link test corpus

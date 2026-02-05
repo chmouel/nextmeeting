@@ -6,3 +6,9 @@ license.workspace = true
 description = "Core types: time, events, links, filters, formatting"
 
 [dependencies]
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json = "1.0"
