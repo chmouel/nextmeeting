@@ -56,10 +56,10 @@ nextmeeting/
 
 ### Phase 1 — Provider Abstraction
 
-- [ ] `CalendarProvider` trait
-- [ ] `RawEvent` struct
-- [ ] `RawEvent` → `NormalizedEvent` pipeline
-- [ ] `ProviderError` types
+- [x] `CalendarProvider` trait
+- [x] `RawEvent` struct
+- [x] `RawEvent` → `NormalizedEvent` pipeline
+- [x] `ProviderError` types
 
 ### Phase 2 — CalDAV Provider
 
