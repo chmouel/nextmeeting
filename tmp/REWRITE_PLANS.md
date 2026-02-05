@@ -49,7 +49,7 @@ nextmeeting/
 - [x] `NormalizedEvent`, `EventLink`, `LinkKind`, `MeetingView`
 - [x] Link detection (Zoom, Meet, Teams, Jitsi, SafeLinks)
 - [x] Link test corpus
-- [ ] Output formatting (TTY/Waybar/Polybar/JSON)
+- [x] Output formatting (TTY/Waybar/Polybar/JSON)
 - [ ] Golden tests for outputs
 - [ ] Protocol v1 framing + types
 - [ ] Tracing setup
