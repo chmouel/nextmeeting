@@ -1,0 +1,2053 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+The content has been processed where empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.github/
+  workflows/
+    precommit.yml
+hack/
+  radicale/
+    config.ini
+    passwd
+    populate.py
+    start.sh
+packaging/
+  aur/
+    build.sh
+    Dockerfile
+    PKGBUILD
+  flake.lock
+  flake.nix
+  make-release.sh
+src/
+  nextmeeting/
+    __init__.py
+    caldav.py
+    cli.py
+tests/
+  __init__.py
+  test_caldav_fetcher.py
+  test_config_loading.py
+  test_features.py
+  test_links.py
+.coverage
+.envrc
+.pre-commit-config.yaml
+.pre-commit-config.yaml~
+.python-version
+AGENTS.md
+LICENSE
+Makefile
+pyproject.toml
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="packaging/aur/Dockerfile">
+FROM archlinux:latest
+RUN pacman -Sy pacman-contrib openssh binutils git --noconfirm  &&  pacman -Sc --noconfirm
+
+RUN useradd -ms /bin/bash builder
+USER builder
+WORKDIR /src
+</file>
+
+<file path=".envrc">
+PATH_add .venv/bin
+</file>
+
+<file path=".pre-commit-config.yaml~">
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.3.4
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format
+</file>
+
+<file path="LICENSE">
+Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+   APPENDIX: How to apply the Apache License to your work.
+
+      To apply the Apache License to your work, attach the following
+      boilerplate notice, with the fields enclosed by brackets "[]"
+      replaced with your own identifying information. (Don't include
+      the brackets!)  The text should be enclosed in the appropriate
+      comment syntax for the file format. We also recommend that a
+      file or class name and description of purpose be included on the
+      same "printed page" as the copyright notice for easier
+      identification within third-party archives.
+
+   Copyright [yyyy] [name of copyright owner]
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+</file>
+
+<file path="hack/radicale/config.ini">
+[auth]
+type = htpasswd
+htpasswd_filename = /etc/radicale/passwd
+# encryption method used in the htpasswd file
+htpasswd_encryption = plain
+</file>
+
+<file path="hack/radicale/passwd">
+username:password
+</file>
+
+<file path="hack/radicale/populate.py">
+#!/usr/bin/env python
+# Author: Chmouel Boudjnah <chmouel@chmouel.com>
+⋮----
+client = DAVClient(
+principal = client.principal()
+calendar = (
+now = datetime.now(timezone.utc)
+def create_event(summary, start, end, url=None, description=None)
+⋮----
+cal = Calendar()
+⋮----
+event = Event()
+</file>
+
+<file path="packaging/aur/build.sh">
+#!/usr/bin/env bash
+set -euo pipefail
+IFS=$'\n\t'
+PKGNAME=$(sed -n '/^name = / { s/name = "\(.*\)"/\1/ ;p;}' pyproject.toml)
+PKGVERSION=$(sed -n '/^version = / { s/version = "\(.*\)"/\1/ ;p;}' pyproject.toml)
+AUTHOR_EMAIL="$(git config --get user.email)"
+AUTHOR_NAME="$(git config --get user.name)"
+RELEASE=1
+image_name=${PKGNAME}-aur-builder
+finalaction="git push origin master"
+gitdir=$(git rev-parse --show-toplevel)
+cd "${gitdir}"
+while getopts "d" o; do
+  case "${o}" in
+  d)
+    finalaction="echo done"
+    ;;
+  *)
+    echo "Invalid option"
+    exit 1
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+VERSION=${1:-${PKGVERSION}}
+sudo docker build -f ./packaging/aur/Dockerfile -t ${image_name} .
+sudo docker run --rm \
+  -v ~/.config/copr:/home/builder/.config/copr \
+  -v "${gitdir}":/src \
+  -v $SSH_AUTH_SOCK:/ssh-agent --env SSH_AUTH_SOCK=/ssh-agent \
+  --name ${PKGNAME}-builder \
+  -it ${image_name} \
+  /bin/bash -c "set -x;mkdir -p ~/.ssh/;chmod 0700 ~/.ssh && \
+                         ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts && \
+                         git clone --depth=1 ssh://aur@aur.archlinux.org/${PKGNAME} /tmp/${PKGNAME} && \
+                         cd /tmp/${PKGNAME} && \
+                         cp /src/packaging/aur/PKGBUILD . && \
+                         git config --global user.email '${AUTHOR_EMAIL}' && \
+                         git config --global user.name '${AUTHOR_NAME}' && \
+                         sed -E 's#(pkgver=).*#\1$VERSION#' -i PKGBUILD && \
+                         sed -E 's#(pkgrel=).*#\1$RELEASE#' -i PKGBUILD && \
+                         updpkgsums && \
+                         makepkg --printsrcinfo > .SRCINFO && \
+                         git clean -f && \
+                         git commit -v -m 'Update to ${VERSION}' .SRCINFO PKGBUILD && \
+    ${finalaction}"
+</file>
+
+<file path="src/nextmeeting/__init__.py">
+
+</file>
+
+<file path="tests/__init__.py">
+
+</file>
+
+<file path=".python-version">
+3.12
+</file>
+
+<file path="AGENTS.md">
+# Repository Guidelines
+
+## Project Structure & Module Organization
+
+- Source: `src/nextmeeting/` (CLI entry in `cli.py`).
+- Package name: `nextmeeting` (entrypoint `nextmeeting.cli:main`).
+- Tests: `tests/` (create `test_*.py` files here).
+- Packaging: `packaging/` (AUR, Nix flake, release scripts).
+- CI: `.github/workflows/precommit.yml` runs lint/format via pre-commit.
+
+## Build, Test, and Development Commands
+
+- Install deps: `make sync` (uses `uv`); alternatively `uv sync`.
+- Run locally: `make run` or `uv run nextmeeting`.
+- Lint: `make lint` (ruff + pylint).
+- Format: `make format` (ruff format).
+- Tests: `make test` or `uv run pytest -sv tests`.
+- Coverage: `make coverage` (HTML + terminal report).
+
+## Coding Style & Naming Conventions
+
+- Language: Python 3.9+; 4‑space indentation; use type hints where helpful.
+- Naming: modules/functions `snake_case`, classes `PascalCase`, constants `UPPER_SNAKE`.
+- Linters: ruff (E,F,D4,PT,PL; ignores E501, PLR0912) and pylint. Keep code ruff/pylint‑clean.
+- Formatting: `ruff format` (run via `make format` or pre-commit). No manual line wrapping required.
+- Imports: prefer standard → third‑party → local grouping; keep unused imports out.
+
+## Testing Guidelines
+
+- Framework: pytest (with `pytest-cov`). Place tests under `tests/` as `test_*.py`.
+- Focus: pure functions/utilities (e.g., time formatting, filters) should have unit tests; mock external commands like `gcalcli`.
+- Run: `make test`. For coverage HTML open `htmlcov/index.html` after `make coverage`.
+
+## Commit & Pull Request Guidelines
+
+- Style: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, scopes like `feat(waybar): ...`).
+- Commits: small, focused; include rationale when behavior changes.
+- PRs: clear description, link issues, note user‑visible changes, add before/after CLI output if relevant. Ensure CI green and pre-commit passes: `pre-commit run -a`.
+
+## Security & Configuration Tips
+
+- External tools: relies on `gcalcli`; ensure OAuth is configured before testing.
+- Env/config: `GCALCLI_DEFAULT_CALENDAR` may be set to target a calendar; consider `--google-domain` for workspace URLs.
+- Notifications: uses `notify-send` when available; paths and colors are configurable via CLI flags.
+- Local setup: `direnv` is optional; `.envrc` adds `.venv/bin` to `PATH`.
+</file>
+
+<file path="hack/radicale/start.sh">
+#!/usr/bin/env bash
+# Author: Chmouel Boudjnah <chmouel@chmouel.com>
+set -euxfo pipefail
+reset() {
+  docker rm -v -f radicale >/dev/null 2>&1 || true
+}
+wait_for_radicale() {
+    local retries=30
+    local wait=1
+    while ! curl -s "http://localhost:5232" >/dev/null; do
+        retries=$((retries - 1))
+        if [ $retries -le 0 ]; then
+            echo "Timeout waiting for Radicale to start"
+            exit 1
+        fi
+        sleep $wait
+    done
+}
+trap "reset" EXIT
+reset
+docker run -d --name radicale -p5232:5232 -v $PWD/passwd:/etc/radicale/passwd -v $PWD/config.ini:/etc/radicale/config ghcr.io/kozea/radicale:latest
+docker exec radicale mkdir -p /var/lib/radicale/collections/collection-root/username/calendar
+docker exec radicale sh -c 'echo "{\"tag\": \"VCALENDAR\"}" > /var/lib/radicale/collections/collection-root/username/calendar/.Radicale.props'
+wait_for_radicale
+uv run ./populate.py
+uv run nextmeeting --caldav-url http://localhost:5232/username/calendar --caldav-username username --caldav-password password --today-only
+# put server in foreground
+docker logs -f radicale
+</file>
+
+<file path="packaging/aur/PKGBUILD">
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+# Maintainer:  Chmouel Boudjnah <chmouel@chmouel.com>
+pkgname=nextmeeting
+pkgver=1.0.2
+pkgrel=1
+pkgdesc="An utility tool to show you next meeting with gcalcli"
+arch=('any')
+url="https://github.com/chmouel/nextmeeting"
+license=('Apache')
+depends=('python-dateutil' 'gcalcli')
+source=("https://github.com/chmouel/${pkgname}/releases/download/${pkgver}/${pkgname}-${pkgver}.tar.gz")
+sha256sums=('edfd9aa245aba16bca2f4d219343e55d7d331f5a7bc3cee2874e14dc15951b63')
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-hatchling')
+
+build() {
+  cd "$pkgname-$pkgver" || exit
+  rm -vf LICENSE
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "${pkgname}-${pkgver}" || exit
+  python -m installer --destdir="$pkgdir" dist/*.whl
+}
+</file>
+
+<file path="tests/test_links.py">
+def _args(**overrides)
+⋮----
+base = dict(
+⋮----
+def test_outlook_safelink_cleanup_and_zoom_normalization()
+⋮----
+# Outlook SafeLink wrapping a zoom join link
+wrapped = (
+s = sanitize_meeting_link(wrapped)
+⋮----
+def test_google_meet_normalization_and_filters()
+⋮----
+now = datetime.datetime.now()
+m1 = Meeting(
+m2 = Meeting(
+# Only-within-window 30 mins should include m2 and drop m1
+out = OutputFormatter(_args(within_mins=30, only_with_link=False))
+⋮----
+# Only-with-link should keep both since both have links
+out2 = OutputFormatter(_args(within_mins=None, only_with_link=True))
+⋮----
+expected = 2
+</file>
+
+<file path="Makefile">
+PACKAGE_NAME := nextmeeting
+
+all: lint run
+
+sync:
+	@uv sync
+
+run: sync
+	echo "Running $(PACKAGE_NAME)"
+	@uv run $(PACKAGE_NAME)
+
+release: sync
+	echo "Creating Release"
+	echo "----------------"
+	@./packaging/make-release.sh
+
+lint: sync
+	echo "Running Linters"
+	echo "-------------"
+	@uv run ruff check src/$(PACKAGE_NAME)
+	@uv run pylint src/$(PACKAGE_NAME)
+
+test: sync
+	@echo "Running Tests"
+	@echo "-------------"
+	@uv run pytest -sv tests
+
+format: sync
+	@echo "Running formatter"
+	@echo "----------------"
+	@uvx ruff format
+
+coverage: sync
+	@echo "Running coverage"
+	@echo "---------------"
+	@uv run pytest --cov=src/$(PROJECT_NAME) --cov-report=html --cov-report=term-missing ./tests
+
+.PHONY: all run release lint test format coverage sync
+</file>
+
+<file path="packaging/flake.lock">
+{
+  "nodes": {
+    "flake-utils": {
+      "inputs": {
+        "systems": "systems"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1759036355,
+        "narHash": "sha256-0m27AKv6ka+q270dw48KflE0LwQYrO7Fm4/2//KCVWg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e9f00bd893984bc8ce46c895c3bf7cac95331127",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
+</file>
+
+<file path="packaging/make-release.sh">
+#!/usr/bin/env bash
+set -euf
+VERSION=${1-""}
+PKGNAME=$(sed -n '/^name = / { s/name = "\(.*\)"/\1/ ;p;}' pyproject.toml)
+PKGNAME=${PKGNAME//-/_} # replace dashes with underscores
+echo "Package name is ${PKGNAME}"
+bumpversion() {
+  current=$(git describe --tags $(git rev-list --tags --max-count=1) || true)
+  if [[ -z ${current} ]]; then
+    current=0.0.0
+  fi
+  echo "Current version is ${current}"
+  major=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_major()))" ${current})
+  minor=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_minor()))" ${current})
+  patch=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_patch()))" ${current})
+  echo "If we bump we get, Major: ${major} Minor: ${minor} Patch: ${patch}"
+  read -p "To which version you would like to bump [M]ajor, Mi[n]or, [P]atch or Manua[l]: " ANSWER
+  if [[ ${ANSWER,,} == "m" ]]; then
+    mode="major"
+  elif [[ ${ANSWER,,} == "n" ]]; then
+    mode="minor"
+  elif [[ ${ANSWER,,} == "p" ]]; then
+    mode="patch"
+  elif [[ ${ANSWER,,} == "l" ]]; then
+    read -p "Enter version: " -e VERSION
+    return
+  else
+    print "no or bad reply??"
+    exit
+  fi
+  VERSION=$(uv run --with semver python3 -c "import semver,sys;print(str(semver.VersionInfo.parse(sys.argv[1]).bump_${mode}()))" ${current})
+  [[ -z ${VERSION} ]] && {
+    echo "could not bump version automatically"
+    exit
+  }
+  echo "Releasing ${VERSION}"
+}
+[[ $(git rev-parse --abbrev-ref HEAD) != main ]] && {
+  echo "you need to be on the main branch"
+  exit 1
+}
+[[ -z ${VERSION} ]] && bumpversion
+vfile=pyproject.toml
+sed -i "s/^version = .*/version = \"${VERSION}\"/" ${vfile}
+git commit -S -m "Release ${VERSION} 🥳" ${vfile} || true
+git tag -s ${VERSION} -m "Releasing version ${VERSION}"
+git push --tags origin ${VERSION}
+git push origin main
+rm -rf dist/
+mkdir dist
+uv build
+gh release create ${VERSION} ./dist/${PKGNAME}-${VERSION}.tar.gz
+uv publish -u __token__ -p $(pass show pypi/token)
+./packaging/aur/build.sh
+</file>
+
+<file path="tests/test_caldav_fetcher.py">
+class _StubEvent
+⋮----
+def __init__(self, data: bytes)
+def _expected_local(value: str) -> datetime.datetime
+def test_meetings_from_event_with_url_and_all_day()
+⋮----
+ics = (
+fetcher = CalDavMeetingFetcher(meeting_factory=Meeting)
+args = Namespace(caldav_url="https://example.com/caldav")
+meetings = fetcher._meetings_from_event(_StubEvent(ics), args)
+⋮----
+first = meetings[0]
+⋮----
+second = meetings[1]
+⋮----
+def test_as_local_datetime_with_date_and_timezone()
+⋮----
+aware = dtparse.isoparse("2024-01-01T12:30:00+02:00")
+naive = _as_local_datetime(aware)
+⋮----
+allday = _as_local_datetime(datetime.date(2024, 9, 1))
+</file>
+
+<file path="tests/test_config_loading.py">
+def test_load_config_normalizes_hyphens_to_underscores()
+⋮----
+"""Test that configuration keys with hyphens are normalized to underscores."""
+⋮----
+config_path = Path(f.name)
+⋮----
+config = _load_config(config_path)
+# All keys should be normalized to underscores
+⋮----
+# Hyphens should not exist in the keys
+⋮----
+def test_load_config_works_with_both_formats()
+⋮----
+"""Test that both hyphen and underscore formats work in config files."""
+# Test with hyphens (README format)
+⋮----
+config_path_hyphens = Path(f.name)
+# Test with underscores (internal format)
+⋮----
+config_path_underscores = Path(f.name)
+⋮----
+# Both should work and produce the same key format
+config_hyphens = _load_config(config_path_hyphens)
+config_underscores = _load_config(config_path_underscores)
+# Both should have normalized underscore keys
+⋮----
+# Values should be preserved
+⋮----
+def test_parse_args_accepts_config_with_hyphens()
+⋮----
+"""Test that parse_args properly handles config files with hyphenated keys."""
+⋮----
+config_path = f.name
+# Clear environment variables that might interfere
+⋮----
+original_argv = sys.argv
+⋮----
+args = parse_args()
+# The arguments should be accessible with underscores
+</file>
+
+<file path="tests/test_features.py">
+def _args(**overrides)
+⋮----
+base = dict(
+⋮----
+def _meeting(title: str, start: datetime.datetime, end: datetime.datetime) -> Meeting
+def test_title_filters_include_exclude()
+⋮----
+now = datetime.datetime.now()
+m1 = _meeting(
+m2 = _meeting(
+args = _args(include_title=["standup"])
+out = OutputFormatter(args)
+⋮----
+def test_privacy_mode_replaces_title()
+⋮----
+m = _meeting(
+args = _args(privacy=True, privacy_title="Busy")
+fmt = MeetingFormatter(args)
+⋮----
+def test_format_template_applies()
+⋮----
+args = _args(format="{title} @ {start_time:%H:%M}")
+⋮----
+def test_work_hours_filters_outside()
+⋮----
+today = datetime.datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
+m = _meeting("Early", today, today + datetime.timedelta(hours=1))
+args = _args(work_hours="09:00-18:00")
+⋮----
+def test_waybar_tooltip_limit()
+⋮----
+meetings = [
+args = _args(waybar=True, limit=2)
+⋮----
+result = out.format_for_waybar(meetings)
+assert result["tooltip"].count("\n") == 1  # 2 bullets -> 1 newline
+def test_ellipsis_no_truncation_needed()
+def test_ellipsis_basic_truncation()
+⋮----
+result = ellipsis("this is a long string", 10)
+⋮----
+def test_ellipsis_html_entity_not_broken()
+⋮----
+# &amp; should count as 1 display char and not be split
+result = ellipsis("Perf&amp;Scale meeting", 15)
+⋮----
+# Ensure no broken entity like &amp without semicolon
+⋮----
+def test_ellipsis_html_entity_counts_as_one_char()
+⋮----
+# "Test&amp;Go" has display length 9 (Test&Go + 2 chars for entity displayed as 1)
+# With length=12, should not truncate
+result = ellipsis("Test&amp;Go", 12)
+⋮----
+def test_ellipsis_numeric_entity_not_broken()
+⋮----
+# &#x27; is apostrophe, should count as 1 display char
+result = ellipsis("What&#x27;s New in Tech", 15)
+# Should not have broken entity
+⋮----
+def test_ellipsis_strips_html_tags()
+⋮----
+result = ellipsis("<span>Hello</span> World", 15)
+</file>
+
+<file path="src/nextmeeting/caldav.py">
+"""CalDAV integration helpers for nextmeeting."""
+⋮----
+from caldav import DAVClient  # type: ignore[import-not-found]
+from caldav.lib import error as caldav_error  # type: ignore[import-not-found]
+except ImportError:  # noqa: BLE001
+DAVClient = None  # type: ignore[assignment]
+caldav_error = None  # type: ignore[assignment]
+⋮----
+from icalendar import Calendar  # type: ignore[import-not-found]
+⋮----
+Calendar = None  # type: ignore[assignment]
+CALDAV_DEFAULT_LOOKAHEAD_HOURS = 48
+CALDAV_DEFAULT_LOOKBEHIND_HOURS = 12
+URL_RE = re.compile(r"https?://\S+")
+class CalDavMeetingFetcher
+⋮----
+"""Fetch meetings from a CalDAV-compatible calendar."""
+def __init__(self, meeting_factory: Callable[..., object])
+def fetch_meetings(self, args) -> list[object]
+⋮----
+client_kwargs = {
+⋮----
+client = DAVClient(
+calendar = self._resolve_calendar(client, args)
+lookbehind = getattr(
+lookahead = getattr(
+start = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+end = start + datetime.timedelta(hours=lookbehind + lookahead)
+⋮----
+raw_events = calendar.date_search(start, end)  # type: ignore[union-attr]
+except caldav_error.DAVError as exc:  # noqa: BLE001
+raw_events = self._retry_date_search(client, args, (start, end), exc)
+meetings: list[object] = []
+⋮----
+except Exception:  # noqa: BLE001
+⋮----
+now = datetime.datetime.now()
+⋮----
+[meeting for meeting in meetings if meeting.end_time > now],  # type: ignore[attr-defined]
+key=lambda meeting: meeting.start_time,  # type: ignore[attr-defined]
+⋮----
+def _resolve_calendar(self, client: "DAVClient", args)
+⋮----
+calendar_hint = getattr(args, "caldav_calendar", None)
+direct_url = getattr(args, "caldav_url", None)
+⋮----
+except Exception as exc:  # noqa: BLE001
+⋮----
+principal = client.principal()
+⋮----
+calendars = principal.calendars()
+⋮----
+identifiers = {
+identifiers = {str(item) for item in identifiers if item}
+⋮----
+props = cal.get_properties(["{DAV:}displayname"])  # type: ignore[arg-type]
+display_name = props.get("{DAV:}displayname")
+⋮----
+def _meetings_from_event(self, event: object, args) -> list[object]
+⋮----
+data = getattr(event, "data", None)
+⋮----
+raw = data
+⋮----
+raw = str(data).encode("utf-8")
+calendar = Calendar.from_ical(raw)
+⋮----
+meeting = self._meeting_from_component(component, args)
+⋮----
+def _meeting_from_component(self, component, args)
+⋮----
+summary = str(component.get("summary", ""))
+start_raw = component.get("dtstart")
+end_raw = component.get("dtend")
+duration_raw = component.get("duration")
+start_dt = _as_local_datetime(
+⋮----
+end_dt = _as_local_datetime(
+⋮----
+duration = (
+⋮----
+end_dt = start_dt + duration
+⋮----
+end_dt = start_dt + datetime.timedelta(seconds=int(duration))
+⋮----
+end_dt = start_dt + datetime.timedelta(hours=1)
+url = component.get("url")
+calendar_url = str(url) if url else getattr(args, "caldav_url", "")
+meet_url = self._extract_meeting_url(component)
+⋮----
+def _extract_meeting_url(self, component) -> Optional[str]
+⋮----
+content = component.get(key)
+⋮----
+text = content.to_ical().decode()
+⋮----
+text = str(content)
+⋮----
+original_url = str(args.caldav_url)
+candidates: list[tuple[str, str]] = [("original", original_url)]
+⋮----
+hint = str(args.caldav_calendar)
+⋮----
+errors: list[str] = []
+⋮----
+alt_calendar = client.calendar(url=candidate)
+return alt_calendar.date_search(*window)  # type: ignore[union-attr]
+⋮----
+available: list[str] = []
+⋮----
+url_obj = getattr(cal, "url", None)
+⋮----
+available = []
+message_lines = [
+⋮----
+entries = errors
+⋮----
+entries = errors[:1]
+⋮----
+def _as_local_datetime(value: Optional[object]) -> datetime.datetime
+</file>
+
+<file path=".pre-commit-config.yaml">
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+default_install_hook_types: ["pre-push"]
+exclude: '(^docs/themes/hugo-book|^vendor|.*golden$|^\.vale)'
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-toml
+      - id: check-shebang-scripts-are-executable
+      - id: check-json
+      - id: check-vcs-permalinks
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        files: ".*\\.py$"
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: make format
+        language: system
+        types: [file, python]
+      - id: ruff-format
+        name: ruff-format
+        entry: make format
+        language: system
+        types: [file, python]
+      - id: pylint
+        name: pylint
+        entry: make lint
+        language: system
+        types: [file, python]
+</file>
+
+<file path="packaging/flake.nix">
+{
+  description = "Python program to show your google calendar next meeting";
+
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        projectData = builtins.fromTOML (builtins.readFile ../pyproject.toml);
+        python = pkgs.python3;
+        pythonEnv = python.withPackages (
+          ps: with ps; [
+            python-dateutil
+            caldav
+          ]
+        );
+      in
+      {
+        packages = {
+          nextmeeting = pkgs.python3Packages.buildPythonPackage {
+            pname = "nextmeeting";
+            version = projectData.project.version;
+            src = pkgs.lib.cleanSource ../.;
+            propagatedBuildInputs = [ pythonEnv ];
+            pythonImportsCheck = [ "nextmeeting" ];
+            format = "pyproject";
+            nativeBuildInputs = [ pkgs.python3Packages.hatchling ];
+            # Add development tools to the package
+            checkInputs = [
+              pkgs.ruff
+              pkgs.python3Packages.mypy
+            ];
+            # Configure wheel preferences for development tools
+            preBuildPhases = [ "preferWheelPhase" ];
+            preferWheelPhase = ''
+              export PIP_PREFER_BINARY=1
+            '';
+            meta = {
+              mainProgram = "nextmeeting";
+            };
+          };
+          default = self.packages.${system}.nextmeeting;
+        };
+        devShells.default = pkgs.mkShell {
+          packages = [
+            pkgs.uv
+            pythonEnv
+            # Development tools
+            pkgs.ruff
+            pkgs.python3Packages.mypy
+          ];
+          shellHook = ''
+            export PYTHONPATH="$PWD:$PYTHONPATH"
+            # Configure wheel preferences
+            export PIP_PREFER_BINARY=1
+          '';
+        };
+      }
+    );
+}
+</file>
+
+<file path=".github/workflows/precommit.yml">
+name: Run Pre-commit
+on: [push, pull_request]
+jobs:
+  pre_commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+      - name: Install dependencies
+        run: |
+          pip install -U uv
+          uv sync
+          export PATH="$PATH:$(pwd)/.venv/bin"
+          uv add pre-commit ruff pylint
+          .venv/bin/pre-commit run -a
+</file>
+
+<file path="pyproject.toml">
+[project]
+name = "nextmeeting"
+version = "3.1.1"
+description = "Show your nextmeeting in your poly/waybar with gcalcli"
+readme = "README.md"
+authors = [{ name = "Chmouel Boudjnah", email = "chmouel@chmouel.com" }]
+requires-python = ">=3.9"
+license = "Apache-2.0"
+dependencies = ["python-dateutil>=2.9.0.post0", "caldav>=1.3.9"]
+classifiers = ["License :: OSI Approved :: Apache Software License"]
+keywords = ["calendar", "cli"]
+
+[project.scripts]
+nextmeeting = "nextmeeting.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint]
+ignore = ["E501", "PLR0912", "PLR0915"]
+select = ["E", "F", "D4", "PT", "PL"]
+
+[tool.pylint]
+disable = [
+  "missing-module-docstring",
+  "missing-class-docstring",
+  "missing-function-docstring",
+  "broad-exception-caught",
+  "invalid-name",
+  "too-many-branches",
+  "import-error",
+  "line-too-long",
+  "too-many-positional-arguments",
+  "too-few-public-methods",
+  "too-many-locals",
+  "too-many-arguments",
+]
+max-line-length = 101
+
+[dependency-groups]
+dev = [
+  "isort>=6.0.1",
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+  "types-python-dateutil>=2.9.0.20250516",
+]
+</file>
+
+<file path="README.md">
+# nextmeeting: Calendar Widget for Waybar and Polybar
+
+## Overview
+
+nextmeeting is a simple CLI tool that leverages `gcalcli` to display your
+upcoming meetings in bars, terminals, and other scripts.
+
+It goes beyond basic `gcalcli` output:
+
+- Integrates with status bars like [Waybar](https://github.com/Alexays/Waybar) and [Polybar](https://github.com/polybar/polybar).
+- Displays dates in natural English ("tomorrow", "next Monday") instead of raw timestamps.
+- Shows time-to-meeting countdowns and changes color when events are imminent.
+- Provides clickable hyperlinks in the default terminal view.
+- Sends configurable notifications via `notify-send`.
+- Truncates long meeting titles for tighter layouts.
+- Excludes next-day events when you only care about today.
+- Queries CalDAV-compatible calendars with the `--caldav-*` flags.
+
+## Screenshot
+
+![Screenshot of Waybar displaying nextmeeting output](https://user-images.githubusercontent.com/98980/212869786-1acd56e2-2e8a-4255-98c3-ebbb45b28d6e.png)
+
+## Installation
+
+Use `pip` with:
+
+`pip install -U nextmeeting`
+
+Alternatively, if you prefer to run from source, you can use `uv` (recommended)
+or install dependencies manually.
+
+### Using uv (recommended)
+
+First, install `uv` by following the instructions [uv installation
+guide](https://docs.astral.sh/uv/getting-started/installation/). Then, clone
+this repository and run:
+
+```shell
+uv run nextmeeting
+```
+
+### Manual Installation
+
+If you don't want to use `uv`, install the dependencies manually from PyPI or
+your operating system's package manager:
+
+- [python-dateutil](https://pypi.org/project/python-dateutil/)
+- [gcalcli](https://pypi.org/project/gcalcli/)
+- [caldav](https://pypi.org/project/caldav/) *(required when you use the
+  `--caldav-*` options)*
+
+Then install nextmeeting itself:
+
+```shell
+pip install nextmeeting
+```
+
+After installing dependencies, you can run the `nextmeeting` script directly:
+
+```shell
+python3 src/nextmeeting/cli.py
+```
+
+You can also copy `src/nextmeeting/cli.py` to your system's PATH for convenience.
+
+### [AUR](https://aur.archlinux.org/packages/nextmeeting)
+
+```shell
+yay -S nextmeeting
+```
+
+### NixOS
+
+For Nix users, the repository includes ready-to-use flake inputs and a
+Home-Manager module. Expand below for details.
+
+<details><summary>Flake and Home-Manager install instructions.</summary>
+
+- Add nextmeeting to your flake.
+
+```nix
+nextmeeting = {
+  url = "github:chmouel/nextmeeting?dir=packaging";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+```
+
+- Use Home-manager to add nextmeeting to waybar like this:
+
+```nix
+let 
+  nextmeeting = lib.getExe inputs.nextmeeting.packages.${pkgs.system}.default;
+in
+{
+  "custom/agenda" = {
+      format = "{}";
+      exec = nextmeeting + "--max-title-length 30 --waybar";
+      on-click = nextmeeting + "--open-meet-url";
+      interval = 59;
+      return-type = "json";
+      tooltip = true;
+  };
+}
+```
+
+- Follow along with the rest of the instructions.
+
+</details>
+
+## Prerequisites
+
+- Install [gcalcli](https://github.com/insanum/gcalcli).
+- [Set up the Google OAuth integration](https://github.com/insanum/gcalcli?tab=readme-ov-file#initial-setup)
+  so gcalcli can read your calendar.
+
+## Quick Start
+
+Run `uv sync` once, then display upcoming meetings:
+
+```shell
+uv run nextmeeting
+```
+
+If no meetings show up, specify a calendar with `--calendar=CALENDAR`. Explore
+`nextmeeting --help` for every option.
+
+### Working with other calendar servers
+
+Point nextmeeting straight at a CalDAV-compatible server when you do not want
+to rely on `gcalcli`:
+
+```shell
+nextmeeting \
+  --caldav-url https://example.com/dav/calendars/user/work/ \
+  --caldav-username user \
+  --caldav-password secret
+```
+
+Every filter and output mode still applies. If your server exposes several
+collections, pass `--caldav-calendar` with the specific collection URL. For
+basic-auth deployments the username and password flags are enough; for token
+auth just put the token in `--caldav-password`.
+
+The fetch window defaults to “12 hours back, 48 hours ahead”. Tune it with:
+
+- `--caldav-lookbehind-hours` to include ongoing meetings that started up to N
+  hours ago (default `12`).
+- `--caldav-lookahead-hours` to look N hours into the future (default `48`).
+
+To avoid typing the flags each time, drop them in your config file:
+
+```toml
+[nextmeeting]
+caldav-url = "https://example.com/dav/calendars/user/work/"
+caldav-username = "user"
+caldav-password = "secret"
+today-only = true
+```
+
+If a request fails, rerun with `-v` (or `--debug`) to see the full traceback and
+the endpoints that were attempted.
+
+### JSON output
+
+If you need machine-readable output outside Waybar, use `--json` to print the
+same JSON shape as `--waybar` (keys like `text`, `tooltip`, and optional
+`class`). This is useful for other bars or scripts:
+
+```shell
+nextmeeting --json
+```
+
+### Configuration file
+
+You can set defaults in a TOML file. By default, `~/.config/nextmeeting/config.toml`
+is loaded if present, or you can point to a custom file with `--config`.
+
+Command-line flags map directly to keys in the `[nextmeeting]` table: remove the
+leading `--` and keep hyphen separators (`--max-title-length` → `max-title-length`).
+Both hyphens and underscores work in configuration keys (`caldav-url` and `caldav_url` are equivalent).
+
+Example `~/.config/nextmeeting/config.toml`:
+
+```toml
+[nextmeeting]
+calendar = "Work"
+max-title-length = 30
+today-only = true
+include-title = ["standup", "1:1"]
+exclude-title = ["OOO"]
+notify-min-before-events = 5
+notify-offsets = [15, 5]
+privacy = false
+```
+
+CLI flags always override config values.
+
+### Event caching
+
+Reduce calls to `gcalcli` by caching its raw output for a short period:
+
+```shell
+nextmeeting --cache-events-ttl 2   # cache for 2 minutes
+```
+
+### Polybar output
+
+For Polybar, print a single-line text with the next meeting:
+
+```shell
+nextmeeting --polybar
+```
+
+It uses the same formatting and filters as other modes and respects
+`--max-title-length`.
+
+### Custom formatting
+
+You can customize how each line is rendered using templates. Available
+placeholders: `{when}`, `{title}`, `{start_time}`, `{end_time}`, `{meet_url}`,
+`{calendar_url}`, `{minutes_until}`, `{is_all_day}`, `{is_ongoing}`.
+
+```shell
+# Single-line formatting (TTY, Polybar, and Waybar text)
+nextmeeting --format "{when} • {title}"
+
+# Waybar tooltip formatting (applies to the tooltip only)
+nextmeeting --waybar --tooltip-format "{start_time:%H:%M}-{end_time:%H:%M} · {title}"
+```
+
+Use 12-hour timestamps for absolute times:
+
+```shell
+nextmeeting --time-format 12h
+```
+
+### Showing multiple items
+
+Limit the number of meetings shown in list-style outputs (TTY and Waybar
+tooltip):
+
+```shell
+nextmeeting --limit 3
+```
+
+### Title filters
+
+You can include or exclude meetings based on title substrings (case-insensitive):
+
+```shell
+# Only include meetings containing either "standup" or "1:1"
+nextmeeting --include-title standup --include-title "1:1"
+
+# Exclude meetings containing "OOO" or "holiday"
+nextmeeting --exclude-title ooo --exclude-title holiday
+```
+
+Filters apply across modes (TTY, `--json`, `--waybar`).
+
+You can also restrict to working hours by start time:
+
+```shell
+nextmeeting --work-hours 09:00-18:00
+```
+
+Filter by calendar using substrings of the event URL (useful when you have
+multiple accounts/calendars):
+
+```shell
+nextmeeting --include-calendar "primary" --exclude-calendar "personal"
+```
+
+### Privacy mode
+
+Redact meeting titles to a static label to avoid leaking details:
+
+```shell
+nextmeeting --privacy               # titles become "Busy"
+nextmeeting --privacy --privacy-title "Busy 🗓️"
+```
+
+Unicode titles like the emoji example work fine, but sticking to ASCII keeps the
+output consistent across limited fonts.
+
+### Quick actions
+
+- Open the next meeting URL
+
+  ```shell
+  nextmeeting --open-meet-url
+  ```
+
+- Copy the next meeting URL to the clipboard (tries `wl-copy`, `xclip`, or `pbcopy`; falls back to printing)
+
+  ```shell
+  nextmeeting --copy-meeting-url
+  ```
+
+- Open the Google Calendar day view for the next meeting (respects `--google-domain` if set)
+
+  ```shell
+  nextmeeting --open-calendar-day
+  ```
+
+### Waybar
+
+A more interesting use case for `nextmeeting` is its integration with Waybar,
+allowing for a clean output on your desktop. For example, my configuration
+looks like this:
+
+```json
+    "custom/agenda": {
+        "format": "{}",
+        "exec": "nextmeeting --max-title-length 30 --waybar",
+        "on-click": "nextmeeting --open-meet-url",
+        "on-click-right": "kitty -- /bin/bash -c \"batz;echo;cal -3;echo;nextmeeting;read;\"",
+        "interval": 59,
+        "return-type": "json",
+        "tooltip": "true"
+    },
+```
+
+This configuration displays the time remaining until my next meeting. Clicking
+the item opens the meeting's URL. A right-click launches a `kitty` terminal to
+show time zones using [batz](https://github.com/chmouel/batzconverter) and my
+next meeting. I can also click on the meeting title within the terminal to open
+its URL.
+
+#### Styling
+
+You can style the Waybar item using the following CSS:
+
+```css
+#custom-agenda {
+  color: #696969;
+}
+```
+
+If you enable the `--notify-min-before-events` option, `nextmeeting` will
+output a `soon` class when an event is approaching, allowing you to style it
+with:
+
+```css
+#custom-agenda.soon {
+  color: #eb4d4b;
+}
+```
+
+### Notifications
+
+- Choose how many minutes before a meeting to trigger the built-in notification
+  and the `soon` CSS class with `--notify-min-before-events` (default `5`).
+- Add extra reminder offsets with `--notify-offsets` (repeatable or comma separated):
+
+  ```shell
+  nextmeeting --notify-offsets 15 --notify-offsets 5   # 15 and 5 minutes
+  nextmeeting --notify-offsets 20,10,5                 # CSV variant
+  ```
+
+- Customize the highlighted countdown in Waybar with `--notify-min-color` and
+  `--notify-min-color-foreground`.
+- Control notification urgency with `--notify-urgency low|normal|critical`.
+- Snooze all notifications and exit:
+
+  ```shell
+  nextmeeting --snooze 30    # minutes
+  ```
+
+- Send a once-per-day morning agenda near a specific time (±2 minutes window):
+
+  ```shell
+  nextmeeting --morning-agenda 09:00
+  ```
+
+### Related
+
+- For GNOME users,
+[gnome-next-meeting-applet](https://github.com/chmouel/gnome-next-meeting-applet)
+provides similar information inside the desktop shell if you prefer an applet
+over a status bar widget but the project has been discontinued.
+
+## Copyright
+
+[Apache-2.0](./LICENSE)
+
+## Authors
+
+- Chmouel Boudjnah <https://github.com/chmouel>
+  - Fediverse - <[@chmouel@fosstodon.org](https://fosstodon.org/@chmouel)>
+  - Twitter - <[@chmouel](https://twitter.com/chmouel)>
+  - Blog - <[https://blog.chmouel.com](https://blog.chmouel.com)>
+</file>
+
+<file path="src/nextmeeting/cli.py">
+#!/usr/bin/env python3
+# Author: Chmouel Boudjnah <chmouel@chmouel.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+⋮----
+#      http://www.apache.org/licenses/LICENSE-2.0
+⋮----
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+# pylint: disable=too-many-lines disable=too-many-locals disable=too-many-statements disable=line-too-long
+⋮----
+try:  # Python 3.11+
+import tomllib  # type: ignore[import-not-found]
+except Exception:  # noqa: BLE001
+tomllib = None  # type: ignore[assignment]
+# Constants
+REG_TSV = re.compile(
+DEFAULT_CALENDAR = os.environ.get("GCALCLI_DEFAULT_CALENDAR", "")
+GCALCLI_CMDLINE = (
+TITLE_ELIPSIS_LENGTH = 50
+MAX_CACHED_ENTRIES = 30
+NOTIFY_MIN_BEFORE_EVENTS = 5
+NOTIFY_MIN_COLOR = "#FF5733"
+NOTIFY_MIN_COLOR_FOREGROUND = "#F4F1DE"
+CACHE_DIR = pathlib.Path(os.path.expanduser("~/.cache/nextmeeting"))
+NOTIFY_PROGRAM = shutil.which("notify-send") or ""
+NOTIFY_ICON = "/usr/share/icons/hicolor/scalable/apps/org.gnome.Calendar.svg"
+GOOGLE_CALENDAR_PUBLIC_URL = "www.google.com/calendar"
+ALL_DAYS_MEETING_HOURS = 24
+AGENDA_MINUTE_TOLERANCE = 2
+HOUR_SEPARATOR = "H"
+UNTIL_OFFSET = 60  # minutes before event to start showing "until" info
+NO_MEETING_TEXT = "No meeting"
+NO_MEETING_ICON = "🏖️"
+⋮----
+@dataclass
+class Meeting
+⋮----
+title: str
+start_time: datetime.datetime
+end_time: datetime.datetime
+calendar_url: str
+meet_url: Optional[str] = None
+⋮----
+@property
+    def is_all_day(self) -> bool
+⋮----
+@property
+    def is_ongoing(self) -> bool
+⋮----
+now = datetime.datetime.now()
+⋮----
+@property
+    def time_until_start(self) -> timedelta
+⋮----
+@property
+    def time_until_end(self) -> timedelta
+⋮----
+@classmethod
+    def from_match(cls, match: re.Match) -> "Meeting"
+⋮----
+start_time = dtparse.parse(f"{match['startdate']} {match['starthour']}")
+end_time = dtparse.parse(f"{match['enddate']} {match['endhour']}")
+⋮----
+# pylint: disable=too-few-public-methods
+class MeetingFormatter
+⋮----
+def __init__(self, args: argparse.Namespace)
+⋮----
+hyperlink: bool = False,  # pylint: disable=line-too-long
+) -> tuple[str, str]:  # pylint: disable=line-too-long
+"""Format a single meeting and return (formatted_string, css_class)."""
+⋮----
+# Template support (plain text fields)
+template = getattr(self.args, "format", None)
+⋮----
+formatted = template.format(
+⋮----
+formatted = f"{fields['when']} - {fields['title']}"
+⋮----
+def _format_title(self, meeting: Meeting, hyperlink: bool) -> str
+⋮----
+title = meeting.title
+⋮----
+title = getattr(self.args, "privacy_title", "Busy")
+⋮----
+title = html.escape(title)
+⋮----
+title = make_hyperlink(meeting.meet_url, title)
+⋮----
+timetofinish = dtrel.relativedelta(meeting.end_time, self.today)
+⋮----
+time_str = f"{timetofinish.minutes} minutes"
+⋮----
+time_str = f"{timetofinish.hours}H{timetofinish.minutes}"
+thetime = f"{time_str} to go"
+⋮----
+timeuntilstarting = dtrel.relativedelta(meeting.start_time, self.today)
+css_class = ""
+# Check if notification is needed
+⋮----
+css_class = "soon"
+⋮----
+thetime = self._format_time_until(timeuntilstarting, meeting.start_time)
+# Additional notification offsets
+offsets: list[int] = []
+⋮----
+# Support comma-separated values and repeated flags
+raw: list[str] = []
+⋮----
+offsets = [int(x) for x in raw if str(x).strip()]
+⋮----
+offsets = []
+⋮----
+def _compute_fields(self, meeting: Meeting, hyperlink: bool) -> tuple[dict, str]
+⋮----
+title = self._format_title(meeting, hyperlink)
+⋮----
+fields: dict = {
+⋮----
+total_minutes = deltad.days * 24 * 60 + deltad.hours * 60 + deltad.minutes
+time_format_pref = getattr(self.args, "time_format", "24h")
+⋮----
+s = "Tomorrow"
+⋮----
+s = f"{date.strftime('%a %d')}"
+⋮----
+separator = getattr(self.args, "hour_separator", ":")
+time_fmt = f"%I{separator}%M %p"
+⋮----
+separator = getattr(self.args, "hour_separator", "h")
+⋮----
+# elif deltad.hours != 0:
+⋮----
+s = date.strftime(time_fmt)
+⋮----
+separator = getattr(self.args, "hour_separator", "H")
+time_fmt = f"%H{separator}%M"
+⋮----
+s = "Now"
+⋮----
+number = (
+s = "Now 🏃" if number == 0 else f"In {number} minutes"
+⋮----
+parts = []
+⋮----
+s = f"In {parts[0]}"
+⋮----
+s = f"In {', '.join(parts[:-1])} and {parts[-1]}"
+⋮----
+class MeetingFetcher
+⋮----
+def __init__(self, gcalcli_cmdline: str = GCALCLI_CMDLINE)
+def fetch_meetings(self, args: argparse.Namespace) -> list[Meeting]
+⋮----
+cmdline = getattr(args, "gcalcli_cmdline", self.gcalcli_cmdline)
+⋮----
+cache_file = Path(args.cache_dir) / "events.tsv"
+ttl_min = getattr(args, "cache_events_ttl", 0) or 0
+now = datetime.datetime.now().timestamp()
+# Use cache if valid
+⋮----
+mtime = cache_file.stat().st_mtime
+⋮----
+result = subprocess.run(
+# Write cache if enabled
+⋮----
+calendar_list_result = subprocess.run(
+calendar_list = calendar_list_result.stdout.strip()
+⋮----
+calendar_list = "Unable to retrieve calendar list"
+⋮----
+def _process_lines(self, lines: Sequence[str]) -> list[Meeting]
+⋮----
+meetings = []
+⋮----
+_line = line.strip()
+⋮----
+meeting = Meeting.from_match(match)
+⋮----
+@dataclass
+class SanitizedLink
+⋮----
+service: Optional[str]
+url: str
+meeting_id: Optional[str] = None
+passcode: Optional[str] = None
+OUTLOOK_SAFELINK_RE = re.compile(
+def _cleanup_outlook_safelinks(text: str) -> str
+⋮----
+match = OUTLOOK_SAFELINK_RE.search(text)
+⋮----
+encoded = match.group(1)
+decoded = urlparse.unquote(encoded)
+⋮----
+def _normalize_zoom(u: str) -> SanitizedLink
+⋮----
+parsed = urlparse.urlsplit(u)
+query = dict(urlparse.parse_qsl(parsed.query))
+host = parsed.netloc.lower()
+is_zoomgov = host.endswith("zoomgov.com")
+service = "zoomgov" if is_zoomgov else "zoom"
+meeting_id = None
+passcode = query.get("pwd") or query.get("passcode")
+# Convert /join?confno= to /j/<id>
+path = parsed.path
+⋮----
+meeting_id = query.get("confno")
+path = f"/j/{meeting_id}"
+⋮----
+# Extract /j/<id>
+parts = [p for p in path.split("/") if p]
+⋮----
+meeting_id = next(iter(parts[1:]), None)
+new_query = urlparse.urlencode(
+normalized = urlparse.urlunsplit(
+⋮----
+def _normalize_meet(u: str) -> SanitizedLink
+⋮----
+# https://meet.google.com/abc-defg-hij
+⋮----
+service = "google_meet"
+parts = [p for p in parsed.path.split("/") if p]
+meeting_id = parts[0] if parts else None
+⋮----
+def _normalize_teams(u: str) -> SanitizedLink
+⋮----
+# Keep as-is; teams links are long and signed
+⋮----
+def _normalize_jitsi(u: str) -> SanitizedLink
+def sanitize_meeting_link(raw_url: Optional[str]) -> Optional[SanitizedLink]
+⋮----
+"""Return normalized meeting link and extracted details.
+    - Unwrap Outlook SafeLinks
+    - Normalize Zoom /join?confno= to /j/<id> and keep pwd
+    - Strip tracking params for Meet/Jitsi
+    """
+⋮----
+url = _cleanup_outlook_safelinks(raw_url)
+low = url.lower()
+result: SanitizedLink
+⋮----
+result = _normalize_zoom(url)
+⋮----
+result = _normalize_meet(url)
+⋮----
+result = _normalize_teams(url)
+⋮----
+result = _normalize_jitsi(url)
+⋮----
+result = SanitizedLink(service=None, url=url)
+⋮----
+class NotificationManager
+⋮----
+uuid = self._generate_uuid(title, start_date, end_date)
+⋮----
+content = f"{title}{start_date}{end_date}".encode("utf-8")
+⋮----
+def _is_already_notified(self, uuid: str) -> bool
+⋮----
+cached = json.load(f)
+⋮----
+def _mark_as_notified(self, uuid: str)
+⋮----
+cached = []
+⋮----
+cached = cached[-MAX_CACHED_ENTRIES:]
+⋮----
+cmd = [
+# Urgency level
+⋮----
+def _is_snoozed(self) -> bool
+⋮----
+until = float(self.snooze_path.read_text().strip())
+⋮----
+def set_snooze(self, minutes: int)
+⋮----
+until = datetime.datetime.now().timestamp() + minutes * 60
+⋮----
+def notify_morning_agenda_if_needed(self, meetings: list[Meeting])
+⋮----
+target = getattr(self.args, "morning_agenda", None)
+⋮----
+# ensure only once per day using cache uuid
+today_key = f"agenda-{now.strftime('%Y%m%d')}"
+⋮----
+# Build body from today's meetings only
+today_meetings = [m for m in meetings if m.start_time.date() == now.date()]
+⋮----
+lines = [f"{m.start_time.strftime('%H:%M')} {m.title}" for m in today_meetings]
+body = "\n".join(lines)
+⋮----
+class OutputFormatter
+⋮----
+def format_meetings(self, meetings: list[Meeting]) -> tuple[list[str], str]
+⋮----
+"""Format meetings for output."""
+results = []
+⋮----
+if meeting_css and not css_class:  # Use first non-empty CSS class
+css_class = meeting_css
+⋮----
+def _should_skip_meeting(self, meeting: Meeting) -> bool
+⋮----
+today = datetime.datetime.now()
+skip = False
+⋮----
+skip = True
+⋮----
+title_lc = meeting.title.lower()
+⋮----
+cal_url_lc = meeting.calendar_url.lower()
+include_cal = getattr(self.args, "include_calendar", []) or []
+exclude_cal = getattr(self.args, "exclude_calendar", []) or []
+⋮----
+wh_start = datetime.time(hour, minute)
+⋮----
+wh_end = datetime.time(hour, minute)
+⋮----
+st = meeting.start_time.time()
+⋮----
+# Only-within-window filter
+⋮----
+mins = int(self.args.within_mins)
+⋮----
+delta = (meeting.start_time - today).total_seconds() / 60.0
+⋮----
+# Only events that have a meeting link
+⋮----
+link = sanitize_meeting_link(meeting.meet_url)
+⋮----
+def format_for_waybar(self, meetings: list[Meeting]) -> dict
+⋮----
+"""Format meetings for waybar output."""
+no_meeting_text = getattr(self.args, "no_meeting_text", NO_MEETING_TEXT)
+⋮----
+# Get the next meeting to display
+next_meeting = self._get_next_meeting_for_display(meetings, formatted_meetings)
+# Tooltip formatting: allow a separate template
+tooltip_lines = formatted_meetings
+⋮----
+tooltip_lines = []
+⋮----
+fields, _ = self.formatter._compute_fields(  # pylint: disable=protected-access
+⋮----
+# Apply limit to tooltip if requested
+⋮----
+tooltip_lines = tooltip_lines[: self.args.limit]
+result = {
+⋮----
+def format_for_polybar(self, meetings: list[Meeting]) -> str
+⋮----
+"""Format a single-line string for Polybar."""
+⋮----
+# Reuse the same selection logic as Waybar
+⋮----
+"""Get the next meeting to display in waybar."""
+⋮----
+# Find next non-all-day meeting
+⋮----
+# If only all-day meetings, return the first one
+⋮----
+# Utility functions
+def ellipsis(string: str, length: int) -> str
+⋮----
+clean_string = re.sub(r"<[^>]*>", "", string)
+# Calculate display length (HTML entities count as 1 char)
+display_len = len(re.sub(r"&[^;]+;", "X", clean_string))
+⋮----
+# Truncate based on display length, keeping entities intact
+result = []
+current_display_len = 0
+target_len = length - 3  # Leave room for "..."
+i = 0
+⋮----
+end = clean_string.find(";", i)
+⋮----
+i = end + 1
+⋮----
+def debug(msg: str, args: argparse.Namespace)
+def make_hyperlink(uri: str, label: str = "") -> str
+⋮----
+label = uri
+⋮----
+def replace_domain_url(domain: str, url: str) -> str
+⋮----
+base = f"https://calendar.google.com/calendar/u/0/r/day/{y}/{m}/{d}"
+⋮----
+base = f"https://calendar.google.com/a/{domain}/r/day/{y}/{m}/{d}"
+⋮----
+def bulletize(items: list[str]) -> str
+⋮----
+"""Legacy notification function for backward compatibility."""
+notification_manager = NotificationManager(args)
+⋮----
+def get_next_meeting(meetings: list[Meeting], skip_all_day: bool) -> Optional[Meeting]
+def open_url(url: str, args: Optional[argparse.Namespace] = None)
+⋮----
+# Allow routing to a specific command (e.g., browser profile)
+⋮----
+cmd = shlex.split(str(args.open_with)) + [url]
+⋮----
+def copy_to_clipboard(text: str) -> bool
+⋮----
+"""Copy text to clipboard using common tools. Returns True on success."""
+candidates = []
+⋮----
+res = subprocess.run(
+⋮----
+except Exception:  # noqa: BLE001 - best effort
+⋮----
+def _build_parser() -> argparse.ArgumentParser
+⋮----
+parser = argparse.ArgumentParser(description="Next meeting scheduler")
+# Core options
+⋮----
+# CalDAV options
+⋮----
+# Display options
+⋮----
+# Meeting filtering
+⋮----
+# Notification options
+⋮----
+# URL options
+⋮----
+# Cache options
+⋮----
+# Config
+⋮----
+def _load_config(path: Path) -> dict
+⋮----
+data = tomllib.load(f)
+# Allow a top-level [nextmeeting] table or flat keys
+⋮----
+config_data = data["nextmeeting"]
+⋮----
+config_data = data
+# Normalize keys: convert hyphens to underscores to match argparse behavior
+# This allows both caldav-url and caldav_url in config files
+normalized_config = {
+⋮----
+def parse_args() -> argparse.Namespace
+⋮----
+parser = _build_parser()
+# First pass to discover --config or default file
+⋮----
+config_path = preliminary.config or Path(
+cfg = _load_config(config_path)
+⋮----
+# Set defaults from config for any matching keys
+⋮----
+def main()
+⋮----
+args = parse_args()
+⋮----
+except Exception as exc:  # noqa: BLE001
+⋮----
+def _run(args: argparse.Namespace)
+⋮----
+# Handle snooze action
+⋮----
+use_caldav = bool(getattr(args, "caldav_url", None))
+⋮----
+# Fetch meetings
+⋮----
+fetcher = CalDavMeetingFetcher(meeting_factory=Meeting)
+⋮----
+fetcher = MeetingFetcher()
+meetings = fetcher.fetch_meetings(args)
+# Morning agenda (best-effort, once per day)
+⋮----
+no_meeting_text = getattr(args, "no_meeting_text", NO_MEETING_TEXT)
+output = (
+⋮----
+# Handle URL-related actions
+⋮----
+# Format and output meetings
+formatter = OutputFormatter(args)
+⋮----
+result = formatter.format_for_polybar(meetings)
+⋮----
+result = formatter.format_for_waybar(meetings)
+⋮----
+formatted_meetings = formatted_meetings[: args.limit]
+⋮----
+def _handle_url_actions(args: argparse.Namespace, meetings: list[Meeting]) -> bool
+⋮----
+"""Handle open/copy actions; return True if action was taken and program should exit."""
+# Quick-create action
+⋮----
+create_urls = {
+target = args.create_url or create_urls.get(args.create)
+⋮----
+# Open link from clipboard
+⋮----
+clip = _read_clipboard()
+⋮----
+link = sanitize_meeting_link(clip)
+⋮----
+meeting = get_next_meeting(meetings, args.skip_all_day_meeting)
+⋮----
+sanitized = sanitize_meeting_link(meeting.meet_url) or SanitizedLink(
+url = sanitized.url or meeting.calendar_url
+⋮----
+url = replace_domain_url(args.google_domain, url)
+⋮----
+day_url = build_calendar_day_url(meeting.start_time, args.google_domain)
+⋮----
+value = sanitized.meeting_id or ""
+⋮----
+value = sanitized.passcode or ""
+⋮----
+def _read_clipboard() -> str | None
+⋮----
+"""Return clipboard text using common tools; None on failure."""
+⋮----
+text = (res.stdout or "").strip()
+</file>
+
+</files>
