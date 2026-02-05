@@ -53,12 +53,14 @@ async fn run(cli: Cli) -> ClientResult<()> {
             AuthProvider::Google {
                 client_id,
                 client_secret,
+                credentials_file,
                 domain,
                 force,
             } => {
                 nextmeeting_client::commands::auth::google(
                     client_id,
                     client_secret,
+                    credentials_file,
                     domain,
                     force,
                     &config,

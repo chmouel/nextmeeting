@@ -6,3 +6,20 @@ license.workspace = true
 description = "Daemon: scheduler, cache, notifications"
 
 [dependencies]
+chrono.workspace = true
+nextmeeting-core = { path = "../nextmeeting-core" }
+nextmeeting-protocol = { path = "../nextmeeting-protocol" }
+notify-rust.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

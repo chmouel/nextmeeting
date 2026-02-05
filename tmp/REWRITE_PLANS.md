@@ -81,14 +81,14 @@ nextmeeting/
 
 ### Phase 4 — Server Runtime
 
-- [ ] Unix socket listener
-- [ ] Request/response dispatch
-- [ ] Event cache with TTL
-- [ ] Scheduler (jitter, cooldown, backoff)
-- [ ] Notification engine (`notify-rust`)
-- [ ] SHA-256 dedup + snooze persistence
-- [ ] SIGHUP reload, SIGTERM shutdown
-- [ ] PID file
+- [x] Unix socket listener
+- [x] Request/response dispatch
+- [x] Event cache with TTL
+- [x] Scheduler (jitter, cooldown, backoff)
+- [x] Notification engine (`notify-rust`)
+- [x] SHA-256 dedup + snooze persistence
+- [x] SIGHUP reload, SIGTERM shutdown
+- [x] PID file
 
 ### Phase 5 — Client
 

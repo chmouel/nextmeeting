@@ -1,7 +1,9 @@
 //! Google Calendar provider configuration.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+use serde::Deserialize;
 
 /// OAuth 2.0 credentials for Google API access.
 ///
@@ -15,6 +17,35 @@ pub struct OAuthCredentials {
     pub client_secret: String,
 }
 
+/// Structure of Google's OAuth credentials JSON file.
+///
+/// Supports multiple formats:
+/// 1. Google Cloud Console format with "installed" or "web" section
+/// 2. Flat format with client_id and client_secret at root level (e.g., from gcloud)
+#[derive(Debug, Deserialize)]
+pub struct GoogleCredentialsFile {
+    /// Credentials for installed (desktop) applications.
+    pub installed: Option<NestedCredentials>,
+    /// Credentials for web applications.
+    pub web: Option<NestedCredentials>,
+    /// Direct client_id (flat format).
+    pub client_id: Option<String>,
+    /// Direct client_secret (flat format).
+    pub client_secret: Option<String>,
+}
+
+/// OAuth credentials within a nested section of the credentials JSON file.
+#[derive(Debug, Deserialize)]
+pub struct NestedCredentials {
+    /// The OAuth 2.0 client ID.
+    pub client_id: String,
+    /// The OAuth 2.0 client secret.
+    pub client_secret: String,
+    /// The project ID (optional).
+    #[serde(default)]
+    pub project_id: Option<String>,
+}
+
 impl OAuthCredentials {
     /// Creates new OAuth credentials.
     pub fn new(client_id: impl Into<String>, client_secret: impl Into<String>) -> Self {
@@ -22,6 +53,39 @@ impl OAuthCredentials {
             client_id: client_id.into(),
             client_secret: client_secret.into(),
         }
+    }
+
+    /// Loads OAuth credentials from a Google Cloud Console JSON file.
+    ///
+    /// The file should be the JSON downloaded from the Google Cloud Console
+    /// OAuth 2.0 credentials page. It contains either an "installed" or "web"
+    /// section with the client_id and client_secret.
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, String> {
+        let content = std::fs::read_to_string(path.as_ref())
+            .map_err(|e| format!("failed to read credentials file: {}", e))?;
+        Self::from_json(&content)
+    }
+
+    /// Parses OAuth credentials from a Google credentials JSON string.
+    ///
+    /// Supports multiple formats:
+    /// 1. Google Cloud Console format: `{"installed": {"client_id": "...", "client_secret": "..."}}`
+    /// 2. Flat format: `{"client_id": "...", "client_secret": "..."}`
+    pub fn from_json(json: &str) -> Result<Self, String> {
+        let file: GoogleCredentialsFile = serde_json::from_str(json)
+            .map_err(|e| format!("failed to parse credentials JSON: {}", e))?;
+
+        // Try nested format first (installed or web section)
+        if let Some(creds) = file.installed.or(file.web) {
+            return Ok(Self::new(creds.client_id, creds.client_secret));
+        }
+
+        // Try flat format (client_id and client_secret at root level)
+        if let (Some(client_id), Some(client_secret)) = (file.client_id, file.client_secret) {
+            return Ok(Self::new(client_id, client_secret));
+        }
+
+        Err("credentials file must contain 'installed'/'web' section or 'client_id'/'client_secret' at root level".to_string())
     }
 
     /// Validates that the credentials appear to be correctly formatted.
@@ -274,5 +338,65 @@ mod tests {
         );
         assert_eq!(config.timeout, Duration::from_secs(60));
         assert_eq!(config.loopback_port_range, (9000, 9010));
+    }
+
+    #[test]
+    fn credentials_from_json_installed() {
+        let json = r#"{
+            "installed": {
+                "client_id": "test-id.apps.googleusercontent.com",
+                "client_secret": "test-secret",
+                "project_id": "my-project"
+            }
+        }"#;
+
+        let creds = OAuthCredentials::from_json(json).unwrap();
+        assert_eq!(creds.client_id, "test-id.apps.googleusercontent.com");
+        assert_eq!(creds.client_secret, "test-secret");
+    }
+
+    #[test]
+    fn credentials_from_json_web() {
+        let json = r#"{
+            "web": {
+                "client_id": "web-id.apps.googleusercontent.com",
+                "client_secret": "web-secret"
+            }
+        }"#;
+
+        let creds = OAuthCredentials::from_json(json).unwrap();
+        assert_eq!(creds.client_id, "web-id.apps.googleusercontent.com");
+        assert_eq!(creds.client_secret, "web-secret");
+    }
+
+    #[test]
+    fn credentials_from_json_flat() {
+        // Format used by gcloud and other tools
+        let json = r#"{
+            "client_id": "flat-id.apps.googleusercontent.com",
+            "client_secret": "flat-secret",
+            "token": "some-token",
+            "refresh_token": "some-refresh-token"
+        }"#;
+
+        let creds = OAuthCredentials::from_json(json).unwrap();
+        assert_eq!(creds.client_id, "flat-id.apps.googleusercontent.com");
+        assert_eq!(creds.client_secret, "flat-secret");
+    }
+
+    #[test]
+    fn credentials_from_json_invalid() {
+        let json = r#"{ "other": {} }"#;
+        let result = OAuthCredentials::from_json(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("client_id"));
+    }
+
+    #[test]
+    fn credentials_from_json_malformed() {
+        let json = "not json";
+        let result = OAuthCredentials::from_json(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("parse"));
     }
 }

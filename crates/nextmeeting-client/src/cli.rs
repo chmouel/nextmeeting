@@ -54,6 +54,14 @@ pub enum AuthProvider {
         #[arg(long, env = "GOOGLE_CLIENT_SECRET")]
         client_secret: Option<String>,
 
+        /// Path to Google Cloud Console credentials JSON file
+        ///
+        /// This is the JSON file downloaded from the Google Cloud Console
+        /// OAuth 2.0 credentials page. Alternative to providing client_id
+        /// and client_secret separately.
+        #[arg(long, env = "GOOGLE_CREDENTIALS_FILE")]
+        credentials_file: Option<PathBuf>,
+
         /// Google Workspace domain (optional)
         #[arg(long)]
         domain: Option<String>,

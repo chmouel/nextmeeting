@@ -31,4 +31,8 @@ pub enum ProtocolError {
     /// Empty message received.
     #[error("empty message")]
     EmptyMessage,
+
+    /// Operation timed out.
+    #[error("timeout during {operation}")]
+    Timeout { operation: String },
 }

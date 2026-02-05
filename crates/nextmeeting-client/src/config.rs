@@ -64,13 +64,22 @@ impl ClientConfig {
 
 /// Google Calendar provider settings.
 #[cfg(feature = "google")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GoogleSettings {
     /// OAuth client ID.
+    #[serde(default)]
     pub client_id: String,
 
     /// OAuth client secret.
+    #[serde(default)]
     pub client_secret: String,
+
+    /// Path to Google Cloud Console credentials JSON file.
+    ///
+    /// This is the JSON file downloaded from the Google Cloud Console OAuth 2.0
+    /// credentials page. If provided, client_id and client_secret are extracted
+    /// from this file.
+    pub credentials_file: Option<PathBuf>,
 
     /// Google Workspace domain (optional).
     pub domain: Option<String>,
