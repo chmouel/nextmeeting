@@ -51,7 +51,7 @@ nextmeeting/
 - [x] Link test corpus
 - [x] Output formatting (TTY/Waybar/Polybar/JSON)
 - [x] Golden tests for outputs
-- [ ] Protocol v1 framing + types
+- [x] Protocol v1 framing + types
 - [ ] Tracing setup
 
 ### Phase 1 — Provider Abstraction

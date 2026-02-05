@@ -402,6 +402,14 @@ dependencies = [
 [[package]]
 name = "nextmeeting-protocol"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "insta",
+ "nextmeeting-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "nextmeeting-providers"

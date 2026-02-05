@@ -6,3 +6,11 @@ license.workspace = true
 description = "IPC framing and request/response types"
 
 [dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+nextmeeting-core = { path = "../nextmeeting-core" }
+
+[dev-dependencies]
+insta.workspace = true
