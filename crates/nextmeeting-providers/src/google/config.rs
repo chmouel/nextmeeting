@@ -41,8 +41,9 @@ pub struct NestedCredentials {
     pub client_id: String,
     /// The OAuth 2.0 client secret.
     pub client_secret: String,
-    /// The project ID (optional).
+    /// The project ID (optional, present in the JSON but not used).
     #[serde(default)]
+    #[allow(dead_code)]
     pub project_id: Option<String>,
 }
 

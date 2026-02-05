@@ -65,10 +65,10 @@ pub async fn google(
     }
 
     // Apply token path from config
-    if let Some(ref google_settings) = config.google {
-        if let Some(ref path) = google_settings.token_path {
-            google_config = google_config.with_token_path(path);
-        }
+    if let Some(ref google_settings) = config.google
+        && let Some(ref path) = google_settings.token_path
+    {
+        google_config = google_config.with_token_path(path);
     }
 
     // Create the provider

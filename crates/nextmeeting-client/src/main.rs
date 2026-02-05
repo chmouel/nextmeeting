@@ -40,8 +40,7 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli) -> ClientResult<()> {
     // Load configuration
     let config = if let Some(ref path) = cli.config {
-        ClientConfig::load_from(path)
-            .map_err(|e| nextmeeting_client::error::ClientError::Config(e))?
+        ClientConfig::load_from(path).map_err(nextmeeting_client::error::ClientError::Config)?
     } else {
         ClientConfig::load().unwrap_or_default()
     };

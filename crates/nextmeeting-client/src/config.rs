@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for the nextmeeting client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClientConfig {
     /// Google Calendar settings.
@@ -14,16 +14,6 @@ pub struct ClientConfig {
 
     /// Debug mode.
     pub debug: bool,
-}
-
-impl Default for ClientConfig {
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "google")]
-            google: None,
-            debug: false,
-        }
-    }
 }
 
 impl ClientConfig {
