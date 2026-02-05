@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
@@ -37,11 +37,11 @@ pub struct SchedulerConfig {
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
-            sync_interval: Duration::from_secs(300),        // 5 minutes
-            jitter_fraction: 0.1,                           // 10% jitter
-            refresh_cooldown: Duration::from_secs(30),      // 30 seconds
-            initial_backoff: Duration::from_secs(5),        // 5 seconds
-            max_backoff: Duration::from_secs(300),          // 5 minutes
+            sync_interval: Duration::from_secs(300),   // 5 minutes
+            jitter_fraction: 0.1,                      // 10% jitter
+            refresh_cooldown: Duration::from_secs(30), // 30 seconds
+            initial_backoff: Duration::from_secs(5),   // 5 seconds
+            max_backoff: Duration::from_secs(300),     // 5 minutes
             backoff_multiplier: 2.0,
             max_consecutive_failures: 10,
         }
@@ -70,12 +70,7 @@ impl SchedulerConfig {
     }
 
     /// Builder: set backoff parameters.
-    pub fn with_backoff(
-        mut self,
-        initial: Duration,
-        max: Duration,
-        multiplier: f64,
-    ) -> Self {
+    pub fn with_backoff(mut self, initial: Duration, max: Duration, multiplier: f64) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
         self.backoff_multiplier = multiplier;
@@ -97,10 +92,12 @@ impl SchedulerConfig {
         }
 
         let base = self.initial_backoff.as_secs_f64();
-        let multiplier = self.backoff_multiplier.powi(consecutive_failures as i32 - 1);
+        let multiplier = self
+            .backoff_multiplier
+            .powi(consecutive_failures as i32 - 1);
         let delay = base * multiplier;
         let max = self.max_backoff.as_secs_f64();
-        
+
         Duration::from_secs_f64(delay.min(max))
     }
 }
@@ -109,12 +106,12 @@ impl SchedulerConfig {
 /// Uses the current time to generate a value in [-range, range].
 fn rand_jitter(range: f64) -> f64 {
     use std::time::SystemTime;
-    
+
     let nanos = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .subsec_nanos();
-    
+
     // Map nanos to [-range, range]
     let fraction = (nanos as f64) / (1_000_000_000.0);
     (fraction * 2.0 - 1.0) * range
@@ -260,7 +257,7 @@ impl Scheduler {
         Fut: std::future::Future<Output = Result<(), String>> + Send,
     {
         let mut command_rx = self.command_rx.take().expect("run called twice");
-        
+
         info!(
             interval_secs = self.config.sync_interval.as_secs(),
             "Scheduler started"
@@ -281,7 +278,7 @@ impl Scheduler {
                         continue;
                     }
                     drop(state);
-                    
+
                     self.do_sync(&sync_fn).await;
                 }
                 cmd = command_rx.recv() => {
@@ -295,7 +292,7 @@ impl Scheduler {
                             let state = self.state.read().await;
                             let in_cooldown = state.in_cooldown(self.config.refresh_cooldown);
                             drop(state);
-                            
+
                             if force || !in_cooldown {
                                 self.state.write().await.record_refresh();
                                 self.do_sync(&sync_fn).await;
@@ -323,7 +320,7 @@ impl Scheduler {
 
     async fn calculate_next_delay(&self) -> Duration {
         let state = self.state.read().await;
-        
+
         // If we have consecutive failures, use backoff
         if state.consecutive_failures > 0 {
             let backoff = self.config.backoff_delay(state.consecutive_failures);
@@ -392,8 +389,13 @@ impl SchedulerHandle {
     }
 
     /// Triggers a refresh (respects cooldown unless force is true).
-    pub async fn refresh(&self, force: bool) -> Result<(), mpsc::error::SendError<SchedulerCommand>> {
-        self.command_tx.send(SchedulerCommand::Refresh { force }).await
+    pub async fn refresh(
+        &self,
+        force: bool,
+    ) -> Result<(), mpsc::error::SendError<SchedulerCommand>> {
+        self.command_tx
+            .send(SchedulerCommand::Refresh { force })
+            .await
     }
 
     /// Pauses the scheduler.
@@ -449,8 +451,7 @@ mod tests {
 
     #[test]
     fn config_next_sync_delay() {
-        let config = SchedulerConfig::new(Duration::from_secs(60))
-            .with_jitter(0.1);
+        let config = SchedulerConfig::new(Duration::from_secs(60)).with_jitter(0.1);
 
         let delay = config.next_sync_delay();
         // Should be within 10% jitter
@@ -460,18 +461,17 @@ mod tests {
 
     #[test]
     fn config_backoff_delay() {
-        let config = SchedulerConfig::default()
-            .with_backoff(
-                Duration::from_secs(5),
-                Duration::from_secs(300),
-                2.0,
-            );
+        let config = SchedulerConfig::default().with_backoff(
+            Duration::from_secs(5),
+            Duration::from_secs(300),
+            2.0,
+        );
 
         assert_eq!(config.backoff_delay(0), Duration::ZERO);
         assert_eq!(config.backoff_delay(1), Duration::from_secs(5));
         assert_eq!(config.backoff_delay(2), Duration::from_secs(10));
         assert_eq!(config.backoff_delay(3), Duration::from_secs(20));
-        
+
         // Should be capped at max
         assert_eq!(config.backoff_delay(10), Duration::from_secs(300));
     }
@@ -480,9 +480,9 @@ mod tests {
     fn state_record_success() {
         let mut state = SchedulerState::new();
         state.consecutive_failures = 5;
-        
+
         state.record_success();
-        
+
         assert_eq!(state.consecutive_failures, 0);
         assert!(state.last_sync.is_some());
         assert!(state.last_error.is_none());
@@ -491,9 +491,9 @@ mod tests {
     #[test]
     fn state_record_failure() {
         let mut state = SchedulerState::new();
-        
+
         state.record_failure("test error");
-        
+
         assert_eq!(state.consecutive_failures, 1);
         assert!(state.last_attempt.is_some());
         assert_eq!(state.last_error, Some("test error".to_string()));
@@ -503,12 +503,12 @@ mod tests {
     fn state_cooldown() {
         let mut state = SchedulerState::new();
         let cooldown = Duration::from_millis(50);
-        
+
         assert!(!state.in_cooldown(cooldown));
-        
+
         state.record_refresh();
         assert!(state.in_cooldown(cooldown));
-        
+
         std::thread::sleep(Duration::from_millis(60));
         assert!(!state.in_cooldown(cooldown));
     }
@@ -524,13 +524,15 @@ mod tests {
 
         // Run scheduler in background
         let scheduler_task = tokio::spawn(async move {
-            scheduler.run(move || {
-                let count = sync_count_clone.clone();
-                async move {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    Ok(())
-                }
-            }).await;
+            scheduler
+                .run(move || {
+                    let count = sync_count_clone.clone();
+                    async move {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                })
+                .await;
         });
 
         // Wait for initial sync
@@ -559,13 +561,12 @@ mod tests {
 
     #[tokio::test]
     async fn scheduler_backoff_on_failure() {
-        let config = SchedulerConfig::new(Duration::from_secs(1))
-            .with_backoff(
-                Duration::from_millis(10),
-                Duration::from_millis(100),
-                2.0,
-            );
-        
+        let config = SchedulerConfig::new(Duration::from_secs(1)).with_backoff(
+            Duration::from_millis(10),
+            Duration::from_millis(100),
+            2.0,
+        );
+
         let scheduler = Scheduler::new(config);
         let state = scheduler.state();
         let handle = scheduler.handle();
@@ -574,22 +575,24 @@ mod tests {
         let fail_count_clone = fail_count.clone();
 
         let scheduler_task = tokio::spawn(async move {
-            scheduler.run(move || {
-                let count = fail_count_clone.clone();
-                async move {
-                    let n = count.fetch_add(1, Ordering::SeqCst);
-                    if n < 3 {
-                        Err(format!("Failure {}", n))
-                    } else {
-                        Ok(())
+            scheduler
+                .run(move || {
+                    let count = fail_count_clone.clone();
+                    async move {
+                        let n = count.fetch_add(1, Ordering::SeqCst);
+                        if n < 3 {
+                            Err(format!("Failure {}", n))
+                        } else {
+                            Ok(())
+                        }
                     }
-                }
-            }).await;
+                })
+                .await;
         });
 
         // Wait for initial failures and recovery
         tokio::time::sleep(Duration::from_millis(200)).await;
-        
+
         let current_state = state.read().await;
         // Should have recovered after 3 failures
         assert!(fail_count.load(Ordering::SeqCst) >= 3);

@@ -54,12 +54,7 @@ pub async fn google(
     let mut google_config = GoogleConfig::new(credentials);
 
     // Apply domain from CLI or config
-    let final_domain = domain.or_else(|| {
-        config
-            .google
-            .as_ref()
-            .and_then(|g| g.domain.clone())
-    });
+    let final_domain = domain.or_else(|| config.google.as_ref().and_then(|g| g.domain.clone()));
     if let Some(d) = final_domain {
         google_config = google_config.with_domain(d);
     }

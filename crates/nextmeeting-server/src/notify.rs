@@ -212,14 +212,14 @@ impl NotifyEngine {
             }
 
             for &notify_minutes in &self.config.notify_minutes {
-                let notify_time = meeting.start_local
-                    - chrono::Duration::minutes(notify_minutes as i64);
+                let notify_time =
+                    meeting.start_local - chrono::Duration::minutes(notify_minutes as i64);
 
                 // Check if we're within the notification window
                 // (notify_time <= now < meeting.start_local)
                 if now >= notify_time && now < meeting.start_local {
                     let hash = notification_hash(meeting, notify_minutes);
-                    
+
                     let mut state = self.state.write().await;
                     if !state.was_sent(&hash) {
                         if self.send_notification(meeting, notify_minutes).await {
@@ -244,10 +244,7 @@ impl NotifyEngine {
             format!("Meeting in {} minutes: {}", minutes_before, meeting.title)
         };
 
-        let body = format!(
-            "Starts at {}",
-            meeting.start_local.format("%H:%M")
-        );
+        let body = format!("Starts at {}", meeting.start_local.format("%H:%M"));
 
         let urgency = if minutes_before <= 1 {
             Urgency::Critical

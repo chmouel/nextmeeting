@@ -60,14 +60,14 @@ impl SignalHandler {
         let reload_tx = self.reload_tx.clone();
 
         tokio::spawn(async move {
-            use tokio::signal::unix::{signal, SignalKind};
+            use tokio::signal::unix::{SignalKind, signal};
 
-            let mut sigterm = signal(SignalKind::terminate())
-                .expect("Failed to install SIGTERM handler");
-            let mut sigint = signal(SignalKind::interrupt())
-                .expect("Failed to install SIGINT handler");
-            let mut sighup = signal(SignalKind::hangup())
-                .expect("Failed to install SIGHUP handler");
+            let mut sigterm =
+                signal(SignalKind::terminate()).expect("Failed to install SIGTERM handler");
+            let mut sigint =
+                signal(SignalKind::interrupt()).expect("Failed to install SIGINT handler");
+            let mut sighup =
+                signal(SignalKind::hangup()).expect("Failed to install SIGHUP handler");
 
             loop {
                 tokio::select! {
@@ -230,24 +230,24 @@ mod tests {
     #[tokio::test]
     async fn signal_handler_shutdown() {
         let handler = SignalHandler::new();
-        
+
         assert!(!handler.is_shutdown());
-        
+
         // Trigger shutdown programmatically
         handler.trigger_shutdown();
-        
+
         assert!(handler.is_shutdown());
     }
 
     #[tokio::test]
     async fn signal_handler_reload() {
         let handler = SignalHandler::new();
-        
+
         assert!(!handler.is_reload());
-        
+
         // Trigger reload programmatically
         handler.trigger_reload();
-        
+
         assert!(handler.is_reload());
     }
 

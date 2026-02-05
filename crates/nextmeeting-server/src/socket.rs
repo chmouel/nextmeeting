@@ -12,7 +12,7 @@ use tokio::sync::Semaphore;
 use tracing::{debug, error, info, warn};
 
 use nextmeeting_protocol::{
-    Envelope, ProtocolError, Request, Response, MAX_MESSAGE_SIZE, PROTOCOL_VERSION,
+    Envelope, MAX_MESSAGE_SIZE, PROTOCOL_VERSION, ProtocolError, Request, Response,
 };
 
 use crate::config::ServerConfig;
@@ -134,11 +134,7 @@ impl SocketServer {
     /// Runs the server accept loop with a shutdown signal.
     ///
     /// The server will stop when the shutdown future completes.
-    pub async fn run_until_shutdown<F, Fut, S>(
-        &self,
-        handler: F,
-        shutdown: S,
-    ) -> ServerResult<()>
+    pub async fn run_until_shutdown<F, Fut, S>(&self, handler: F, shutdown: S) -> ServerResult<()>
     where
         F: Fn(Connection) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,
@@ -226,8 +222,8 @@ impl Connection {
             }
         }
 
-        let envelope: Envelope<Request> = serde_json::from_slice(&payload)
-            .map_err(nextmeeting_protocol::ProtocolError::from)?;
+        let envelope: Envelope<Request> =
+            serde_json::from_slice(&payload).map_err(nextmeeting_protocol::ProtocolError::from)?;
 
         // Validate protocol version
         if !envelope.is_compatible() {
@@ -243,8 +239,8 @@ impl Connection {
 
     /// Writes a response envelope to the connection.
     pub async fn write_response(&mut self, envelope: &Envelope<Response>) -> ServerResult<()> {
-        let json = serde_json::to_vec(envelope)
-            .map_err(nextmeeting_protocol::ProtocolError::from)?;
+        let json =
+            serde_json::to_vec(envelope).map_err(nextmeeting_protocol::ProtocolError::from)?;
 
         let len = json.len() as u32;
         if len > MAX_MESSAGE_SIZE {
@@ -332,12 +328,12 @@ mod tests {
     #[tokio::test]
     async fn connection_roundtrip() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        
+
         let dir = tempdir().unwrap();
         let socket_path = dir.path().join("test.sock");
 
-        let config = ServerConfig::new(&socket_path)
-            .with_connection_timeout(Duration::from_secs(5));
+        let config =
+            ServerConfig::new(&socket_path).with_connection_timeout(Duration::from_secs(5));
         let server = SocketServer::new(config).await.unwrap();
 
         // Spawn a client task
@@ -356,11 +352,15 @@ mod tests {
 
             // Read response
             let mut len_buf = [0u8; 4];
-            AsyncReadExt::read_exact(&mut stream, &mut len_buf).await.unwrap();
+            AsyncReadExt::read_exact(&mut stream, &mut len_buf)
+                .await
+                .unwrap();
             let len = u32::from_be_bytes(len_buf) as usize;
 
             let mut payload = vec![0u8; len];
-            AsyncReadExt::read_exact(&mut stream, &mut payload).await.unwrap();
+            AsyncReadExt::read_exact(&mut stream, &mut payload)
+                .await
+                .unwrap();
 
             let response: Envelope<Response> = serde_json::from_slice(&payload).unwrap();
             assert_eq!(response.request_id, "test-1");
@@ -390,17 +390,18 @@ mod tests {
         // Connect and immediately disconnect
         let socket_path_clone = socket_path.clone();
         let handle = tokio::spawn(async move {
-            let _stream: tokio::net::UnixStream = tokio::net::UnixStream::connect(&socket_path_clone)
-                .await
-                .unwrap();
+            let _stream: tokio::net::UnixStream =
+                tokio::net::UnixStream::connect(&socket_path_clone)
+                    .await
+                    .unwrap();
             // Stream dropped, connection closed
         });
 
         let mut conn = server.accept().await.unwrap();
-        
+
         // Wait for client to disconnect
         handle.await.unwrap();
-        
+
         // Read should return None (clean EOF)
         let result = conn.read_request().await.unwrap();
         assert!(result.is_none());

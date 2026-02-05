@@ -38,8 +38,7 @@ pub use handler::{
     RequestHandler, ServerState, SharedState, make_connection_handler, new_shared_state,
 };
 pub use notify::{
-    NotifyConfig, NotifyEngine, NotifyState, SharedNotifyState, new_notify_state,
-    notification_hash,
+    NotifyConfig, NotifyEngine, NotifyState, SharedNotifyState, new_notify_state, notification_hash,
 };
 pub use pidfile::{PidFile, default_pid_path};
 pub use scheduler::{

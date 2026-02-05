@@ -84,7 +84,9 @@ async fn run(cli: Cli) -> ClientResult<()> {
             println!("Run 'nextmeeting --help' for usage information.");
             println!();
             println!("Quick start:");
-            println!("  1. Set up Google Calendar: nextmeeting auth google --client-id <ID> --client-secret <SECRET>");
+            println!(
+                "  1. Set up Google Calendar: nextmeeting auth google --client-id <ID> --client-secret <SECRET>"
+            );
             println!("  2. View next meeting: nextmeeting");
             Ok(())
         }

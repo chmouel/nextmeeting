@@ -10,9 +10,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use nextmeeting_core::MeetingView;
-use nextmeeting_protocol::{
-    MeetingsFilter, ProviderStatus, Request, Response, StatusInfo,
-};
+use nextmeeting_protocol::{MeetingsFilter, ProviderStatus, Request, Response, StatusInfo};
 
 use crate::error::{ServerError, ServerResult};
 use crate::socket::Connection;
@@ -246,9 +244,9 @@ impl RequestHandler {
 pub fn make_connection_handler(
     state: SharedState,
 ) -> impl Fn(Connection) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-       + Send
-       + Sync
-       + 'static {
++ Send
++ Sync
++ 'static {
     move |conn| {
         let handler = RequestHandler::new(state.clone());
         Box::pin(async move {
