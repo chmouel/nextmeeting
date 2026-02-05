@@ -1,0 +1,34 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 429
+expression: output
+---
+{
+  "meetings": [
+    {
+      "id": "evt-ongoing",
+      "title": "Sprint Review",
+      "start_time": "[start_time]",
+      "end_time": "[end_time]",
+      "time_display": "20 minutes to go",
+      "is_all_day": false,
+      "is_ongoing": true,
+      "minutes_until": -10,
+      "meeting_url": "https://zoom.us/j/123456789",
+      "urgency": "ongoing"
+    }
+  ],
+  "next_meeting": {
+    "id": "evt-ongoing",
+    "title": "Sprint Review",
+    "start_time": "[start_time]",
+    "end_time": "[end_time]",
+    "time_display": "20 minutes to go",
+    "is_all_day": false,
+    "is_ongoing": true,
+    "minutes_until": -10,
+    "meeting_url": "https://zoom.us/j/123456789",
+    "urgency": "ongoing"
+  },
+  "count": 1
+}

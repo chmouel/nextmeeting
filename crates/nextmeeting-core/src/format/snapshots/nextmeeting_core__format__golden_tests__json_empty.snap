@@ -1,0 +1,9 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 399
+expression: output
+---
+{
+  "meetings": [],
+  "count": 0
+}

@@ -1,0 +1,60 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 450
+expression: output
+---
+{
+  "meetings": [
+    {
+      "id": "evt-15",
+      "title": "Team Standup",
+      "start_time": "[start_time]",
+      "end_time": "[end_time]",
+      "time_display": "In 15 minutes",
+      "is_all_day": false,
+      "is_ongoing": false,
+      "minutes_until": 15,
+      "meeting_url": "https://meet.google.com/abc-15",
+      "calendar_url": "https://calendar.google.com/event/15",
+      "urgency": "upcoming"
+    },
+    {
+      "id": "evt-60",
+      "title": "1:1 Meeting",
+      "start_time": "[start_time]",
+      "end_time": "[end_time]",
+      "time_display": "In 1 hour",
+      "is_all_day": false,
+      "is_ongoing": false,
+      "minutes_until": 60,
+      "meeting_url": "https://meet.google.com/abc-60",
+      "calendar_url": "https://calendar.google.com/event/60",
+      "urgency": "upcoming"
+    },
+    {
+      "id": "evt-allday",
+      "title": "Holiday",
+      "start_time": "[start_time]",
+      "end_time": "[end_time]",
+      "time_display": "All day",
+      "is_all_day": true,
+      "is_ongoing": true,
+      "minutes_until": -600,
+      "urgency": "all_day"
+    }
+  ],
+  "next_meeting": {
+    "id": "evt-15",
+    "title": "Team Standup",
+    "start_time": "[start_time]",
+    "end_time": "[end_time]",
+    "time_display": "In 15 minutes",
+    "is_all_day": false,
+    "is_ongoing": false,
+    "minutes_until": 15,
+    "meeting_url": "https://meet.google.com/abc-15",
+    "calendar_url": "https://calendar.google.com/event/15",
+    "urgency": "upcoming"
+  },
+  "count": 3
+}

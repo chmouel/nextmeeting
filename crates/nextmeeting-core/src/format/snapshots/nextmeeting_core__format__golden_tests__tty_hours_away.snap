@@ -1,0 +1,31 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 543
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "In 2 hours and 30 minutes - Later Today",
+        urgency: Upcoming,
+        meeting: MeetingView {
+            id: "evt-150",
+            title: "Later Today",
+            start_local: 2025-02-05T13:30:00+01:00,
+            end_local: 2025-02-05T14:00:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-150",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/150",
+            ),
+        },
+    },
+]

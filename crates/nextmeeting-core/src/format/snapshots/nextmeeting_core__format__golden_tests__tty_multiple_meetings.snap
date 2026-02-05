@@ -1,0 +1,79 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 184
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "In 15 minutes - Team Standup",
+        urgency: Upcoming,
+        meeting: MeetingView {
+            id: "evt-15",
+            title: "Team Standup",
+            start_local: 2025-02-05T11:15:00+01:00,
+            end_local: 2025-02-05T11:45:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-15",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/15",
+            ),
+        },
+    },
+    FormattedMeeting {
+        text: "In 1 hour - 1:1 with Manager",
+        urgency: Upcoming,
+        meeting: MeetingView {
+            id: "evt-60",
+            title: "1:1 with Manager",
+            start_local: 2025-02-05T12:00:00+01:00,
+            end_local: 2025-02-05T12:30:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-60",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/60",
+            ),
+        },
+    },
+    FormattedMeeting {
+        text: "In 2 hours - Design Review",
+        urgency: Upcoming,
+        meeting: MeetingView {
+            id: "evt-120",
+            title: "Design Review",
+            start_local: 2025-02-05T13:00:00+01:00,
+            end_local: 2025-02-05T13:30:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-120",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/120",
+            ),
+        },
+    },
+]

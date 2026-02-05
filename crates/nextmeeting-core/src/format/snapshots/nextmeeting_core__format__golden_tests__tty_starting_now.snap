@@ -1,0 +1,31 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 528
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "30 minutes to go - Starting Now",
+        urgency: Ongoing,
+        meeting: MeetingView {
+            id: "evt-0",
+            title: "Starting Now",
+            start_local: 2025-02-05T11:00:00+01:00,
+            end_local: 2025-02-05T11:30:00+01:00,
+            is_all_day: false,
+            is_ongoing: true,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-0",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/0",
+            ),
+        },
+    },
+]

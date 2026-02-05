@@ -1,0 +1,22 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 165
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "All day - Company Holiday",
+        urgency: AllDay,
+        meeting: MeetingView {
+            id: "evt-allday",
+            title: "Company Holiday",
+            start_local: 2025-02-05T01:00:00+01:00,
+            end_local: 2025-02-06T01:00:00+01:00,
+            is_all_day: true,
+            is_ongoing: true,
+            primary_link: None,
+            secondary_links: [],
+            calendar_url: None,
+        },
+    },
+]

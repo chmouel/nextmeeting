@@ -1,0 +1,31 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 135
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "In 3 minutes - Urgent Sync",
+        urgency: Soon,
+        meeting: MeetingView {
+            id: "evt-3",
+            title: "Urgent Sync",
+            start_local: 2025-02-05T11:03:00+01:00,
+            end_local: 2025-02-05T11:33:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-3",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/3",
+            ),
+        },
+    },
+]

@@ -1,0 +1,10 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 284
+expression: output
+---
+{
+  "text": "All day - Company Holiday",
+  "tooltip": "All day - Company Holiday",
+  "class": "allday"
+}

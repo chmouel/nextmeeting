@@ -1,0 +1,31 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 558
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "In 1 hour - In One Hour",
+        urgency: Upcoming,
+        meeting: MeetingView {
+            id: "evt-60",
+            title: "In One Hour",
+            start_local: 2025-02-05T12:00:00+01:00,
+            end_local: 2025-02-05T12:30:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-60",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/60",
+            ),
+        },
+    },
+]

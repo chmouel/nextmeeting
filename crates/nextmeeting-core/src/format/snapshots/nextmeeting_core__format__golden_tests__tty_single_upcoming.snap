@@ -1,0 +1,31 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 120
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "In 15 minutes - Team Standup",
+        urgency: Upcoming,
+        meeting: MeetingView {
+            id: "evt-15",
+            title: "Team Standup",
+            start_local: 2025-02-05T11:15:00+01:00,
+            end_local: 2025-02-05T11:45:00+01:00,
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: Some(
+                EventLink {
+                    kind: GoogleMeet,
+                    url: "https://meet.google.com/abc-15",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: Some(
+                "https://calendar.google.com/event/15",
+            ),
+        },
+    },
+]

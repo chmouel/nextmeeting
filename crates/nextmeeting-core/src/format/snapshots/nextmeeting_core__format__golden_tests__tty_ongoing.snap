@@ -1,0 +1,29 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 150
+expression: output
+---
+[
+    FormattedMeeting {
+        text: "20 minutes to go - Sprint Review",
+        urgency: Ongoing,
+        meeting: MeetingView {
+            id: "evt-ongoing",
+            title: "Sprint Review",
+            start_local: 2025-02-05T10:50:00+01:00,
+            end_local: 2025-02-05T11:20:00+01:00,
+            is_all_day: false,
+            is_ongoing: true,
+            primary_link: Some(
+                EventLink {
+                    kind: Zoom,
+                    url: "https://zoom.us/j/123456789",
+                    meeting_id: None,
+                    passcode: None,
+                },
+            ),
+            secondary_links: [],
+            calendar_url: None,
+        },
+    },
+]

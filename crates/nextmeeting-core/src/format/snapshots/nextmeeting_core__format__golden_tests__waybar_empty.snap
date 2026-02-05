@@ -1,0 +1,9 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 236
+expression: output
+---
+{
+  "text": "No meetings",
+  "tooltip": "No upcoming meetings"
+}

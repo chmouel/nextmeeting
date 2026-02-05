@@ -1,0 +1,10 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+assertion_line: 248
+expression: output
+---
+{
+  "text": "In 15 minutes - Team Standup",
+  "tooltip": "11:15 - Team Standup",
+  "class": "upcoming"
+}
