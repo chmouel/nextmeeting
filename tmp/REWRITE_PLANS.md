@@ -77,7 +77,7 @@ nextmeeting/
 - [x] Events.list with singleEvents=true
 - [x] ETag conditional fetch
 - [x] Backoff on rate limits
-- [ ] `nextmeeting auth google` command
+- [x] `nextmeeting auth google` command
 
 ### Phase 4 — Server Runtime
 
