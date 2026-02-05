@@ -72,11 +72,11 @@ nextmeeting/
 
 ### Phase 3 — Google Provider
 
-- [ ] OAuth PKCE loopback
-- [ ] Token persistence + scope tracking
-- [ ] Events.list with singleEvents=true
-- [ ] ETag conditional fetch
-- [ ] Backoff on rate limits
+- [x] OAuth PKCE loopback
+- [x] Token persistence + scope tracking
+- [x] Events.list with singleEvents=true
+- [x] ETag conditional fetch
+- [x] Backoff on rate limits
 - [ ] `nextmeeting auth google` command
 
 ### Phase 4 — Server Runtime

@@ -184,8 +184,8 @@ fn parse_auth_params(content: &str) -> HashMap<String, String> {
 
 /// Generates a random client nonce.
 fn generate_cnonce() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 8] = rng.r#gen();
+    let mut rng = rand::rng();
+    let bytes: [u8; 8] = rng.random();
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
