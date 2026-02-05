@@ -44,6 +44,8 @@
 //! }
 //! ```
 
+#[cfg(feature = "caldav")]
+pub mod caldav;
 pub mod error;
 pub mod normalize;
 pub mod provider;

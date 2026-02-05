@@ -63,12 +63,12 @@ nextmeeting/
 
 ### Phase 2 — CalDAV Provider
 
-- [ ] HTTP client with digest auth
-- [ ] PROPFIND calendar discovery
-- [ ] REPORT with expand
-- [ ] ICS parsing (`icalendar` crate)
-- [ ] URL extraction from description/location
-- [ ] TLS toggle
+- [x] HTTP client with digest auth
+- [x] PROPFIND calendar discovery
+- [x] REPORT with expand
+- [x] ICS parsing (`icalendar` crate)
+- [x] URL extraction from description/location
+- [x] TLS toggle
 
 ### Phase 3 — Google Provider
 
