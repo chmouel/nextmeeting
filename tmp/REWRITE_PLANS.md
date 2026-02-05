@@ -52,7 +52,7 @@ nextmeeting/
 - [x] Output formatting (TTY/Waybar/Polybar/JSON)
 - [x] Golden tests for outputs
 - [x] Protocol v1 framing + types
-- [ ] Tracing setup
+- [x] Tracing setup
 
 ### Phase 1 — Provider Abstraction
 
