@@ -16,6 +16,14 @@ pub enum ClientError {
     Io(std::io::Error),
     /// Authentication required.
     AuthRequired(String),
+    /// Connection to server failed.
+    Connection(String),
+    /// Protocol/framing error.
+    Protocol(String),
+    /// Request timed out.
+    Timeout(String),
+    /// Action failed (open, copy, etc).
+    Action(String),
 }
 
 impl fmt::Display for ClientError {
@@ -25,6 +33,10 @@ impl fmt::Display for ClientError {
             Self::Provider(msg) => write!(f, "provider error: {}", msg),
             Self::Io(err) => write!(f, "IO error: {}", err),
             Self::AuthRequired(msg) => write!(f, "authentication required: {}", msg),
+            Self::Connection(msg) => write!(f, "connection error: {}", msg),
+            Self::Protocol(msg) => write!(f, "protocol error: {}", msg),
+            Self::Timeout(msg) => write!(f, "timeout: {}", msg),
+            Self::Action(msg) => write!(f, "action failed: {}", msg),
         }
     }
 }

@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
-use notify_rust::{Notification, Urgency};
+use notify_rust::Notification;
+#[cfg(target_os = "linux")]
+use notify_rust::Urgency;
 use sha2::{Digest, Sha256};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
@@ -246,6 +248,7 @@ impl NotifyEngine {
 
         let body = format!("Starts at {}", meeting.start_local.format("%H:%M"));
 
+        #[cfg(target_os = "linux")]
         let urgency = if minutes_before <= 1 {
             Urgency::Critical
         } else if minutes_before <= 5 {
@@ -260,13 +263,17 @@ impl NotifyEngine {
             "Sending notification"
         );
 
-        match Notification::new()
+        let mut notification = Notification::new();
+        notification
             .appname(&self.config.app_name)
             .summary(&summary)
             .body(&body)
-            .urgency(urgency)
-            .timeout(Duration::from_secs(self.config.timeout_secs as u64))
-            .show()
+            .timeout(Duration::from_secs(self.config.timeout_secs as u64));
+
+        #[cfg(target_os = "linux")]
+        notification.urgency(urgency);
+
+        match notification.show()
         {
             Ok(_) => {
                 info!(

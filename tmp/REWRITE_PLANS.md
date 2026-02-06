@@ -92,12 +92,12 @@ nextmeeting/
 
 ### Phase 5 — Client
 
-- [ ] clap args (MVP subset)
-- [ ] Socket client with timeout
-- [ ] Auto-spawn fallback
-- [ ] Output rendering (OSC8 hyperlinks)
-- [ ] Actions: open, copy, snooze
-- [ ] `config dump` / `validate` / `status`
+- [x] clap args (MVP subset)
+- [x] Socket client with timeout
+- [x] Auto-spawn fallback
+- [x] Output rendering (OSC8 hyperlinks)
+- [x] Actions: open, copy, snooze
+- [x] `config dump` / `validate` / `status`
 
 ### Phase 6 — Packaging
 

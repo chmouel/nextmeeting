@@ -1,14 +1,20 @@
 //! nextmeeting CLI entry point.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::Parser;
-use tracing::Level;
+use tracing::{Level, debug, info};
 use tracing_subscriber::EnvFilter;
 
 use nextmeeting_client::cli::{AuthProvider, Cli, Command, ConfigAction};
 use nextmeeting_client::config::ClientConfig;
-use nextmeeting_client::error::ClientResult;
+use nextmeeting_client::error::{ClientError, ClientResult};
+use nextmeeting_client::socket::SocketClient;
+
+use nextmeeting_core::{FormatOptions, MeetingView, OutputFormat, OutputFormatter};
+use nextmeeting_protocol::{MeetingsFilter, Request, Response};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -40,7 +46,7 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli) -> ClientResult<()> {
     // Load configuration
     let config = if let Some(ref path) = cli.config {
-        ClientConfig::load_from(path).map_err(nextmeeting_client::error::ClientError::Config)?
+        ClientConfig::load_from(path).map_err(ClientError::Config)?
     } else {
         ClientConfig::load().unwrap_or_default()
     };
@@ -73,22 +79,340 @@ async fn run(cli: Cli) -> ClientResult<()> {
             ConfigAction::Path => nextmeeting_client::commands::config::path(),
         },
         Some(Command::Status) => {
-            // TODO: Implement status command when server is ready
-            println!("Status command not yet implemented.");
+            let client = make_client(&cli, &config);
+            run_status(&client).await
+        }
+        Some(Command::Server) => {
+            // TODO: Wire up actual server startup with providers
+            eprintln!("Server mode not yet fully wired (requires provider config integration).");
+            eprintln!("This will start the daemon in the foreground once integrated.");
             Ok(())
         }
         None => {
-            // Default behavior: show next meeting (to be implemented)
-            println!("nextmeeting - Your next meeting at a glance");
-            println!();
-            println!("Run 'nextmeeting --help' for usage information.");
-            println!();
-            println!("Quick start:");
-            println!(
-                "  1. Set up Google Calendar: nextmeeting auth google --client-id <ID> --client-secret <SECRET>"
-            );
-            println!("  2. View next meeting: nextmeeting");
+            // Default behavior: connect to server, fetch meetings, render output
+            run_default(&cli, &config).await
+        }
+    }
+}
+
+/// Default mode: connect to the server, fetch meetings, and render output.
+async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
+    let client = make_client(cli, config);
+
+    // Handle snooze action (fire-and-forget to the server)
+    if let Some(minutes) = cli.snooze {
+        return nextmeeting_client::actions::snooze(&client, minutes).await;
+    }
+
+    // Fetch meetings from the server
+    let meetings = fetch_meetings(cli, &client).await?;
+
+    // Handle action flags (open/copy) before rendering
+    if cli.open_meet_url {
+        return nextmeeting_client::actions::open_meeting_url(&meetings);
+    }
+
+    if cli.copy_meeting_url {
+        return nextmeeting_client::actions::copy_meeting_url(&meetings);
+    }
+
+    if cli.open_calendar_day {
+        let domain = cli
+            .google_domain
+            .as_deref()
+            .or_else(|| {
+                #[cfg(feature = "google")]
+                {
+                    config
+                        .google
+                        .as_ref()
+                        .and_then(|g| g.domain.as_deref())
+                }
+                #[cfg(not(feature = "google"))]
+                {
+                    None
+                }
+            });
+        return nextmeeting_client::actions::open_calendar_day(&meetings, domain);
+    }
+
+    // Render output
+    render_output(cli, &meetings);
+
+    Ok(())
+}
+
+/// Fetches meetings from the server, with auto-spawn fallback.
+async fn fetch_meetings(cli: &Cli, client: &SocketClient) -> ClientResult<Vec<MeetingView>> {
+    // Build filter from CLI flags
+    let filter = build_filter(cli);
+    let request = if filter_is_empty(&filter) {
+        Request::get_meetings()
+    } else {
+        Request::get_meetings_with_filter(filter)
+    };
+
+    // Try to connect; if server is not running, attempt auto-spawn
+    let response = match client.send(request.clone()).await {
+        Ok(resp) => resp,
+        Err(ClientError::Connection(_)) => {
+            info!("server not running, attempting auto-spawn");
+            auto_spawn_server(client).await?;
+
+            // Retry after spawn
+            client.send(request).await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    match response {
+        Response::Meetings { meetings } => {
+            debug!(count = meetings.len(), "received meetings");
+            Ok(meetings)
+        }
+        Response::Error { error } => Err(ClientError::Protocol(format!(
+            "server error: {}",
+            error.message
+        ))),
+        other => Err(ClientError::Protocol(format!(
+            "unexpected response: {:?}",
+            other
+        ))),
+    }
+}
+
+/// Builds a MeetingsFilter from CLI flags.
+fn build_filter(cli: &Cli) -> MeetingsFilter {
+    let mut filter = MeetingsFilter::new();
+
+    if cli.today_only {
+        filter = filter.today_only(true);
+    }
+
+    if let Some(limit) = cli.limit {
+        filter = filter.limit(limit);
+    }
+
+    if cli.skip_all_day_meeting {
+        filter = filter.skip_all_day(true);
+    }
+
+    // Use the first include/exclude title pattern (protocol supports one)
+    if let Some(pattern) = cli.include_title.first() {
+        filter = filter.include_title(pattern.clone());
+    }
+
+    if let Some(pattern) = cli.exclude_title.first() {
+        filter = filter.exclude_title(pattern.clone());
+    }
+
+    filter
+}
+
+/// Returns true if the filter has no constraints.
+fn filter_is_empty(filter: &MeetingsFilter) -> bool {
+    !filter.today_only
+        && filter.limit.is_none()
+        && !filter.skip_all_day
+        && filter.include_title.is_none()
+        && filter.exclude_title.is_none()
+}
+
+/// Renders meetings to stdout based on the output format.
+fn render_output(cli: &Cli, meetings: &[MeetingView]) {
+    let format = cli.output_format();
+
+    let mut format_options = FormatOptions::default();
+    if let Some(max_len) = cli.max_title_length {
+        format_options.max_title_length = Some(max_len);
+    }
+
+    let formatter = OutputFormatter::new(format_options);
+
+    match format {
+        OutputFormat::Waybar => {
+            let output = formatter.format_waybar(meetings, &cli.no_meeting_text);
+            // serde_json output for waybar
+            match serde_json::to_string(&output) {
+                Ok(json) => println!("{}", json),
+                Err(e) => eprintln!("error: failed to serialize waybar output: {}", e),
+            }
+        }
+        OutputFormat::Polybar => {
+            let output = formatter.format_polybar(meetings, &cli.no_meeting_text);
+            println!("{}", output);
+        }
+        OutputFormat::Json => {
+            let output = formatter.format_json(meetings);
+            match serde_json::to_string_pretty(&output) {
+                Ok(json) => println!("{}", json),
+                Err(e) => eprintln!("error: failed to serialize JSON output: {}", e),
+            }
+        }
+        OutputFormat::Tty => {
+            if meetings.is_empty() {
+                println!("{}", cli.no_meeting_text);
+                return;
+            }
+
+            let formatted = formatter.format_tty(meetings);
+            for entry in &formatted {
+                println!("{}", entry.text);
+            }
+        }
+    }
+}
+
+/// Runs the status command.
+async fn run_status(client: &SocketClient) -> ClientResult<()> {
+    let response = client.send(Request::Status).await?;
+
+    match response {
+        Response::Status { info } => {
+            let uptime_str = format_duration_human(info.uptime_seconds);
+            println!("Server status:");
+            println!("  Uptime: {}", uptime_str);
+
+            if let Some(last_sync) = info.last_sync {
+                println!("  Last sync: {}", last_sync.format("%Y-%m-%d %H:%M:%S UTC"));
+            } else {
+                println!("  Last sync: never");
+            }
+
+            if let Some(snoozed) = info.snoozed_until {
+                println!(
+                    "  Snoozed until: {}",
+                    snoozed.format("%Y-%m-%d %H:%M:%S UTC")
+                );
+            }
+
+            if info.providers.is_empty() {
+                println!("  Providers: none configured");
+            } else {
+                println!("  Providers:");
+                for p in &info.providers {
+                    let health = if p.healthy { "healthy" } else { "unhealthy" };
+                    print!("    {} ({}): {} events", p.name, health, p.event_count);
+                    if let Some(ref err) = p.error {
+                        print!(" [error: {}]", err);
+                    }
+                    println!();
+                }
+            }
+
             Ok(())
         }
+        Response::Error { error } => Err(ClientError::Protocol(format!(
+            "status failed: {}",
+            error.message
+        ))),
+        _ => Err(ClientError::Protocol(
+            "unexpected response to status request".into(),
+        )),
+    }
+}
+
+/// Attempts to auto-spawn the server daemon.
+async fn auto_spawn_server(client: &SocketClient) -> ClientResult<()> {
+    use tokio::process::Command as TokioCommand;
+
+    let exe = std::env::current_exe().map_err(|e| {
+        ClientError::Connection(format!("failed to find executable: {}", e))
+    })?;
+
+    debug!(exe = %exe.display(), "spawning server process");
+
+    // Spawn the server in the background
+    let mut cmd = TokioCommand::new(&exe);
+    cmd.arg("server");
+
+    // Pass socket path if custom
+    if let Some(ref path) = resolve_socket_path_from_client(client) {
+        cmd.arg("--socket-path").arg(path);
+    }
+
+    // Detach from the current process group
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    #[cfg(unix)]
+    {
+        // SAFETY: setsid() is async-signal-safe per POSIX
+        unsafe {
+            cmd.pre_exec(|| {
+                // Create a new session so the server survives the client exiting
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+
+    cmd.spawn().map_err(|e| {
+        ClientError::Connection(format!("failed to spawn server: {}", e))
+    })?;
+
+    // Wait for the server to become ready
+    let max_retries = 20;
+    let retry_delay = Duration::from_millis(100);
+
+    for attempt in 1..=max_retries {
+        tokio::time::sleep(retry_delay).await;
+
+        if client.socket_exists() {
+            match client.ping().await {
+                Ok(true) => {
+                    debug!(attempt, "server is ready");
+                    return Ok(());
+                }
+                _ => {
+                    debug!(attempt, "server socket exists but not responding yet");
+                }
+            }
+        }
+    }
+
+    Err(ClientError::Connection(
+        "server failed to start within timeout".into(),
+    ))
+}
+
+/// Creates a SocketClient from CLI and config.
+fn make_client(cli: &Cli, _config: &ClientConfig) -> SocketClient {
+    let socket_path = cli
+        .socket_path
+        .clone()
+        .unwrap_or_else(nextmeeting_server::default_socket_path);
+
+    let timeout = Duration::from_secs(cli.timeout);
+
+    SocketClient::new(socket_path, timeout)
+}
+
+/// Helper to get the socket path from the client, if it differs from default.
+fn resolve_socket_path_from_client(client: &SocketClient) -> Option<PathBuf> {
+    let default_path = nextmeeting_server::default_socket_path();
+    if client.socket_path() != default_path {
+        Some(client.socket_path().to_path_buf())
+    } else {
+        None
+    }
+}
+
+/// Formats seconds as a human-readable duration.
+fn format_duration_human(seconds: u64) -> String {
+    let days = seconds / 86400;
+    let hours = (seconds % 86400) / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    if days > 0 {
+        format!("{}d {}h {}m {}s", days, hours, minutes, secs)
+    } else if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, secs)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, secs)
+    } else {
+        format!("{}s", secs)
     }
 }
