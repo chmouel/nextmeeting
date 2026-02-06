@@ -33,11 +33,15 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     // 1. Build providers from config
     let providers = build_providers(config)?;
     if providers.is_empty() {
-        return Err(ClientError::Config(
-            "no calendar providers configured; run `nextmeeting auth google` first, \
-             then ensure your config.toml has a [google] section"
-                .into(),
-        ));
+        let default_creds = crate::config::ClientConfig::default_data_dir().join("oauth.json");
+        return Err(ClientError::Config(format!(
+            "no calendar providers configured. To fix this, either:\n  \
+             1. Run: nextmeeting auth google --credentials-file <path-to-google-credentials.json>\n  \
+             2. Place your Google OAuth credentials JSON at {}\n  \
+             3. Add a [google] section to your config.toml with client_id/client_secret \
+                or credentials_file",
+            default_creds.display()
+        )));
     }
 
     info!(
@@ -121,12 +125,18 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
 }
 
 /// Builds calendar providers from client configuration.
+///
+/// If an explicit `[google]` section exists in config, uses that.
+/// Otherwise, attempts auto-detection by checking for credentials at
+/// the default path (`~/.local/share/nextmeeting/oauth.json`) and
+/// existing tokens at the default token path.
 fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarProvider>>> {
     let mut providers: Vec<Box<dyn CalendarProvider>> = Vec::new();
 
     #[cfg(feature = "google")]
     {
         if let Some(ref google_settings) = config.google {
+            // Explicit [google] section in config — use it (now with credential resolution)
             match google_settings.to_provider_config() {
                 Ok(google_config) => {
                     match nextmeeting_providers::google::GoogleProvider::new(google_config) {
@@ -156,10 +166,66 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
                     )));
                 }
             }
+        } else {
+            // No [google] section — try auto-detection from default paths
+            match try_auto_detect_google() {
+                Ok(Some(provider)) => {
+                    if provider.is_authenticated() {
+                        info!(
+                            "Google Calendar provider auto-detected from default credentials \
+                             (authenticated)"
+                        );
+                    } else {
+                        warn!(
+                            "Google Calendar provider auto-detected but not authenticated; \
+                             run `nextmeeting auth google` to authenticate"
+                        );
+                    }
+                    providers.push(Box::new(provider));
+                }
+                Ok(None) => {
+                    // No credentials found at default path — skip silently
+                }
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        "Found default credentials but failed to create Google provider"
+                    );
+                }
+            }
         }
     }
 
     Ok(providers)
+}
+
+/// Attempts to auto-detect a Google provider from default credential and token paths.
+///
+/// Returns `Ok(Some(provider))` if credentials were found at the default data dir,
+/// `Ok(None)` if no credentials exist, or `Err` if credentials exist but are invalid.
+#[cfg(feature = "google")]
+fn try_auto_detect_google(
+) -> Result<Option<nextmeeting_providers::google::GoogleProvider>, String> {
+    use nextmeeting_providers::google::{GoogleConfig, GoogleProvider, OAuthCredentials};
+
+    let default_creds_path =
+        crate::config::ClientConfig::default_data_dir().join("oauth.json");
+    if !default_creds_path.exists() {
+        return Ok(None);
+    }
+
+    let credentials = OAuthCredentials::from_file(&default_creds_path).map_err(|e| {
+        format!(
+            "failed to load credentials from {}: {}",
+            default_creds_path.display(),
+            e
+        )
+    })?;
+    credentials.validate().map_err(|e| e.to_string())?;
+
+    let config = GoogleConfig::new(credentials);
+    let provider = GoogleProvider::new(config).map_err(|e| e.to_string())?;
+    Ok(Some(provider))
 }
 
 /// Fetches events from all providers, normalizes them, and updates shared state.

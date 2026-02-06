@@ -68,7 +68,7 @@ pub fn default_socket_path() -> PathBuf {
     } else {
         // Fallback to /tmp with UID
         #[cfg(unix)]
-        let uid = std::process::id();
+        let uid = unsafe { libc::getuid() };
         #[cfg(not(unix))]
         let uid = 0;
         PathBuf::from(format!("/tmp/nextmeeting-{}.sock", uid))

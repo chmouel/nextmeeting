@@ -131,7 +131,7 @@ pub fn default_pid_path() -> PathBuf {
         PathBuf::from(runtime_dir).join("nextmeeting.pid")
     } else {
         #[cfg(unix)]
-        let uid = process::id();
+        let uid = unsafe { libc::getuid() };
         #[cfg(not(unix))]
         let uid = 0;
         PathBuf::from(format!("/tmp/nextmeeting-{}.pid", uid))

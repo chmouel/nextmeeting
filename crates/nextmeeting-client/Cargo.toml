@@ -34,5 +34,8 @@ uuid = { version = "1", features = ["v4"] }
 open = "5"
 arboard = "3"
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
