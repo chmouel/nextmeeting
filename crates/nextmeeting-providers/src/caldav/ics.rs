@@ -72,17 +72,17 @@ fn parse_event(event: &Event, calendar_id: &str) -> Option<RawEvent> {
     }
 
     // Recurrence ID indicates this is an instance of a recurring event
-    if event.property_value("RECURRENCE-ID").is_some() {
-        if let Some(uid) = event.get_uid() {
-            raw = raw.with_recurring(uid);
-        }
+    if event.property_value("RECURRENCE-ID").is_some()
+        && let Some(uid) = event.get_uid()
+    {
+        raw = raw.with_recurring(uid);
     }
 
     // Check for RRULE to detect recurring events
-    if event.property_value("RRULE").is_some() {
-        if let Some(uid) = event.get_uid() {
-            raw = raw.with_recurring(uid);
-        }
+    if event.property_value("RRULE").is_some()
+        && let Some(uid) = event.get_uid()
+    {
+        raw = raw.with_recurring(uid);
     }
 
     // Timestamps
@@ -127,6 +127,7 @@ fn convert_date_time(dt: DatePerhapsTime) -> RawEventTime {
 /// Extracts a URL from the event's description or location fields.
 ///
 /// This is a fallback for when there's no explicit URL property.
+#[allow(dead_code)]
 pub fn extract_url_from_text(text: &str) -> Option<String> {
     // Simple URL regex pattern - avoid problematic escapes
     let url_pattern = Regex::new(r"https?://[^\s<>]+").expect("URL regex should be valid");
@@ -134,8 +135,7 @@ pub fn extract_url_from_text(text: &str) -> Option<String> {
     url_pattern.find(text).map(|m| {
         // Clean up trailing punctuation that might have been included
         let url = m.as_str();
-        url.trim_end_matches(|c| c == ')' || c == '"' || c == '\'' || c == '>' || c == ']')
-            .to_string()
+        url.trim_end_matches([')', '"', '\'', '>', ']']).to_string()
     })
 }
 
@@ -145,6 +145,7 @@ pub fn extract_url_from_text(text: &str) -> Option<String> {
 /// - 20250205T100000Z (UTC)
 /// - 20250205T100000 (local/naive)
 /// - 20250205 (date only)
+#[allow(dead_code)]
 pub fn parse_icalendar_datetime(s: &str) -> Option<RawEventTime> {
     let s = s.trim();
 

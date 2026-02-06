@@ -10,14 +10,13 @@ use crate::socket::SocketClient;
 /// Opens the meeting URL in the default browser.
 pub fn open_meeting_url(meetings: &[MeetingView]) -> ClientResult<()> {
     let meeting = first_meeting_with_link(meetings)?;
-    let link = meeting.primary_link.as_ref().ok_or_else(|| {
-        ClientError::Action("next meeting has no meeting URL".into())
-    })?;
+    let link = meeting
+        .primary_link
+        .as_ref()
+        .ok_or_else(|| ClientError::Action("next meeting has no meeting URL".into()))?;
 
     info!(url = %link.url, "opening meeting URL");
-    open::that(&link.url).map_err(|e| {
-        ClientError::Action(format!("failed to open URL: {}", e))
-    })?;
+    open::that(&link.url).map_err(|e| ClientError::Action(format!("failed to open URL: {}", e)))?;
 
     Ok(())
 }
@@ -25,35 +24,36 @@ pub fn open_meeting_url(meetings: &[MeetingView]) -> ClientResult<()> {
 /// Copies the meeting URL to the clipboard.
 pub fn copy_meeting_url(meetings: &[MeetingView]) -> ClientResult<()> {
     let meeting = first_meeting_with_link(meetings)?;
-    let link = meeting.primary_link.as_ref().ok_or_else(|| {
-        ClientError::Action("next meeting has no meeting URL".into())
-    })?;
+    let link = meeting
+        .primary_link
+        .as_ref()
+        .ok_or_else(|| ClientError::Action("next meeting has no meeting URL".into()))?;
 
     info!(url = %link.url, "copying meeting URL to clipboard");
 
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| {
-        ClientError::Action(format!("failed to access clipboard: {}", e))
-    })?;
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| ClientError::Action(format!("failed to access clipboard: {}", e)))?;
 
-    clipboard.set_text(&link.url).map_err(|e| {
-        ClientError::Action(format!("failed to copy to clipboard: {}", e))
-    })?;
+    clipboard
+        .set_text(&link.url)
+        .map_err(|e| ClientError::Action(format!("failed to copy to clipboard: {}", e)))?;
 
     println!("{}", link.url);
     Ok(())
 }
 
 /// Opens the calendar day view in the default browser.
-pub fn open_calendar_day(meetings: &[MeetingView], google_domain: Option<&str>) -> ClientResult<()> {
+pub fn open_calendar_day(
+    meetings: &[MeetingView],
+    google_domain: Option<&str>,
+) -> ClientResult<()> {
     // Try to find a calendar URL from meetings, or construct Google Calendar URL
-    if let Some(meeting) = meetings.first() {
-        if let Some(ref url) = meeting.calendar_url {
-            debug!(url = %url, "opening calendar URL from meeting");
-            open::that(url).map_err(|e| {
-                ClientError::Action(format!("failed to open URL: {}", e))
-            })?;
-            return Ok(());
-        }
+    if let Some(meeting) = meetings.first()
+        && let Some(ref url) = meeting.calendar_url
+    {
+        debug!(url = %url, "opening calendar URL from meeting");
+        open::that(url).map_err(|e| ClientError::Action(format!("failed to open URL: {}", e)))?;
+        return Ok(());
     }
 
     // Fallback: open Google Calendar
@@ -64,9 +64,7 @@ pub fn open_calendar_day(meetings: &[MeetingView], google_domain: Option<&str>) 
     };
 
     info!(url = %base, "opening Google Calendar");
-    open::that(&base).map_err(|e| {
-        ClientError::Action(format!("failed to open URL: {}", e))
-    })?;
+    open::that(&base).map_err(|e| ClientError::Action(format!("failed to open URL: {}", e)))?;
 
     Ok(())
 }
@@ -94,7 +92,10 @@ pub async fn snooze(client: &SocketClient, minutes: u32) -> ClientResult<()> {
 /// Returns the first non-all-day meeting, or the first meeting.
 fn first_meeting_with_link(meetings: &[MeetingView]) -> ClientResult<&MeetingView> {
     // Prefer non-all-day meeting with a link
-    if let Some(m) = meetings.iter().find(|m| !m.is_all_day && m.primary_link.is_some()) {
+    if let Some(m) = meetings
+        .iter()
+        .find(|m| !m.is_all_day && m.primary_link.is_some())
+    {
         return Ok(m);
     }
 

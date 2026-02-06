@@ -43,7 +43,7 @@ impl RawEventTime {
 }
 
 /// The response status for an event attendee.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseStatus {
     /// The attendee has accepted the invitation.
@@ -55,13 +55,8 @@ pub enum ResponseStatus {
     /// The attendee has not responded.
     NeedsAction,
     /// Unknown response status.
+    #[default]
     Unknown,
-}
-
-impl Default for ResponseStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// An attendee of a calendar event.

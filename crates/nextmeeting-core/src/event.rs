@@ -182,7 +182,7 @@ impl NormalizedEvent {
         let primary = self.primary_link();
         self.links
             .iter()
-            .filter(|l| primary.map_or(true, |p| l.url != p.url))
+            .filter(|l| primary.is_none_or(|p| l.url != p.url))
             .collect()
     }
 

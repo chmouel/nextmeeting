@@ -103,12 +103,11 @@ impl GoogleProvider {
         // Check if we have a valid client with non-expired tokens
         {
             let client = self.api_client.read().await;
-            if client.is_some() {
-                if let Some(tokens) = self.token_storage.get() {
-                    if !tokens.is_expired() {
-                        return Ok(());
-                    }
-                }
+            if client.is_some()
+                && let Some(tokens) = self.token_storage.get()
+                && !tokens.is_expired()
+            {
+                return Ok(());
             }
         }
 
@@ -299,10 +298,10 @@ impl CalendarProvider for GoogleProvider {
             }
 
             // Try to get calendar count
-            if status.is_authenticated {
-                if let Ok(calendars) = self.list_calendars_impl().await {
-                    status.calendar_count = calendars.len();
-                }
+            if status.is_authenticated
+                && let Ok(calendars) = self.list_calendars_impl().await
+            {
+                status.calendar_count = calendars.len();
             }
 
             status

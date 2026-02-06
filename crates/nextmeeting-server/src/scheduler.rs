@@ -333,12 +333,12 @@ impl Scheduler {
         }
 
         // If we just had a manual refresh, use cooldown
-        if state.in_cooldown(self.config.refresh_cooldown) {
-            if let Some(last_refresh) = state.last_refresh {
-                let remaining = self.config.refresh_cooldown - last_refresh.elapsed();
-                let next_delay = self.config.next_sync_delay();
-                return remaining.max(next_delay);
-            }
+        if state.in_cooldown(self.config.refresh_cooldown)
+            && let Some(last_refresh) = state.last_refresh
+        {
+            let remaining = self.config.refresh_cooldown - last_refresh.elapsed();
+            let next_delay = self.config.next_sync_delay();
+            return remaining.max(next_delay);
         }
 
         // Normal sync interval with jitter
@@ -376,7 +376,7 @@ impl Scheduler {
 }
 
 /// Handle for sending commands to a running scheduler.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SchedulerHandle {
     command_tx: mpsc::Sender<SchedulerCommand>,
     state: SharedSchedulerState,

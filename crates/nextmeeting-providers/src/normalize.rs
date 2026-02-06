@@ -108,12 +108,11 @@ fn extract_all_links(raw: &RawEvent) -> Vec<EventLink> {
     }
 
     // 4. Add calendar link from html_link if we have one and no video links
-    if let Some(ref html_link) = raw.html_link {
-        if !links.iter().any(|l| l.kind.is_video_conference()) || links.is_empty() {
-            if seen_urls.insert(html_link.clone()) {
-                links.push(EventLink::new(LinkKind::Calendar, html_link));
-            }
-        }
+    if let Some(ref html_link) = raw.html_link
+        && (!links.iter().any(|l| l.kind.is_video_conference()) || links.is_empty())
+        && seen_urls.insert(html_link.clone())
+    {
+        links.push(EventLink::new(LinkKind::Calendar, html_link));
     }
 
     // Sort: video conference links first, then by kind

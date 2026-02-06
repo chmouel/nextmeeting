@@ -259,7 +259,7 @@ impl CalendarProvider for CalDavProvider {
         Box::pin(async move {
             let mut status = ProviderStatus::new("caldav");
             status.is_authenticated = self.authenticated.load(Ordering::SeqCst);
-            status.last_sync = self.last_sync.lock().await.clone();
+            status.last_sync = *self.last_sync.lock().await;
             status.calendar_count = self.calendars.lock().await.len();
             status
         })

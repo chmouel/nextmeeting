@@ -223,11 +223,11 @@ impl NotifyEngine {
                     let hash = notification_hash(meeting, notify_minutes);
 
                     let mut state = self.state.write().await;
-                    if !state.was_sent(&hash) {
-                        if self.send_notification(meeting, notify_minutes).await {
-                            state.mark_sent(hash);
-                            sent_count += 1;
-                        }
+                    if !state.was_sent(&hash)
+                        && self.send_notification(meeting, notify_minutes).await
+                    {
+                        state.mark_sent(hash);
+                        sent_count += 1;
                     }
                 }
             }
@@ -273,8 +273,7 @@ impl NotifyEngine {
         #[cfg(target_os = "linux")]
         notification.urgency(urgency);
 
-        match notification.show()
-        {
+        match notification.show() {
             Ok(_) => {
                 info!(
                     title = %meeting.title,

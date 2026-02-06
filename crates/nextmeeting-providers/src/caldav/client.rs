@@ -55,6 +55,7 @@ impl CalDavClient {
     }
 
     /// Performs a GET request.
+    #[allow(dead_code)]
     pub async fn get(&mut self, url: &str) -> ProviderResult<String> {
         self.request("GET", url, None, None).await
     }
@@ -83,13 +84,13 @@ impl CalDavClient {
                 debug!("Received 401, attempting authentication");
 
                 // Try Digest auth first
-                if auth_header.starts_with("Digest ") {
-                    if let Some(digest) = DigestAuth::parse(&auth_header) {
-                        self.digest_auth = Some(digest);
-                        return self
-                            .send_authenticated_request(method, url, body, depth)
-                            .await;
-                    }
+                if auth_header.starts_with("Digest ")
+                    && let Some(digest) = DigestAuth::parse(&auth_header)
+                {
+                    self.digest_auth = Some(digest);
+                    return self
+                        .send_authenticated_request(method, url, body, depth)
+                        .await;
                 }
 
                 // Fall back to Basic auth
@@ -243,11 +244,13 @@ impl CalDavClient {
     }
 
     /// Returns the base URL from the configuration.
+    #[allow(dead_code)]
     pub fn base_url(&self) -> &str {
         self.config.url_str()
     }
 
     /// Returns the configuration.
+    #[allow(dead_code)]
     pub fn config(&self) -> &CalDavConfig {
         &self.config
     }

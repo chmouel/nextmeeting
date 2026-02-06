@@ -107,11 +107,11 @@ impl GoogleCalendarClient {
             }
 
             // Respect max_results across pages
-            if let Some(max) = max_results {
-                if all_events.len() >= max {
-                    all_events.truncate(max);
-                    break;
-                }
+            if let Some(max) = max_results
+                && all_events.len() >= max
+            {
+                all_events.truncate(max);
+                break;
             }
         }
 
@@ -124,6 +124,7 @@ impl GoogleCalendarClient {
     }
 
     /// Fetches a single page of events.
+    #[allow(clippy::too_many_arguments)]
     async fn list_events_page(
         &self,
         calendar_id: &str,
@@ -426,6 +427,7 @@ struct ApiEvent {
     html_link: Option<String>,
     status: Option<String>,
     recurring_event_id: Option<String>,
+    #[allow(dead_code)]
     recurrence: Option<Vec<String>>,
     attendees: Option<Vec<ApiAttendee>>,
     conference_data: Option<ApiConferenceData>,

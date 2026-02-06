@@ -10,9 +10,12 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 use nextmeeting_core::MeetingView;
-use nextmeeting_protocol::{MeetingsFilter, ProviderStatus, Request, Response, StatusInfo};
+use nextmeeting_protocol::{
+    ErrorCode, MeetingsFilter, ProviderStatus, Request, Response, StatusInfo,
+};
 
 use crate::error::{ServerError, ServerResult};
+use crate::scheduler::SchedulerHandle;
 use crate::socket::Connection;
 
 /// Server state shared across all connections.
@@ -30,6 +33,8 @@ pub struct ServerState {
     snoozed_until: Option<DateTime<Utc>>,
     /// Whether shutdown has been requested.
     shutdown_requested: bool,
+    /// Scheduler handle for triggering refreshes.
+    scheduler_handle: Option<SchedulerHandle>,
 }
 
 impl Default for ServerState {
@@ -48,6 +53,7 @@ impl ServerState {
             providers: Vec::new(),
             snoozed_until: None,
             shutdown_requested: false,
+            scheduler_handle: None,
         }
     }
 
@@ -75,7 +81,7 @@ impl ServerState {
 
     /// Returns the cached meetings, optionally filtered.
     pub fn get_meetings(&self, filter: Option<&MeetingsFilter>) -> Vec<MeetingView> {
-        let mut meetings: Vec<_> = self.meetings.iter().cloned().collect();
+        let mut meetings: Vec<_> = self.meetings.to_vec();
 
         if let Some(filter) = filter {
             // Apply skip_all_day filter
@@ -141,6 +147,16 @@ impl ServerState {
         self.shutdown_requested
     }
 
+    /// Sets the scheduler handle for triggering refreshes.
+    pub fn set_scheduler_handle(&mut self, handle: SchedulerHandle) {
+        self.scheduler_handle = Some(handle);
+    }
+
+    /// Returns a reference to the scheduler handle, if set.
+    pub fn scheduler_handle(&self) -> Option<&SchedulerHandle> {
+        self.scheduler_handle.as_ref()
+    }
+
     /// Updates provider status.
     pub fn set_provider_status(&mut self, status: ProviderStatus) {
         // Update existing or add new
@@ -197,9 +213,24 @@ impl RequestHandler {
             }
             Request::Refresh { force } => {
                 debug!(force = *force, "Handling Refresh request");
-                // TODO: Trigger actual refresh from providers
-                // For now, just return Ok
-                Response::Ok
+                let state = self.state.read().await;
+                if let Some(handle) = state.scheduler_handle() {
+                    let handle = handle.clone();
+                    drop(state);
+                    if let Err(e) = handle.refresh(*force).await {
+                        warn!(error = %e, "Failed to send refresh command to scheduler");
+                        Response::error(
+                            ErrorCode::InternalError,
+                            format!("failed to trigger refresh: {}", e),
+                        )
+                    } else {
+                        Response::Ok
+                    }
+                } else {
+                    drop(state);
+                    debug!("No scheduler handle available, refresh is a no-op");
+                    Response::Ok
+                }
             }
             Request::Shutdown => {
                 info!("Handling Shutdown request");
@@ -250,10 +281,10 @@ pub fn make_connection_handler(
     move |conn| {
         let handler = RequestHandler::new(state.clone());
         Box::pin(async move {
-            if let Err(e) = handler.handle_connection(conn).await {
-                if !matches!(e, ServerError::Shutdown) {
-                    warn!(error = %e, "Connection handler error");
-                }
+            if let Err(e) = handler.handle_connection(conn).await
+                && !matches!(e, ServerError::Shutdown)
+            {
+                warn!(error = %e, "Connection handler error");
             }
         })
     }

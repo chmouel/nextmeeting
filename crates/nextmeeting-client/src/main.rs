@@ -82,12 +82,7 @@ async fn run(cli: Cli) -> ClientResult<()> {
             let client = make_client(&cli, &config);
             run_status(&client).await
         }
-        Some(Command::Server) => {
-            // TODO: Wire up actual server startup with providers
-            eprintln!("Server mode not yet fully wired (requires provider config integration).");
-            eprintln!("This will start the daemon in the foreground once integrated.");
-            Ok(())
-        }
+        Some(Command::Server) => nextmeeting_client::commands::server::run(&cli, &config).await,
         None => {
             // Default behavior: connect to server, fetch meetings, render output
             run_default(&cli, &config).await
@@ -117,22 +112,16 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     }
 
     if cli.open_calendar_day {
-        let domain = cli
-            .google_domain
-            .as_deref()
-            .or_else(|| {
-                #[cfg(feature = "google")]
-                {
-                    config
-                        .google
-                        .as_ref()
-                        .and_then(|g| g.domain.as_deref())
-                }
-                #[cfg(not(feature = "google"))]
-                {
-                    None
-                }
-            });
+        let domain = cli.google_domain.as_deref().or_else(|| {
+            #[cfg(feature = "google")]
+            {
+                config.google.as_ref().and_then(|g| g.domain.as_deref())
+            }
+            #[cfg(not(feature = "google"))]
+            {
+                None
+            }
+        });
         return nextmeeting_client::actions::open_calendar_day(&meetings, domain);
     }
 
@@ -316,9 +305,8 @@ async fn run_status(client: &SocketClient) -> ClientResult<()> {
 async fn auto_spawn_server(client: &SocketClient) -> ClientResult<()> {
     use tokio::process::Command as TokioCommand;
 
-    let exe = std::env::current_exe().map_err(|e| {
-        ClientError::Connection(format!("failed to find executable: {}", e))
-    })?;
+    let exe = std::env::current_exe()
+        .map_err(|e| ClientError::Connection(format!("failed to find executable: {}", e)))?;
 
     debug!(exe = %exe.display(), "spawning server process");
 
@@ -348,9 +336,8 @@ async fn auto_spawn_server(client: &SocketClient) -> ClientResult<()> {
         }
     }
 
-    cmd.spawn().map_err(|e| {
-        ClientError::Connection(format!("failed to spawn server: {}", e))
-    })?;
+    cmd.spawn()
+        .map_err(|e| ClientError::Connection(format!("failed to spawn server: {}", e)))?;
 
     // Wait for the server to become ready
     let max_retries = 20;

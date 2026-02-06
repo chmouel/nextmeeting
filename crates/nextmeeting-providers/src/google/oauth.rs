@@ -437,6 +437,7 @@ struct TokenResponse {
     #[serde(default)]
     expires_in: Option<i64>,
     #[serde(default)]
+    #[allow(dead_code)]
     token_type: Option<String>,
 }
 

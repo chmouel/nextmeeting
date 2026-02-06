@@ -38,12 +38,12 @@ impl SocketServer {
         let socket_path = &config.socket_path;
 
         // Check if parent directory exists
-        if let Some(parent) = socket_path.parent() {
-            if !parent.exists() {
-                return Err(ServerError::socket_path_invalid(
-                    parent.to_string_lossy().to_string(),
-                ));
-            }
+        if let Some(parent) = socket_path.parent()
+            && !parent.exists()
+        {
+            return Err(ServerError::socket_path_invalid(
+                parent.to_string_lossy().to_string(),
+            ));
         }
 
         // Clean up stale socket if configured

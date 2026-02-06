@@ -154,12 +154,12 @@ pub fn detect_link(url: &str) -> EventLink {
 ///
 /// If the URL is not a SafeLink, it is returned unchanged.
 fn unwrap_safelink(url: &str) -> String {
-    if let Some(caps) = SAFELINK_REGEX.captures(url) {
-        if let Some(encoded) = caps.get(1) {
-            // URL-decode the original link
-            if let Ok(decoded) = urlencoding::decode(encoded.as_str()) {
-                return decoded.into_owned();
-            }
+    if let Some(caps) = SAFELINK_REGEX.captures(url)
+        && let Some(encoded) = caps.get(1)
+    {
+        // URL-decode the original link
+        if let Ok(decoded) = urlencoding::decode(encoded.as_str()) {
+            return decoded.into_owned();
         }
     }
     url.to_string()
@@ -245,8 +245,7 @@ fn normalize_meet(url: &str) -> EventLink {
     let path = parsed.path();
     let meeting_id = path
         .split('/')
-        .filter(|s| !s.is_empty())
-        .next()
+        .find(|s| !s.is_empty())
         .map(|s| s.to_string());
 
     // Build clean URL without query parameters
@@ -280,8 +279,7 @@ fn normalize_jitsi(url: &str) -> EventLink {
     let path = parsed.path();
     let meeting_id = path
         .split('/')
-        .filter(|s| !s.is_empty())
-        .next()
+        .find(|s| !s.is_empty())
         .map(|s| s.to_string());
 
     // Build clean URL without query parameters

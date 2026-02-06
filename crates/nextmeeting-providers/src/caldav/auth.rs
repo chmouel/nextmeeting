@@ -108,7 +108,7 @@ impl DigestAuth {
         ];
 
         if self.qop.is_some() {
-            parts.push(format!("qop=auth"));
+            parts.push("qop=auth".to_string());
             parts.push(format!("nc={}", nc));
             parts.push(format!("cnonce=\"{}\"", cnonce));
         }

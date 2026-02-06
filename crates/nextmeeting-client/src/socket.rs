@@ -8,7 +8,7 @@ use tokio::net::UnixStream;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-use nextmeeting_protocol::{Envelope, Request, Response, MAX_MESSAGE_SIZE};
+use nextmeeting_protocol::{Envelope, MAX_MESSAGE_SIZE, Request, Response};
 
 use crate::error::{ClientError, ClientResult};
 
@@ -95,9 +95,8 @@ impl SocketClient {
         envelope: &Envelope<Request>,
     ) -> ClientResult<Envelope<Response>> {
         // Serialize to JSON
-        let json = serde_json::to_vec(envelope).map_err(|e| {
-            ClientError::Protocol(format!("failed to serialize request: {}", e))
-        })?;
+        let json = serde_json::to_vec(envelope)
+            .map_err(|e| ClientError::Protocol(format!("failed to serialize request: {}", e)))?;
 
         let len = json.len() as u32;
         if len > MAX_MESSAGE_SIZE {
@@ -116,7 +115,7 @@ impl SocketClient {
         })
         .await
         .map_err(|_| ClientError::Timeout("sending request".into()))?
-        .map_err(|e| ClientError::Io(e));
+        .map_err(ClientError::Io);
 
         write_result?;
 
@@ -150,9 +149,8 @@ impl SocketClient {
         .map_err(ClientError::Io)?;
 
         // Deserialize response
-        let envelope: Envelope<Response> = serde_json::from_slice(&response).map_err(|e| {
-            ClientError::Protocol(format!("failed to deserialize response: {}", e))
-        })?;
+        let envelope: Envelope<Response> = serde_json::from_slice(&response)
+            .map_err(|e| ClientError::Protocol(format!("failed to deserialize response: {}", e)))?;
 
         debug!(
             request_id = %envelope.request_id,
@@ -186,9 +184,11 @@ mod tests {
     #[test]
     fn default_client() {
         let client = SocketClient::with_defaults();
-        assert!(client
-            .socket_path()
-            .to_string_lossy()
-            .contains("nextmeeting"));
+        assert!(
+            client
+                .socket_path()
+                .to_string_lossy()
+                .contains("nextmeeting")
+        );
     }
 }

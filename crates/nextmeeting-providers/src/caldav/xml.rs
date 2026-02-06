@@ -24,10 +24,13 @@ pub struct DiscoveredCalendar {
     /// The display name.
     pub display_name: Option<String>,
     /// Calendar color (if available).
+    #[allow(dead_code)]
     pub color: Option<String>,
     /// The calendar description.
+    #[allow(dead_code)]
     pub description: Option<String>,
     /// The ctag (for change detection).
+    #[allow(dead_code)]
     pub ctag: Option<String>,
 }
 
@@ -146,6 +149,7 @@ pub fn calendar_query_body(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
 /// Generates a calendar-multiget REPORT body to fetch specific events.
 ///
 /// This is more efficient when fetching a subset of events by their hrefs.
+#[allow(dead_code)]
 pub fn calendar_multiget_body(hrefs: &[&str]) -> String {
     let mut writer = Writer::new(Cursor::new(Vec::new()));
 
@@ -234,16 +238,14 @@ pub fn parse_propfind_response(xml: &str) -> Vec<DiscoveredCalendar> {
 
                 if local == "response" && in_response {
                     // End of a response element - save if it's a calendar
-                    if is_calendar {
-                        if let Some(href) = current_href.take() {
-                            calendars.push(DiscoveredCalendar {
-                                href,
-                                display_name: current_displayname.take(),
-                                color: None,
-                                description: current_description.take(),
-                                ctag: current_ctag.take(),
-                            });
-                        }
+                    if is_calendar && let Some(href) = current_href.take() {
+                        calendars.push(DiscoveredCalendar {
+                            href,
+                            display_name: current_displayname.take(),
+                            color: None,
+                            description: current_description.take(),
+                            ctag: current_ctag.take(),
+                        });
                     }
                     in_response = false;
                 }
