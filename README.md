@@ -48,6 +48,18 @@ To run it from source:
 cargo run -p nextmeeting-tauri --bin nextmeeting-gui
 ```
 
+Launch modes are selectable at startup:
+
+```sh
+# Standard desktop window mode (default)
+cargo run -p nextmeeting-tauri --bin nextmeeting-gui -- --desktop
+
+# Menu bar/tray mode with a toggleable popover window
+cargo run -p nextmeeting-tauri --bin nextmeeting-gui -- --menubar
+```
+
+You may also set `NEXTMEETING_GUI_MODE=menubar` (or `desktop`).
+
 The GUI attempts to load live meetings via the existing nextmeeting socket
 protocol. If the daemon is unavailable, it gracefully falls back to mock data
 for preview and interface development.

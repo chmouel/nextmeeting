@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use chrono::{Local, TimeDelta};
 use serde::Serialize;
+use tauri::Manager;
 
 use nextmeeting_client::cli::{Cli, Command};
 use nextmeeting_client::config::ClientConfig;
@@ -36,6 +37,31 @@ struct UiMeeting {
 #[derive(Debug, Clone)]
 struct DashboardConfig {
     mock: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
+enum LaunchMode {
+    #[default]
+    Desktop,
+    Menubar,
+}
+
+
+impl LaunchMode {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw.to_ascii_lowercase().as_str() {
+            "desktop" => Some(Self::Desktop),
+            "menubar" | "menu-bar" | "tray" => Some(Self::Menubar),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LaunchOptions {
+    mock: bool,
+    mode: LaunchMode,
 }
 
 #[tauri::command]
@@ -282,26 +308,229 @@ fn mock_meetings() -> Vec<UiMeeting> {
     ]
 }
 
-fn use_mock_from_args<I, S>(args: I) -> bool
+fn parse_launch_options<I, S>(args: I, mode_from_env: Option<&str>) -> LaunchOptions
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
-    args.into_iter().any(|arg| arg.as_ref() == "--mock")
+    let mut mock = false;
+    let mut mode_from_args = None;
+
+    for arg in args {
+        match arg.as_ref() {
+            "--mock" => mock = true,
+            "--menubar" => mode_from_args = Some(LaunchMode::Menubar),
+            "--desktop" => mode_from_args = Some(LaunchMode::Desktop),
+            _ => {}
+        }
+    }
+
+    let env_mode = mode_from_env.and_then(LaunchMode::parse);
+    let mode = mode_from_args.or(env_mode).unwrap_or_default();
+
+    LaunchOptions { mock, mode }
+}
+
+fn menubar_title_from_meetings(meetings: &[MeetingView]) -> Option<String> {
+    let title = meetings
+        .iter()
+        .find(|meeting| meeting.is_ongoing)
+        .or_else(|| meetings.iter().min_by_key(|meeting| meeting.start_local))
+        .map(|meeting| meeting.title.trim())
+        .unwrap_or_default();
+
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
+}
+
+fn menubar_title_from_ui_meetings(meetings: &[UiMeeting]) -> Option<String> {
+    let title = meetings
+        .first()
+        .map(|meeting| meeting.title.trim())
+        .unwrap_or_default();
+
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn menubar_template_icon() -> tauri::image::Image<'static> {
+    tauri::image::Image::new(
+        include_bytes!("../icons/icon-menubar-tight-18.rgba"),
+        18,
+        18,
+    )
+}
+
+#[cfg(target_os = "macos")]
+async fn refresh_menubar_title(app: &tauri::AppHandle) {
+    let title = match app.try_state::<DashboardConfig>() {
+        Some(config) if config.mock => menubar_title_from_ui_meetings(&mock_meetings()),
+        _ => match fetch_live_meeting_views().await {
+            Ok(meetings) => menubar_title_from_meetings(&meetings),
+            Err(_) => None,
+        },
+    };
+
+    if let Some(tray) = app.tray_by_id("nextmeeting-tray") {
+        let _ = tray.set_title(title.as_deref());
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_menubar_title_updater(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            refresh_menubar_title(&app).await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn spawn_menubar_title_updater(_app: tauri::AppHandle) {}
+
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    window.show()?;
+    window.unminimize()?;
+    window.set_focus()?;
+    Ok(())
+}
+
+fn hide_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    window.hide()?;
+    Ok(())
+}
+
+fn toggle_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    if window.is_visible()? {
+        window.hide()?;
+    } else {
+        show_main_window(app)?;
+    }
+    Ok(())
+}
+
+fn setup_menubar_mode(app: &mut tauri::App<tauri::Wry>) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        app.set_dock_visibility(false);
+    }
+
+    hide_main_window(app.handle())?;
+
+    let show_item = tauri::menu::MenuItem::with_id(app, "toggle-window", "Toggle window", true, None::<&str>)?;
+    let quit_item = tauri::menu::MenuItem::with_id(app, "quit-app", "Quit", true, None::<&str>)?;
+    let tray_menu = tauri::menu::Menu::with_items(app, &[&show_item, &quit_item])?;
+
+    let mut tray_builder = tauri::tray::TrayIconBuilder::with_id("nextmeeting-tray")
+        .menu(&tray_menu)
+        .tooltip("nextmeeting")
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left,
+                button_state: tauri::tray::MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let _ = toggle_main_window(tray.app_handle());
+            }
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "toggle-window" {
+                let _ = toggle_main_window(app);
+            } else if event.id() == "quit-app" {
+                app.exit(0);
+            }
+        });
+
+    #[cfg(target_os = "macos")]
+    {
+        tray_builder = tray_builder
+            .icon(menubar_template_icon())
+            .icon_as_template(true);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(icon) = app.default_window_icon().cloned() {
+            tray_builder = tray_builder.icon(icon);
+        }
+    }
+
+    let _tray = tray_builder.build(app)?;
+    spawn_menubar_title_updater(app.handle().clone());
+    Ok(())
+}
+
+fn configure_builder(
+    builder: tauri::Builder<tauri::Wry>,
+    launch_mode: LaunchMode,
+) -> tauri::Builder<tauri::Wry> {
+    match launch_mode {
+        LaunchMode::Desktop => builder,
+        LaunchMode::Menubar => builder
+            .setup(|app| {
+                setup_menubar_mode(app)?;
+                Ok(())
+            })
+            .on_window_event(|window, event| {
+                if window.label() != "main" {
+                    return;
+                }
+                match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                        api.prevent_close();
+                        let _ = hide_main_window(window.app_handle());
+                    }
+                    tauri::WindowEvent::Focused(false) => {
+                        let _ = hide_main_window(window.app_handle());
+                    }
+                    _ => {}
+                }
+            }),
+    }
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
 }
 
 fn main() {
-    let mock = use_mock_from_args(std::env::args());
+    let env_mode = std::env::var("NEXTMEETING_GUI_MODE").ok();
+    let launch = parse_launch_options(std::env::args(), env_mode.as_deref());
 
-    tauri::Builder::default()
-        .manage(DashboardConfig { mock })
+    let builder = tauri::Builder::default()
+        .manage(DashboardConfig { mock: launch.mock })
         .invoke_handler(tauri::generate_handler![
             get_dashboard_data,
             join_next_meeting,
             create_meeting,
             open_calendar_day,
-            open_preferences
-        ])
+            open_preferences,
+            quit_app
+        ]);
+
+    configure_builder(builder, launch.mode)
         .run(tauri::generate_context!())
         .expect("failed to run nextmeeting GUI");
 }
@@ -350,14 +579,99 @@ mod tests {
     }
 
     #[test]
-    fn use_mock_from_args_detects_hidden_flag() {
-        let args = vec!["nextmeeting-gui", "--mock"];
-        assert!(use_mock_from_args(args));
+    fn parse_launch_options_default_to_desktop() {
+        let args = vec!["nextmeeting-gui"];
+        let options = parse_launch_options(args, None);
+
+        assert_eq!(options.mode, LaunchMode::Desktop);
+        assert!(!options.mock);
     }
 
     #[test]
-    fn use_mock_from_args_ignores_other_flags() {
-        let args = vec!["nextmeeting-gui", "--help"];
-        assert!(!use_mock_from_args(args));
+    fn parse_launch_options_accepts_menubar_flag() {
+        let args = vec!["nextmeeting-gui", "--menubar"];
+        let options = parse_launch_options(args, None);
+
+        assert_eq!(options.mode, LaunchMode::Menubar);
+    }
+
+    #[test]
+    fn parse_launch_options_reads_environment_mode() {
+        let args = vec!["nextmeeting-gui"];
+        let options = parse_launch_options(args, Some("menubar"));
+
+        assert_eq!(options.mode, LaunchMode::Menubar);
+    }
+
+    #[test]
+    fn parse_launch_options_prefers_cli_over_environment() {
+        let args = vec!["nextmeeting-gui", "--desktop"];
+        let options = parse_launch_options(args, Some("menubar"));
+
+        assert_eq!(options.mode, LaunchMode::Desktop);
+    }
+
+    #[test]
+    fn menubar_title_prefers_ongoing_meeting() {
+        let now = Local::now();
+        let meetings = vec![
+            MeetingView {
+                id: "upcoming".to_string(),
+                title: "Upcoming".to_string(),
+                start_local: now + TimeDelta::minutes(30),
+                end_local: now + TimeDelta::minutes(60),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: nextmeeting_core::ResponseStatus::Accepted,
+                other_attendee_count: 1,
+            },
+            MeetingView {
+                id: "ongoing".to_string(),
+                title: "Live now".to_string(),
+                start_local: now - TimeDelta::minutes(10),
+                end_local: now + TimeDelta::minutes(20),
+                is_all_day: false,
+                is_ongoing: true,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: nextmeeting_core::ResponseStatus::Accepted,
+                other_attendee_count: 1,
+            },
+        ];
+
+        assert_eq!(
+            menubar_title_from_meetings(&meetings),
+            Some("Live now".to_string())
+        );
+    }
+
+    #[test]
+    fn menubar_title_is_none_without_meetings() {
+        assert_eq!(menubar_title_from_meetings(&[]), None);
+    }
+
+    #[test]
+    fn menubar_title_from_ui_meetings_uses_first_title() {
+        let meetings = vec![UiMeeting {
+            id: "mock-1".to_string(),
+            title: "Engineering stand-up".to_string(),
+            start_time: "22:30".to_string(),
+            end_time: "22:55".to_string(),
+            day_label: "Sat, 7 Feb".to_string(),
+            service: "Google Meet".to_string(),
+            status: "soon".to_string(),
+            join_url: None,
+        }];
+
+        assert_eq!(
+            menubar_title_from_ui_meetings(&meetings),
+            Some("Engineering stand-up".to_string())
+        );
     }
 }

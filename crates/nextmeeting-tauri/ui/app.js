@@ -98,7 +98,7 @@ function renderTimeline(meetings = []) {
 
 function renderMeetings(meetings) {
   if (!meetings.length) {
-    meetingListNode.innerHTML = '<p class="empty">No meetings scheduled in this window.</p>';
+    meetingListNode.innerHTML = "";
     return;
   }
 
@@ -161,13 +161,13 @@ function renderHero(meetings) {
     return;
   }
 
-  heroTitleNode.textContent = "No meeting right now";
-  heroMetaNode.textContent = "You are free for the moment.";
+  heroTitleNode.textContent = "";
+  heroMetaNode.textContent = "";
 }
 
 function updateTitleFromMeetings(meetings) {
   if (!meetings.length) {
-    todayTitleNode.textContent = "Today";
+    todayTitleNode.textContent = "";
     return;
   }
 
@@ -202,6 +202,11 @@ async function runCommand(command, successMessage) {
 }
 
 async function quitApp() {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (invoke) {
+    await invoke("quit_app");
+    return;
+  }
   const appWindow = window.__TAURI__?.window?.getCurrentWindow;
   if (!appWindow) {
     setStatus("Quit is only available in the desktop app.");
