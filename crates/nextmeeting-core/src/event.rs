@@ -18,16 +18,73 @@ use crate::time::EventTime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkKind {
-    /// Google Meet (meet.google.com)
     GoogleMeet,
-    /// Zoom (zoom.us)
     Zoom,
-    /// Zoom for Government (zoomgov.com)
     ZoomGov,
-    /// Microsoft Teams
+    ZoomNative,
     Teams,
-    /// Jitsi Meet (meet.jit.si or self-hosted)
     Jitsi,
+    Webex,
+    Chime,
+    RingCentral,
+    GoToMeeting,
+    GoToWebinar,
+    BlueJeans,
+    EightByEight,
+    Demio,
+    JoinMe,
+    Whereby,
+    UberConference,
+    Blizz,
+    TeamViewerMeeting,
+    VSee,
+    StarLeaf,
+    Duo,
+    Voov,
+    FacebookWorkplace,
+    Skype,
+    Skype4Biz,
+    Skype4BizSelfHosted,
+    Lifesize,
+    YouTube,
+    VonageMeetings,
+    MeetStream,
+    Around,
+    Jam,
+    Discord,
+    BlackboardCollab,
+    CoScreen,
+    Vowel,
+    Zhumu,
+    Lark,
+    Feishu,
+    Vimeo,
+    Ovice,
+    FaceTime,
+    Chorus,
+    Pop,
+    Gong,
+    Livestorm,
+    Luma,
+    Preply,
+    UserZoom,
+    Venue,
+    Teemyco,
+    Demodesk,
+    ZohoCliq,
+    Hangouts,
+    Slack,
+    Reclaim,
+    Tuple,
+    Gather,
+    Pumble,
+    SuitConference,
+    DoxyMe,
+    CalCom,
+    ZmPage,
+    LiveKit,
+    Meetecho,
+    StreamYard,
     /// Google Calendar event URL
     Calendar,
     /// Any other URL that might be a meeting link
@@ -41,8 +98,70 @@ impl LinkKind {
             Self::GoogleMeet => "Google Meet",
             Self::Zoom => "Zoom",
             Self::ZoomGov => "Zoom (Gov)",
+            Self::ZoomNative => "Zoom",
             Self::Teams => "Microsoft Teams",
             Self::Jitsi => "Jitsi",
+            Self::Webex => "Cisco Webex",
+            Self::Chime => "Amazon Chime",
+            Self::RingCentral => "RingCentral",
+            Self::GoToMeeting => "GoToMeeting",
+            Self::GoToWebinar => "GoToWebinar",
+            Self::BlueJeans => "BlueJeans",
+            Self::EightByEight => "8x8",
+            Self::Demio => "Demio",
+            Self::JoinMe => "Join.me",
+            Self::Whereby => "Whereby",
+            Self::UberConference => "UberConference",
+            Self::Blizz => "Blizz",
+            Self::TeamViewerMeeting => "TeamViewer Meeting",
+            Self::VSee => "VSee",
+            Self::StarLeaf => "StarLeaf",
+            Self::Duo => "Google Duo",
+            Self::Voov => "Tencent VooV",
+            Self::FacebookWorkplace => "Facebook Workplace",
+            Self::Skype => "Skype",
+            Self::Skype4Biz => "Skype for Business",
+            Self::Skype4BizSelfHosted => "Skype for Business",
+            Self::Lifesize => "Lifesize",
+            Self::YouTube => "YouTube",
+            Self::VonageMeetings => "Vonage Meetings",
+            Self::MeetStream => "Google Meet Stream",
+            Self::Around => "Around",
+            Self::Jam => "Jam",
+            Self::Discord => "Discord",
+            Self::BlackboardCollab => "Blackboard Collaborate",
+            Self::CoScreen => "CoScreen",
+            Self::Vowel => "Vowel",
+            Self::Zhumu => "Zhumu",
+            Self::Lark => "Lark",
+            Self::Feishu => "Feishu",
+            Self::Vimeo => "Vimeo",
+            Self::Ovice => "oVice",
+            Self::FaceTime => "FaceTime",
+            Self::Chorus => "Chorus",
+            Self::Pop => "Pop",
+            Self::Gong => "Gong",
+            Self::Livestorm => "Livestorm",
+            Self::Luma => "Luma",
+            Self::Preply => "Preply",
+            Self::UserZoom => "UserZoom",
+            Self::Venue => "Venue",
+            Self::Teemyco => "Teemyco",
+            Self::Demodesk => "Demodesk",
+            Self::ZohoCliq => "Zoho Cliq",
+            Self::Hangouts => "Google Hangouts",
+            Self::Slack => "Slack",
+            Self::Reclaim => "Reclaim",
+            Self::Tuple => "Tuple",
+            Self::Gather => "Gather",
+            Self::Pumble => "Pumble",
+            Self::SuitConference => "Suit Conference",
+            Self::DoxyMe => "Doxy.me",
+            Self::CalCom => "Cal.com",
+            Self::ZmPage => "zm.page",
+            Self::LiveKit => "LiveKit Meet",
+            Self::Meetecho => "Meetecho",
+            Self::StreamYard => "StreamYard",
             Self::Calendar => "Calendar",
             Self::Other => "Link",
         }
@@ -50,7 +169,7 @@ impl LinkKind {
 
     /// Returns true if this is a video conferencing link (not just a calendar link).
     pub fn is_video_conference(&self) -> bool {
-        !matches!(self, Self::Calendar | Self::Other)
+        !matches!(self, Self::Calendar | Self::Other | Self::YouTube)
     }
 }
 
@@ -335,8 +454,11 @@ mod tests {
             assert_eq!(LinkKind::GoogleMeet.display_name(), "Google Meet");
             assert_eq!(LinkKind::Zoom.display_name(), "Zoom");
             assert_eq!(LinkKind::ZoomGov.display_name(), "Zoom (Gov)");
+            assert_eq!(LinkKind::ZoomNative.display_name(), "Zoom");
             assert_eq!(LinkKind::Teams.display_name(), "Microsoft Teams");
             assert_eq!(LinkKind::Jitsi.display_name(), "Jitsi");
+            assert_eq!(LinkKind::Webex.display_name(), "Cisco Webex");
+            assert_eq!(LinkKind::Slack.display_name(), "Slack");
             assert_eq!(LinkKind::Calendar.display_name(), "Calendar");
             assert_eq!(LinkKind::Other.display_name(), "Link");
         }
@@ -346,8 +468,12 @@ mod tests {
             assert!(LinkKind::GoogleMeet.is_video_conference());
             assert!(LinkKind::Zoom.is_video_conference());
             assert!(LinkKind::ZoomGov.is_video_conference());
+            assert!(LinkKind::ZoomNative.is_video_conference());
             assert!(LinkKind::Teams.is_video_conference());
             assert!(LinkKind::Jitsi.is_video_conference());
+            assert!(LinkKind::Webex.is_video_conference());
+            assert!(LinkKind::Slack.is_video_conference());
+            assert!(!LinkKind::YouTube.is_video_conference());
             assert!(!LinkKind::Calendar.is_video_conference());
             assert!(!LinkKind::Other.is_video_conference());
         }
