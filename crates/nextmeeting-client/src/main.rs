@@ -104,6 +104,11 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
 async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     let client = make_client(cli, config);
 
+    // Handle refresh action (fire-and-forget to the server)
+    if cli.refresh {
+        return nextmeeting_client::actions::refresh(&client).await;
+    }
+
     // Handle snooze action (fire-and-forget to the server)
     if let Some(minutes) = cli.snooze {
         return nextmeeting_client::actions::snooze(&client, minutes).await;

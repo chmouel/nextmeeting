@@ -47,6 +47,10 @@ pub struct Cli {
     #[arg(long)]
     pub open_calendar_day: bool,
 
+    /// Force refresh calendar data from providers
+    #[arg(long)]
+    pub refresh: bool,
+
     // --- Connection flags ---
     /// Path to the server socket (overrides config)
     #[arg(long, env = "NEXTMEETING_SOCKET")]
@@ -76,6 +80,7 @@ impl Cli {
             || self.copy_meeting_url
             || self.open_calendar_day
             || self.snooze.is_some()
+            || self.refresh
     }
 }
 

@@ -89,6 +89,26 @@ pub async fn snooze(client: &SocketClient, minutes: u32) -> ClientResult<()> {
     }
 }
 
+/// Sends a refresh request to the server.
+pub async fn refresh(client: &SocketClient) -> ClientResult<()> {
+    info!("requesting calendar refresh");
+
+    let response = client.send(Request::refresh(true)).await?;
+    match response {
+        Response::Ok => {
+            println!("Calendar refresh triggered.");
+            Ok(())
+        }
+        Response::Error { error } => Err(ClientError::Protocol(format!(
+            "refresh failed: {}",
+            error.message
+        ))),
+        _ => Err(ClientError::Protocol(
+            "unexpected response to refresh request".into(),
+        )),
+    }
+}
+
 /// Returns the first non-all-day meeting, or the first meeting.
 fn first_meeting_with_link(meetings: &[MeetingView]) -> ClientResult<&MeetingView> {
     // Prefer non-all-day meeting with a link
