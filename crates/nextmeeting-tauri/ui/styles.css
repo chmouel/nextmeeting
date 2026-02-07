@@ -74,6 +74,11 @@ body {
   background: radial-gradient(circle, rgba(85, 162, 220, 0.2), transparent 68%);
 }
 
+.panel.loading .now-card h1,
+.panel.loading .hero-meta {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 .topbar {
   position: relative;
   z-index: 1;
@@ -93,6 +98,9 @@ body {
 }
 
 .source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 10px;
@@ -100,6 +108,23 @@ body {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.health-dot.connected {
+  background: var(--good);
+  box-shadow: 0 0 6px rgba(142, 245, 200, 0.5);
+}
+
+.health-dot.disconnected {
+  background: var(--warn);
+  box-shadow: 0 0 6px rgba(255, 182, 170, 0.5);
 }
 
 .now-card,
@@ -281,6 +306,16 @@ h2 {
   border-radius: 12px;
   padding: 10px;
   background: rgba(12, 31, 47, 0.54);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.meeting-clickable {
+  cursor: pointer;
+}
+
+.meeting-clickable:hover {
+  background: rgba(18, 42, 62, 0.72);
+  border-color: rgba(137, 176, 206, 0.4);
 }
 
 .meeting-title {
@@ -294,6 +329,11 @@ h2 {
   margin: 0;
   font-size: 0.9rem;
   color: var(--text-secondary);
+}
+
+.meeting-relative {
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 .meeting-service {
@@ -398,6 +438,17 @@ h2 {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
   }
 }
 

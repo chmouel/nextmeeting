@@ -8,6 +8,15 @@ const heroMetaNode = document.querySelector("#heroMeta");
 const statusLineNode = document.querySelector("#statusLine");
 const joinNowButtonNode = document.querySelector("#joinNowButton");
 const createMeetingButtonNode = document.querySelector("#createMeetingButton");
+const panelNode = document.querySelector(".panel");
+
+const REFRESH_INTERVAL_MS = 60_000;
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
 
 function parseClockOnDate(baseDate, hhmm) {
   const [hourText, minuteText] = String(hhmm || "00:00").split(":");
@@ -51,6 +60,7 @@ function buildTimelineMeetings(meetings, rangeStart, rangeEnd) {
 
 function renderTimeline(meetings = []) {
   const now = new Date();
+  const currentHour = now.getHours();
   const rangeStart = new Date(now);
   rangeStart.setMinutes(0, 0, 0);
   rangeStart.setHours(rangeStart.getHours() - 2);
@@ -61,86 +71,131 @@ function renderTimeline(meetings = []) {
   const hours = Array.from({ length: 8 }, (_, idx) => {
     const tickDate = new Date(rangeStart);
     tickDate.setHours(rangeStart.getHours() + idx);
-    return String(tickDate.getHours()).padStart(2, "0");
+    return { label: String(tickDate.getHours()).padStart(2, "0"), hour: tickDate.getHours() };
   });
 
   const spans = buildTimelineMeetings(meetings, rangeStart, rangeEnd);
 
-  const ticksHtml = hours
-    .map((hour, idx) => {
-      const active = idx === 2 ? "active" : "";
-      return `
-        <div class="tick ${active}">
-          <span>${hour}</span>
-          <span class="tick-line"></span>
-        </div>
-      `;
-    })
-    .join("");
+  const ticksContainer = document.createElement("div");
+  ticksContainer.className = "timeline-ticks";
+  for (const { label, hour } of hours) {
+    const tick = document.createElement("div");
+    tick.className = hour === currentHour ? "tick active" : "tick";
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = label;
+    const lineSpan = document.createElement("span");
+    lineSpan.className = "tick-line";
+    tick.appendChild(labelSpan);
+    tick.appendChild(lineSpan);
+    ticksContainer.appendChild(tick);
+  }
 
-  const spansHtml = spans
-    .map(
-      (span) => `
-        <div
-          class="timeline-meeting ${span.status}"
-          style="left: ${span.leftPercent}%; width: ${span.widthPercent}%;"
-          title="${span.title}"
-        ></div>
-      `,
-    )
-    .join("");
+  const meetingsContainer = document.createElement("div");
+  meetingsContainer.className = "timeline-meetings";
+  for (const span of spans) {
+    const bar = document.createElement("div");
+    bar.className = `timeline-meeting ${span.status}`;
+    bar.style.left = `${span.leftPercent}%`;
+    bar.style.width = `${span.widthPercent}%`;
+    bar.title = span.title;
+    meetingsContainer.appendChild(bar);
+  }
 
-  timelineNode.innerHTML = `
-    <div class="timeline-ticks">${ticksHtml}</div>
-    <div class="timeline-meetings">${spansHtml}</div>
-  `;
+  timelineNode.innerHTML = "";
+  timelineNode.appendChild(ticksContainer);
+  timelineNode.appendChild(meetingsContainer);
 }
 
 function renderMeetings(meetings) {
+  meetingListNode.innerHTML = "";
+
   if (!meetings.length) {
-    meetingListNode.innerHTML = "";
     return;
   }
 
-  meetingListNode.innerHTML = meetings
-    .slice(0, 4)
-    .map(
-      (meeting) => `
-        <article class="meeting">
-          <p class="meeting-day">${meeting.dayLabel}</p>
-          <h3 class="meeting-title">${meeting.title}</h3>
-          <p class="meeting-time">${meeting.startTime} - ${meeting.endTime}</p>
-          <div class="meeting-service">
-            ${meeting.service}
-            <span class="meeting-status ${meeting.status}">${meeting.status}</span>
-          </div>
-        </article>
-      `,
-    )
-    .join("");
+  for (const meeting of meetings.slice(0, 4)) {
+    const article = document.createElement("article");
+    article.className = meeting.joinUrl ? "meeting meeting-clickable" : "meeting";
+
+    const dayP = document.createElement("p");
+    dayP.className = "meeting-day";
+    dayP.textContent = meeting.dayLabel;
+
+    const titleH3 = document.createElement("h3");
+    titleH3.className = "meeting-title";
+    titleH3.textContent = meeting.title;
+
+    const timeP = document.createElement("p");
+    timeP.className = "meeting-time";
+    timeP.textContent = `${meeting.startTime} - ${meeting.endTime}`;
+
+    if (meeting.relativeTime) {
+      const relSpan = document.createElement("span");
+      relSpan.className = "meeting-relative";
+      relSpan.textContent = ` \u00b7 ${meeting.relativeTime}`;
+      timeP.appendChild(relSpan);
+    }
+
+    const serviceDiv = document.createElement("div");
+    serviceDiv.className = "meeting-service";
+    serviceDiv.textContent = meeting.service;
+
+    const statusSpan = document.createElement("span");
+    statusSpan.className = `meeting-status ${meeting.status}`;
+    statusSpan.textContent = meeting.status;
+    serviceDiv.appendChild(statusSpan);
+
+    article.appendChild(dayP);
+    article.appendChild(titleH3);
+    article.appendChild(timeP);
+    article.appendChild(serviceDiv);
+
+    if (meeting.joinUrl) {
+      article.addEventListener("click", async () => {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (invoke) {
+          try {
+            await invoke("join_meeting_by_url", { url: meeting.joinUrl });
+            setStatus("Opening meeting...");
+          } catch (err) {
+            setStatus(`Failed to open meeting: ${String(err)}`);
+          }
+        }
+      });
+    }
+
+    meetingListNode.appendChild(article);
+  }
 }
 
 function renderUtilityActions() {
   const utilityActions = [
+    { label: "Refresh calendars", command: "refresh_meetings", status: "Refreshing calendar data..." },
     { label: "Open calendar day", command: "open_calendar_day", status: "Opening your calendar..." },
+    { label: "Snooze 15 min", command: "snooze_notifications", args: { minutes: 15 }, status: "Snoozed for 15 minutes" },
+    { label: "Snooze 30 min", command: "snooze_notifications", args: { minutes: 30 }, status: "Snoozed for 30 minutes" },
+    { label: "Snooze 1 hour", command: "snooze_notifications", args: { minutes: 60 }, status: "Snoozed for 1 hour" },
     { label: "Preferences", command: "open_preferences", status: "Opening preferences..." },
     { label: "Quit", command: "quit" },
   ];
 
-  actionListNode.innerHTML = utilityActions
-    .map((action) => `<button class="utility-action" type="button">${action.label}</button>`)
-    .join("");
+  actionListNode.innerHTML = "";
+  for (const action of utilityActions) {
+    const button = document.createElement("button");
+    button.className = "utility-action";
+    button.type = "button";
+    button.textContent = action.label;
 
-  actionListNode.querySelectorAll(".utility-action").forEach((button, index) => {
     button.addEventListener("click", async () => {
-      const action = utilityActions[index];
       if (action.command === "quit") {
         await quitApp();
         return;
       }
-      await runCommand(action.command, action.status);
+      await runCommand(action.command, action.status, action.args);
     });
-  });
+
+    actionListNode.appendChild(button);
+  }
 }
 
 function renderHero(meetings) {
@@ -149,7 +204,8 @@ function renderHero(meetings) {
 
   if (ongoing) {
     heroTitleNode.textContent = `Live now: ${ongoing.title}`;
-    heroMetaNode.textContent = `${ongoing.startTime} - ${ongoing.endTime} on ${ongoing.service}`;
+    const meta = `${ongoing.startTime} - ${ongoing.endTime} on ${ongoing.service}`;
+    heroMetaNode.textContent = ongoing.relativeTime ? `${meta} \u00b7 ${ongoing.relativeTime}` : meta;
     joinNowButtonNode.textContent = "Join live meeting";
     return;
   }
@@ -157,7 +213,8 @@ function renderHero(meetings) {
   joinNowButtonNode.textContent = "Join next meeting";
   if (nextMeeting) {
     heroTitleNode.textContent = `Next: ${nextMeeting.title}`;
-    heroMetaNode.textContent = `${nextMeeting.startTime} - ${nextMeeting.endTime} on ${nextMeeting.service}`;
+    const meta = `${nextMeeting.startTime} - ${nextMeeting.endTime} on ${nextMeeting.service}`;
+    heroMetaNode.textContent = nextMeeting.relativeTime ? `${meta} \u00b7 ${nextMeeting.relativeTime}` : meta;
     return;
   }
 
@@ -186,7 +243,35 @@ function setStatus(message) {
   statusLineNode.textContent = message;
 }
 
-async function runCommand(command, successMessage) {
+function setConnectionHealth(source) {
+  const dot = sourceBadgeNode.querySelector(".health-dot") || document.createElement("span");
+  dot.className = "health-dot";
+
+  if (source === "unavailable") {
+    dot.classList.add("disconnected");
+    sourceBadgeNode.title = "Disconnected from server";
+  } else {
+    dot.classList.add("connected");
+    sourceBadgeNode.title = `Connected (${source})`;
+  }
+
+  if (!sourceBadgeNode.contains(dot)) {
+    sourceBadgeNode.textContent = "";
+    sourceBadgeNode.appendChild(dot);
+  }
+}
+
+function showLoading() {
+  panelNode.classList.add("loading");
+  heroTitleNode.textContent = "Loading meetings...";
+  heroMetaNode.textContent = "Connecting to server";
+}
+
+function hideLoading() {
+  panelNode.classList.remove("loading");
+}
+
+async function runCommand(command, successMessage, args) {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
     setStatus("Action is only available in the desktop app.");
@@ -194,8 +279,11 @@ async function runCommand(command, successMessage) {
   }
 
   try {
-    await invoke(command);
+    await invoke(command, args || {});
     setStatus(successMessage);
+    if (command === "refresh_meetings") {
+      await refreshDashboard();
+    }
   } catch (err) {
     setStatus(`Action failed: ${String(err)}`);
   }
@@ -228,6 +316,26 @@ async function loadDashboard() {
   }
 }
 
+function applyDashboard(dashboard) {
+  const meetings = dashboard.meetings || [];
+  setConnectionHealth(dashboard.source);
+  renderHero(meetings);
+  renderTimeline(meetings);
+  renderMeetings(meetings);
+  updateTitleFromMeetings(meetings);
+
+  if (!meetings.length && dashboard.source !== "unavailable") {
+    heroTitleNode.textContent = "No meeting right now";
+    heroMetaNode.textContent = "You are free for the moment.";
+  }
+}
+
+async function refreshDashboard() {
+  const dashboard = await loadDashboard();
+  applyDashboard(dashboard);
+  setStatus("");
+}
+
 function bindPrimaryActions() {
   joinNowButtonNode.addEventListener("click", async () => {
     await runCommand("join_next_meeting", "Opening your next meeting...");
@@ -242,13 +350,13 @@ async function main() {
   bindPrimaryActions();
   renderUtilityActions();
 
+  showLoading();
   const dashboard = await loadDashboard();
-  sourceBadgeNode.textContent = dashboard.source;
-  renderHero(dashboard.meetings || []);
-  renderTimeline(dashboard.meetings || []);
-  renderMeetings(dashboard.meetings || []);
-  updateTitleFromMeetings(dashboard.meetings || []);
+  hideLoading();
+  applyDashboard(dashboard);
   setStatus("");
+
+  setInterval(refreshDashboard, REFRESH_INTERVAL_MS);
 }
 
 main();

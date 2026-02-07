@@ -12,6 +12,14 @@ use nextmeeting_client::socket::SocketClient;
 use nextmeeting_core::MeetingView;
 use nextmeeting_protocol::{Request, Response};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum MeetingStatus {
+    Ongoing,
+    Soon,
+    Upcoming,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DashboardData {
@@ -30,8 +38,9 @@ struct UiMeeting {
     end_time: String,
     day_label: String,
     service: String,
-    status: String,
+    status: MeetingStatus,
     join_url: Option<String>,
+    relative_time: String,
 }
 
 #[derive(Debug, Clone)]
@@ -92,23 +101,32 @@ fn build_dashboard(source: &str, meetings: Vec<UiMeeting>) -> DashboardData {
 }
 
 #[tauri::command]
-async fn join_next_meeting() -> Result<(), String> {
-    let meetings = fetch_live_meeting_views().await?;
+async fn join_next_meeting(
+    config: tauri::State<'_, ClientConfig>,
+) -> Result<(), String> {
+    let meetings = fetch_live_meeting_views(&config).await?;
     nextmeeting_client::actions::open_meeting_url(&meetings).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
-async fn create_meeting() -> Result<(), String> {
-    let config = ClientConfig::load().unwrap_or_default();
+async fn join_meeting_by_url(url: String) -> Result<(), String> {
+    open::that(&url).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn create_meeting(
+    config: tauri::State<'_, ClientConfig>,
+) -> Result<(), String> {
     let google_domain = config.google_domain.as_deref();
     nextmeeting_client::actions::create_meeting("meet", None, google_domain)
         .map_err(|err| err.to_string())
 }
 
 #[tauri::command]
-async fn open_calendar_day() -> Result<(), String> {
-    let meetings = fetch_live_meeting_views().await?;
-    let config = ClientConfig::load().unwrap_or_default();
+async fn open_calendar_day(
+    config: tauri::State<'_, ClientConfig>,
+) -> Result<(), String> {
+    let meetings = fetch_live_meeting_views(&config).await?;
     let google_domain = config.google_domain.as_deref();
     nextmeeting_client::actions::open_calendar_day(&meetings, google_domain)
         .map_err(|err| err.to_string())
@@ -126,8 +144,50 @@ async fn open_preferences() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn refresh_meetings(
+    config: tauri::State<'_, ClientConfig>,
+) -> Result<(), String> {
+    let client = build_socket_client(&config);
+    let request = Request::refresh(true);
+    let response = client.send(request).await.map_err(|err| err.to_string())?;
+
+    match response {
+        Response::Ok => Ok(()),
+        Response::Error { error } => Err(error.message),
+        other => Err(format!("unexpected server response: {other:?}")),
+    }
+}
+
+#[tauri::command]
+async fn snooze_notifications(
+    minutes: u32,
+    config: tauri::State<'_, ClientConfig>,
+) -> Result<(), String> {
+    let client = build_socket_client(&config);
+    let request = Request::snooze(minutes);
+    let response = client.send(request).await.map_err(|err| err.to_string())?;
+
+    match response {
+        Response::Ok => Ok(()),
+        Response::Error { error } => Err(error.message),
+        other => Err(format!("unexpected server response: {other:?}")),
+    }
+}
+
+fn build_socket_client(config: &ClientConfig) -> SocketClient {
+    let socket_path = config
+        .server
+        .socket_path
+        .clone()
+        .unwrap_or_else(nextmeeting_server::default_socket_path);
+    let timeout = Duration::from_secs(config.server.timeout.max(1));
+    SocketClient::new(socket_path, timeout)
+}
+
 async fn fetch_live_meetings_ui() -> Result<Vec<UiMeeting>, String> {
-    let meetings = fetch_live_meeting_views().await?;
+    let config = ClientConfig::load().unwrap_or_default();
+    let meetings = fetch_live_meeting_views(&config).await?;
     let now = Local::now();
 
     Ok(meetings
@@ -137,20 +197,13 @@ async fn fetch_live_meetings_ui() -> Result<Vec<UiMeeting>, String> {
         .collect())
 }
 
-async fn fetch_live_meeting_views() -> Result<Vec<MeetingView>, String> {
-    let config = ClientConfig::load().unwrap_or_default();
-    let socket_path = config
-        .server
-        .socket_path
-        .unwrap_or_else(nextmeeting_server::default_socket_path);
-    let timeout = Duration::from_secs(config.server.timeout.max(1));
-
-    let client = SocketClient::new(socket_path, timeout);
+async fn fetch_live_meeting_views(config: &ClientConfig) -> Result<Vec<MeetingView>, String> {
+    let client = build_socket_client(config);
     let request = Request::get_meetings();
     let response = match client.send(request.clone()).await {
         Ok(response) => response,
         Err(ClientError::Connection(_)) => {
-            auto_spawn_server(&client).await?;
+            auto_spawn_server(&client, config).await?;
             client.send(request).await.map_err(|err| err.to_string())?
         }
         Err(err) => return Err(err.to_string()),
@@ -170,7 +223,7 @@ fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(parent).map_err(|err| err.to_string())
 }
 
-async fn auto_spawn_server(client: &SocketClient) -> Result<(), String> {
+async fn auto_spawn_server(client: &SocketClient, config: &ClientConfig) -> Result<(), String> {
     use tokio::process::Command as TokioCommand;
 
     let mut cmd = TokioCommand::new("nextmeeting");
@@ -192,7 +245,7 @@ async fn auto_spawn_server(client: &SocketClient) -> Result<(), String> {
 
     let spawn_result = cmd.spawn();
     if spawn_result.is_err() {
-        let config = ClientConfig::load().unwrap_or_default();
+        let config = config.clone();
         let server_cli = Cli {
             config: None,
             debug: config.debug,
@@ -229,6 +282,42 @@ async fn auto_spawn_server(client: &SocketClient) -> Result<(), String> {
     Err("server failed to start within timeout".to_string())
 }
 
+fn format_relative_time(
+    start: chrono::DateTime<Local>,
+    end: chrono::DateTime<Local>,
+    now: chrono::DateTime<Local>,
+    is_ongoing: bool,
+) -> String {
+    if is_ongoing || (start <= now && end >= now) {
+        let remaining = (end - now).num_minutes();
+        if remaining <= 0 {
+            "ending now".to_string()
+        } else if remaining == 1 {
+            "ends in 1 min".to_string()
+        } else {
+            format!("ends in {remaining} min")
+        }
+    } else if start > now {
+        let until = (start - now).num_minutes();
+        if until <= 0 {
+            "starting now".to_string()
+        } else if until == 1 {
+            "starts in 1 min".to_string()
+        } else if until < 60 {
+            format!("starts in {until} min")
+        } else {
+            let hours = until / 60;
+            if hours == 1 {
+                "starts in 1 hr".to_string()
+            } else {
+                format!("starts in {hours} hrs")
+            }
+        }
+    } else {
+        String::new()
+    }
+}
+
 fn map_meeting(meeting: MeetingView, now: chrono::DateTime<Local>) -> UiMeeting {
     let status = classify_status(
         meeting.start_local,
@@ -247,6 +336,13 @@ fn map_meeting(meeting: MeetingView, now: chrono::DateTime<Local>) -> UiMeeting 
         .map(|link| link.url.clone())
         .or(meeting.calendar_url.clone());
 
+    let relative_time = format_relative_time(
+        meeting.start_local,
+        meeting.end_local,
+        now,
+        meeting.is_ongoing,
+    );
+
     UiMeeting {
         id: meeting.id,
         title: meeting.title,
@@ -256,6 +352,7 @@ fn map_meeting(meeting: MeetingView, now: chrono::DateTime<Local>) -> UiMeeting 
         service,
         status,
         join_url,
+        relative_time,
     }
 }
 
@@ -264,16 +361,16 @@ fn classify_status(
     end: chrono::DateTime<Local>,
     now: chrono::DateTime<Local>,
     is_ongoing: bool,
-) -> String {
+) -> MeetingStatus {
     if is_ongoing || (start <= now && end >= now) {
-        return "ongoing".to_string();
+        return MeetingStatus::Ongoing;
     }
 
     let minutes_until_start = (start - now).num_minutes();
     if minutes_until_start <= 15 {
-        "soon".to_string()
+        MeetingStatus::Soon
     } else {
-        "upcoming".to_string()
+        MeetingStatus::Upcoming
     }
 }
 
@@ -292,8 +389,9 @@ fn mock_meetings() -> Vec<UiMeeting> {
             end_time: first_end.format("%H:%M").to_string(),
             day_label: first_start.format("%a, %-d %b").to_string(),
             service: "Google Meet".to_string(),
-            status: "soon".to_string(),
+            status: MeetingStatus::Soon,
             join_url: Some("https://meet.google.com/aaa-bbbb-ccc".to_string()),
+            relative_time: "starts in 30 min".to_string(),
         },
         UiMeeting {
             id: "mock-design".to_string(),
@@ -302,8 +400,9 @@ fn mock_meetings() -> Vec<UiMeeting> {
             end_time: second_end.format("%H:%M").to_string(),
             day_label: second_start.format("%a, %-d %b").to_string(),
             service: "Zoom".to_string(),
-            status: "upcoming".to_string(),
+            status: MeetingStatus::Upcoming,
             join_url: Some("https://zoom.us/j/123456789".to_string()),
+            relative_time: "starts in 2 hrs".to_string(),
         },
     ]
 }
@@ -372,10 +471,16 @@ fn menubar_template_icon() -> tauri::image::Image<'static> {
 async fn refresh_menubar_title(app: &tauri::AppHandle) {
     let title = match app.try_state::<DashboardConfig>() {
         Some(config) if config.mock => menubar_title_from_ui_meetings(&mock_meetings()),
-        _ => match fetch_live_meeting_views().await {
-            Ok(meetings) => menubar_title_from_meetings(&meetings),
-            Err(_) => None,
-        },
+        _ => {
+            let config = app
+                .try_state::<ClientConfig>()
+                .map(|c| c.inner().clone())
+                .unwrap_or_default();
+            match fetch_live_meeting_views(&config).await {
+                Ok(meetings) => menubar_title_from_meetings(&meetings),
+                Err(_) => None,
+            }
+        }
     };
 
     if let Some(tray) = app.tray_by_id("nextmeeting-tray") {
@@ -518,15 +623,20 @@ fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
 fn main() {
     let env_mode = std::env::var("NEXTMEETING_GUI_MODE").ok();
     let launch = parse_launch_options(std::env::args(), env_mode.as_deref());
+    let config = ClientConfig::load().unwrap_or_default();
 
     let builder = tauri::Builder::default()
         .manage(DashboardConfig { mock: launch.mock })
+        .manage(config)
         .invoke_handler(tauri::generate_handler![
             get_dashboard_data,
             join_next_meeting,
+            join_meeting_by_url,
             create_meeting,
             open_calendar_day,
             open_preferences,
+            refresh_meetings,
+            snooze_notifications,
             quit_app
         ]);
 
@@ -549,7 +659,7 @@ mod tests {
             true,
         );
 
-        assert_eq!(status, "ongoing");
+        assert_eq!(status, MeetingStatus::Ongoing);
     }
 
     #[test]
@@ -562,7 +672,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(status, "soon");
+        assert_eq!(status, MeetingStatus::Soon);
     }
 
     #[test]
@@ -575,7 +685,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(status, "upcoming");
+        assert_eq!(status, MeetingStatus::Upcoming);
     }
 
     #[test]
@@ -665,13 +775,50 @@ mod tests {
             end_time: "22:55".to_string(),
             day_label: "Sat, 7 Feb".to_string(),
             service: "Google Meet".to_string(),
-            status: "soon".to_string(),
+            status: MeetingStatus::Soon,
             join_url: None,
+            relative_time: "starts in 30 min".to_string(),
         }];
 
         assert_eq!(
             menubar_title_from_ui_meetings(&meetings),
             Some("Engineering stand-up".to_string())
         );
+    }
+
+    #[test]
+    fn format_relative_time_ongoing() {
+        let now = Local::now();
+        let result = format_relative_time(
+            now - TimeDelta::minutes(10),
+            now + TimeDelta::minutes(20),
+            now,
+            true,
+        );
+        assert_eq!(result, "ends in 20 min");
+    }
+
+    #[test]
+    fn format_relative_time_soon() {
+        let now = Local::now();
+        let result = format_relative_time(
+            now + TimeDelta::minutes(12),
+            now + TimeDelta::minutes(42),
+            now,
+            false,
+        );
+        assert_eq!(result, "starts in 12 min");
+    }
+
+    #[test]
+    fn format_relative_time_hours() {
+        let now = Local::now();
+        let result = format_relative_time(
+            now + TimeDelta::hours(3),
+            now + TimeDelta::hours(4),
+            now,
+            false,
+        );
+        assert_eq!(result, "starts in 3 hrs");
     }
 }
