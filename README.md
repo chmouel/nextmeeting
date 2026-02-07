@@ -143,12 +143,13 @@ Configuration file: `~/.config/nextmeeting/config.toml`
 
 ```toml
 debug = false
+# google_domain = "example.com"        # Google Workspace domain (for calendar URLs)
 
 [[google.accounts]]
 name = "work"
 client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 client_secret = "YOUR_CLIENT_SECRET"
-# domain = "example.com"              # Google Workspace domain
+# domain = "example.com"              # Google Workspace domain (per-account)
 calendar_ids = ["primary"]
 # token_path = "~/.config/nextmeeting/google-tokens-work.json"
 
@@ -162,6 +163,14 @@ calendar_ids = ["primary"]
 # [display]
 # max_title_length = 30                # Truncate titles with ellipsis
 # no_meeting_text = "No meeting"       # Text when no meetings
+# format = "{title} {time}"            # Custom format template
+# tooltip_format = "{title} {time}"    # Custom tooltip format template
+# hour_separator = ":"                 # Hour separator character (e.g., ":", "h")
+# until_offset = 60                    # Minutes offset after which absolute time is shown
+# time_format = "24h"                  # Time format ("24h" or "12h")
+# open_with = "firefox"                # Custom command for opening URLs
+# tooltip_limit = 10                   # Maximum number of meetings in tooltip
+# waybar_show_all_day = true           # Show all-day meetings in Waybar output
 
 # [filters]
 # today_only = false                   # Only show today's meetings
@@ -169,6 +178,13 @@ calendar_ids = ["primary"]
 # skip_all_day = false                 # Hide all-day events
 # include_titles = ["standup"]         # Only show matching titles
 # exclude_titles = ["lunch"]           # Hide matching titles
+# include_calendars = ["Work"]         # Only include events from these calendars
+# exclude_calendars = ["Holidays"]     # Exclude events from these calendars
+# within_minutes = 60                  # Only show events starting within N minutes
+# work_hours = "09:00-17:00"           # Only show events within work hours
+# only_with_link = false               # Only show events with a meeting link
+# privacy = false                      # Enable privacy mode (replace titles)
+# privacy_title = "Meeting"            # Title to use in privacy mode
 # skip_declined = false                # Skip events where you've declined
 # skip_tentative = false               # Skip events where you've tentatively accepted
 # skip_pending = false                 # Skip events where you haven't responded

@@ -30,52 +30,10 @@ pub struct Cli {
     #[arg(long, group = "output_format")]
     pub json: bool,
 
-    // --- Format flags ---
-    /// Custom format template for main display
-    #[arg(long)]
-    pub format: Option<String>,
-
-    /// Custom format template for tooltip
-    #[arg(long)]
-    pub tooltip_format: Option<String>,
-
-    /// Hour separator character (e.g., ":", "h")
-    #[arg(long)]
-    pub hour_separator: Option<String>,
-
-    /// Minutes offset after which absolute time is shown instead of countdown
-    #[arg(long)]
-    pub until_offset: Option<i64>,
-
-    // --- Filter flags ---
-    /// Only include events from these calendars (repeatable)
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub include_calendar: Vec<String>,
-
-    /// Exclude events from these calendars (repeatable)
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub exclude_calendar: Vec<String>,
-
-    /// Only include events starting within N minutes
-    #[arg(long)]
-    pub within_mins: Option<u32>,
-
-    /// Only include events within work hours (format: "HH:MM-HH:MM")
-    #[arg(long)]
-    pub work_hours: Option<String>,
-
-    /// Only include events that have a meeting link
-    #[arg(long)]
-    pub only_with_link: bool,
-
     // --- Privacy flags ---
     /// Enable privacy mode (replace titles)
     #[arg(long)]
     pub privacy: bool,
-
-    /// Title to use when privacy mode is enabled
-    #[arg(long)]
-    pub privacy_title: Option<String>,
 
     // --- Action flags ---
     /// Snooze notifications for N minutes
@@ -106,10 +64,6 @@ pub struct Cli {
     #[arg(long)]
     pub open_link_from_clipboard: bool,
 
-    /// Open meeting URL with a custom command instead of default browser
-    #[arg(long)]
-    pub open_with: Option<String>,
-
     /// Create a new meeting (meet/zoom/teams/gcal)
     #[arg(long)]
     pub create: Option<String>,
@@ -117,10 +71,6 @@ pub struct Cli {
     /// Custom URL for --create
     #[arg(long)]
     pub create_url: Option<String>,
-
-    /// Google Workspace domain for calendar URLs
-    #[arg(long)]
-    pub google_domain: Option<String>,
 
     /// Force refresh calendar data from providers
     #[arg(long)]

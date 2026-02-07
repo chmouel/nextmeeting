@@ -119,7 +119,7 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
 
     // Handle action flags (open/copy) before rendering
     if cli.open_meet_url {
-        if let Some(cmd) = cli.open_with.as_ref().or(config.display.open_with.as_ref()) {
+        if let Some(ref cmd) = config.display.open_with {
             return nextmeeting_client::actions::open_meeting_url_with(&meetings, cmd);
         }
         return nextmeeting_client::actions::open_meeting_url(&meetings);
@@ -142,7 +142,7 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     }
 
     if let Some(ref service) = cli.create {
-        let google_domain = get_google_domain(cli, config);
+        let google_domain = get_google_domain(config);
         return nextmeeting_client::actions::create_meeting(
             service,
             cli.create_url.as_deref(),
@@ -151,7 +151,7 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     }
 
     if cli.open_calendar_day {
-        let domain = get_google_domain(cli, config);
+        let domain = get_google_domain(config);
         return nextmeeting_client::actions::open_calendar_day(&meetings, domain);
     }
 
@@ -204,7 +204,7 @@ async fn fetch_meetings(
     }
 }
 
-/// Builds a MeetingsFilter from config and CLI settings (CLI overrides config).
+/// Builds a MeetingsFilter from config settings.
 fn build_filter(cli: &Cli, config: &ClientConfig) -> MeetingsFilter {
     let filters = &config.filters;
     let mut filter = MeetingsFilter::new();
@@ -230,50 +230,34 @@ fn build_filter(cli: &Cli, config: &ClientConfig) -> MeetingsFilter {
         filter = filter.exclude_titles(filters.exclude_titles.clone());
     }
 
-    // Calendar filters (CLI takes priority over config)
-    let include_calendars = if !cli.include_calendar.is_empty() {
-        &cli.include_calendar
-    } else {
-        &filters.include_calendars
-    };
-    if !include_calendars.is_empty() {
-        filter = filter.include_calendars(include_calendars.clone());
+    // Calendar filters
+    if !filters.include_calendars.is_empty() {
+        filter = filter.include_calendars(filters.include_calendars.clone());
     }
 
-    let exclude_calendars = if !cli.exclude_calendar.is_empty() {
-        &cli.exclude_calendar
-    } else {
-        &filters.exclude_calendars
-    };
-    if !exclude_calendars.is_empty() {
-        filter = filter.exclude_calendars(exclude_calendars.clone());
+    if !filters.exclude_calendars.is_empty() {
+        filter = filter.exclude_calendars(filters.exclude_calendars.clone());
     }
 
-    // Within-minutes filter (CLI overrides config)
-    let within_mins = cli.within_mins.or(filters.within_minutes);
-    if let Some(mins) = within_mins {
+    // Within-minutes filter
+    if let Some(mins) = filters.within_minutes {
         filter = filter.within_minutes(mins);
     }
 
-    // Work hours filter (CLI overrides config)
-    let work_hours = cli.work_hours.as_ref().or(filters.work_hours.as_ref());
-    if let Some(spec) = work_hours {
+    // Work hours filter
+    if let Some(ref spec) = filters.work_hours {
         filter = filter.work_hours(spec.clone());
     }
 
     // Only-with-link filter
-    if cli.only_with_link || filters.only_with_link {
+    if filters.only_with_link {
         filter = filter.only_with_link(true);
     }
 
-    // Privacy filter (CLI overrides config)
+    // Privacy filter
     if cli.privacy || filters.privacy {
         filter = filter.privacy(true);
-        let title = cli
-            .privacy_title
-            .as_ref()
-            .or(filters.privacy_title.as_ref());
-        if let Some(t) = title {
+        if let Some(ref t) = filters.privacy_title {
             filter = filter.privacy_title(t.clone());
         }
     }
@@ -328,22 +312,19 @@ fn render_output(cli: &Cli, config: &ClientConfig, meetings: &[MeetingView]) {
         format_options.max_title_length = Some(max_len);
     }
 
-    // Custom format template (CLI overrides config)
-    format_options.custom_format = cli.format.clone().or_else(|| display.format.clone());
+    // Custom format template
+    format_options.custom_format = display.format.clone();
 
     // Tooltip format
-    format_options.tooltip_format = cli
-        .tooltip_format
-        .clone()
-        .or_else(|| display.tooltip_format.clone());
+    format_options.tooltip_format = display.tooltip_format.clone();
 
-    // Hour separator (CLI overrides config)
-    if let Some(ref sep) = cli.hour_separator.as_ref().or(display.hour_separator.as_ref()) {
+    // Hour separator
+    if let Some(ref sep) = display.hour_separator {
         format_options.hour_separator = sep.to_string();
     }
 
-    // Until offset (CLI overrides config)
-    format_options.until_offset_minutes = cli.until_offset.or(display.until_offset);
+    // Until offset
+    format_options.until_offset_minutes = display.until_offset;
 
     // Time format from config
     if let Some(ref tf) = display.time_format
@@ -355,14 +336,10 @@ fn render_output(cli: &Cli, config: &ClientConfig, meetings: &[MeetingView]) {
     // Tooltip limit
     format_options.tooltip_limit = display.tooltip_limit;
 
-    // Privacy (from filter CLI/config)
+    // Privacy (from CLI flag or config)
     if cli.privacy || config.filters.privacy {
         format_options.privacy = true;
-        if let Some(ref title) = cli
-            .privacy_title
-            .as_ref()
-            .or(config.filters.privacy_title.as_ref())
-        {
+        if let Some(ref title) = config.filters.privacy_title {
             format_options.privacy_title = title.to_string();
         }
     }
@@ -547,12 +524,8 @@ fn make_client(cli: &Cli, config: &ClientConfig) -> SocketClient {
     SocketClient::new(socket_path, timeout)
 }
 
-/// Gets the Google Workspace domain from CLI flag, top-level config, or account config.
-fn get_google_domain<'a>(cli: &'a Cli, config: &'a ClientConfig) -> Option<&'a str> {
-    if let Some(ref domain) = cli.google_domain {
-        return Some(domain.as_str());
-    }
-
+/// Gets the Google Workspace domain from top-level config or account config.
+fn get_google_domain(config: &ClientConfig) -> Option<&str> {
     if let Some(ref domain) = config.google_domain {
         return Some(domain.as_str());
     }
