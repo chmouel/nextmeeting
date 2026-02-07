@@ -27,6 +27,9 @@ pub struct ClientConfig {
     /// Debug mode.
     pub debug: bool,
 
+    /// Google Workspace domain (used for calendar URLs and meeting creation).
+    pub google_domain: Option<String>,
+
     /// Display settings.
     #[serde(default)]
     pub display: DisplaySettings,
@@ -77,6 +80,9 @@ pub struct DisplaySettings {
 
     /// Number of hours to treat all-day meetings as (for display).
     pub all_day_meeting_hours: Option<u32>,
+
+    /// Custom command for opening URLs (e.g., "firefox", "open -a Safari").
+    pub open_with: Option<String>,
 }
 
 impl Default for DisplaySettings {
@@ -92,6 +98,7 @@ impl Default for DisplaySettings {
             tooltip_limit: None,
             waybar_show_all_day: None,
             all_day_meeting_hours: None,
+            open_with: None,
         }
     }
 }

@@ -119,7 +119,7 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
 
     // Handle action flags (open/copy) before rendering
     if cli.open_meet_url {
-        if let Some(ref cmd) = cli.open_with {
+        if let Some(cmd) = cli.open_with.as_ref().or(config.display.open_with.as_ref()) {
             return nextmeeting_client::actions::open_meeting_url_with(&meetings, cmd);
         }
         return nextmeeting_client::actions::open_meeting_url(&meetings);
@@ -547,9 +547,13 @@ fn make_client(cli: &Cli, config: &ClientConfig) -> SocketClient {
     SocketClient::new(socket_path, timeout)
 }
 
-/// Gets the Google Workspace domain from CLI flag or config.
+/// Gets the Google Workspace domain from CLI flag, top-level config, or account config.
 fn get_google_domain<'a>(cli: &'a Cli, config: &'a ClientConfig) -> Option<&'a str> {
     if let Some(ref domain) = cli.google_domain {
+        return Some(domain.as_str());
+    }
+
+    if let Some(ref domain) = config.google_domain {
         return Some(domain.as_str());
     }
 
@@ -563,7 +567,6 @@ fn get_google_domain<'a>(cli: &'a Cli, config: &'a ClientConfig) -> Option<&'a s
 
     #[cfg(not(feature = "google"))]
     {
-        let _ = config;
         None
     }
 }
