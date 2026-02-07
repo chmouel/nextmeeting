@@ -31,6 +31,14 @@ pub struct NotifyConfig {
     pub timeout_secs: u32,
     /// Whether notifications are enabled.
     pub enabled: bool,
+    /// Override urgency level ("low", "normal", "critical").
+    pub urgency: Option<String>,
+    /// Override expiry/timeout in seconds.
+    pub expiry_secs: Option<u32>,
+    /// Custom notification icon path.
+    pub icon_path: Option<String>,
+    /// Time to send morning agenda notification (format: "HH:MM").
+    pub morning_agenda_time: Option<String>,
 }
 
 impl Default for NotifyConfig {
@@ -40,6 +48,10 @@ impl Default for NotifyConfig {
             app_name: "nextmeeting".to_string(),
             timeout_secs: 10,
             enabled: true,
+            urgency: None,
+            expiry_secs: None,
+            icon_path: None,
+            morning_agenda_time: None,
         }
     }
 }
@@ -68,6 +80,30 @@ impl NotifyConfig {
     /// Builder: enable or disable notifications.
     pub fn with_enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
+        self
+    }
+
+    /// Builder: set urgency override.
+    pub fn with_urgency(mut self, urgency: impl Into<String>) -> Self {
+        self.urgency = Some(urgency.into());
+        self
+    }
+
+    /// Builder: set expiry override.
+    pub fn with_expiry_secs(mut self, secs: u32) -> Self {
+        self.expiry_secs = Some(secs);
+        self
+    }
+
+    /// Builder: set icon path.
+    pub fn with_icon_path(mut self, path: impl Into<String>) -> Self {
+        self.icon_path = Some(path.into());
+        self
+    }
+
+    /// Builder: set morning agenda time.
+    pub fn with_morning_agenda_time(mut self, time: impl Into<String>) -> Self {
+        self.morning_agenda_time = Some(time.into());
         self
     }
 }
@@ -249,13 +285,17 @@ impl NotifyEngine {
         let body = format!("Starts at {}", meeting.start_local.format("%H:%M"));
 
         #[cfg(target_os = "linux")]
-        let urgency = if minutes_before <= 1 {
+        let urgency = if let Some(ref urg) = self.config.urgency {
+            parse_urgency(urg)
+        } else if minutes_before <= 1 {
             Urgency::Critical
         } else if minutes_before <= 5 {
             Urgency::Normal
         } else {
             Urgency::Low
         };
+
+        let timeout_secs = self.config.expiry_secs.unwrap_or(self.config.timeout_secs);
 
         debug!(
             title = %meeting.title,
@@ -268,7 +308,11 @@ impl NotifyEngine {
             .appname(&self.config.app_name)
             .summary(&summary)
             .body(&body)
-            .timeout(Duration::from_secs(self.config.timeout_secs as u64));
+            .timeout(Duration::from_secs(timeout_secs as u64));
+
+        if let Some(ref icon) = self.config.icon_path {
+            notification.icon(icon);
+        }
 
         #[cfg(target_os = "linux")]
         notification.urgency(urgency);
@@ -289,6 +333,77 @@ impl NotifyEngine {
                     "Failed to send notification"
                 );
                 false
+            }
+        }
+    }
+
+    /// Checks if it's time to send the morning agenda notification.
+    /// Sends a summary of today's meetings once per day at the configured time.
+    pub async fn check_morning_agenda(&self, meetings: &[MeetingView]) {
+        let agenda_time = match &self.config.morning_agenda_time {
+            Some(t) => t,
+            None => return,
+        };
+
+        let now = Local::now();
+        let target = match chrono::NaiveTime::parse_from_str(agenda_time, "%H:%M") {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+
+        // Only trigger within a 2-minute window of the agenda time
+        let current_time = now.time();
+        let diff = (current_time - target).num_minutes().abs();
+        if diff > 1 {
+            return;
+        }
+
+        // Deduplicate by date
+        let date_hash = format!("morning-agenda-{}", now.format("%Y-%m-%d"));
+        let mut state = self.state.write().await;
+        if state.was_sent(&date_hash) {
+            return;
+        }
+
+        // Build agenda
+        let today = now.date_naive();
+        let today_meetings: Vec<_> = meetings
+            .iter()
+            .filter(|m| m.start_local.date_naive() == today && !m.is_all_day)
+            .collect();
+
+        if today_meetings.is_empty() {
+            state.mark_sent(date_hash);
+            return;
+        }
+
+        let summary = format!("Today's Agenda: {} meetings", today_meetings.len());
+        let body_lines: Vec<String> = today_meetings
+            .iter()
+            .map(|m| format!("{} - {}", m.start_local.format("%H:%M"), m.title))
+            .collect();
+        let body = body_lines.join("\n");
+
+        let mut notification = Notification::new();
+        notification
+            .appname(&self.config.app_name)
+            .summary(&summary)
+            .body(&body)
+            .timeout(Duration::from_secs(
+                self.config.expiry_secs.unwrap_or(self.config.timeout_secs) as u64,
+            ));
+
+        if let Some(ref icon) = self.config.icon_path {
+            notification.icon(icon);
+        }
+
+        match notification.show() {
+            Ok(_) => {
+                info!("Morning agenda notification sent");
+                state.mark_sent(date_hash);
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to send morning agenda notification");
             }
         }
     }
@@ -316,6 +431,17 @@ impl NotifyEngine {
     /// Performs periodic cleanup of the notification state.
     pub async fn cleanup(&self) {
         self.state.write().await.cleanup_old_hashes(1000);
+    }
+}
+
+/// Parses an urgency string into a notify-rust Urgency value.
+#[cfg(target_os = "linux")]
+fn parse_urgency(s: &str) -> Urgency {
+    match s.to_lowercase().as_str() {
+        "low" => Urgency::Low,
+        "normal" => Urgency::Normal,
+        "critical" => Urgency::Critical,
+        _ => Urgency::Normal,
     }
 }
 
@@ -347,6 +473,7 @@ mod tests {
             primary_link: None,
             secondary_links: vec![],
             calendar_url: None,
+            calendar_id: "primary".to_string(),
             user_response_status: nextmeeting_core::ResponseStatus::Unknown,
             other_attendee_count: 0,
         }
@@ -458,5 +585,61 @@ mod tests {
     fn hex_encode() {
         assert_eq!(hex::encode([0x00, 0xff, 0xab]), "00ffab");
         assert_eq!(hex::encode([]), "");
+    }
+
+    #[test]
+    fn config_with_urgency() {
+        let config = NotifyConfig::default().with_urgency("critical");
+        assert_eq!(config.urgency, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn config_with_expiry() {
+        let config = NotifyConfig::default().with_expiry_secs(30);
+        assert_eq!(config.expiry_secs, Some(30));
+    }
+
+    #[test]
+    fn config_with_icon_path() {
+        let config = NotifyConfig::default().with_icon_path("/usr/share/icons/meeting.png");
+        assert_eq!(
+            config.icon_path,
+            Some("/usr/share/icons/meeting.png".to_string())
+        );
+    }
+
+    #[test]
+    fn config_with_morning_agenda() {
+        let config = NotifyConfig::default().with_morning_agenda_time("08:00");
+        assert_eq!(config.morning_agenda_time, Some("08:00".to_string()));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parse_urgency_values() {
+        assert_eq!(super::parse_urgency("low"), Urgency::Low);
+        assert_eq!(super::parse_urgency("normal"), Urgency::Normal);
+        assert_eq!(super::parse_urgency("critical"), Urgency::Critical);
+        assert_eq!(super::parse_urgency("Critical"), Urgency::Critical);
+        assert_eq!(super::parse_urgency("unknown"), Urgency::Normal);
+    }
+
+    #[tokio::test]
+    async fn morning_agenda_dedup() {
+        let config = NotifyConfig::default()
+            .with_enabled(true)
+            .with_morning_agenda_time("08:00");
+        let engine = NotifyEngine::new(config);
+
+        // Manually mark today's agenda as sent
+        let date_hash = format!("morning-agenda-{}", Local::now().format("%Y-%m-%d"));
+        engine.state.write().await.mark_sent(date_hash.clone());
+
+        // Should not send again
+        let meetings = vec![make_meeting("1", "Test", 60)];
+        engine.check_morning_agenda(&meetings).await;
+
+        // Verify it was already marked
+        assert!(engine.state.read().await.was_sent(&date_hash));
     }
 }

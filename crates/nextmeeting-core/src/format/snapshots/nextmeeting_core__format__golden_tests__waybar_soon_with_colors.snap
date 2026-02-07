@@ -1,0 +1,9 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+expression: output
+---
+{
+  "text": "<span background=\"#ff0000\" foreground=\"#ffffff\">In 3 minutes - Urgent Call</span>",
+  "tooltip": "11:03 - Urgent Call",
+  "class": "soon"
+}

@@ -17,8 +17,8 @@ use nextmeeting_core::{MeetingView, TimeWindow};
 use nextmeeting_providers::{CalendarProvider, FetchOptions, normalize_events};
 
 use nextmeeting_server::{
-    PidFile, Scheduler, SchedulerConfig, ServerConfig, SharedState, SignalHandler, SocketServer,
-    default_pid_path, make_connection_handler, new_shared_state,
+    NotifyConfig, NotifyEngine, PidFile, Scheduler, SchedulerConfig, ServerConfig, SharedState,
+    SignalHandler, SocketServer, default_pid_path, make_connection_handler, new_shared_state,
 };
 
 use crate::cli::Cli;
@@ -73,16 +73,31 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         s.set_scheduler_handle(scheduler_handle.clone());
     }
 
-    // 6. Build the sync closure and spawn the scheduler
+    // 6. Build notify engine from config
+    let notify_config = build_notify_config(config);
+    let notify_engine = std::sync::Arc::new(NotifyEngine::new(notify_config));
+
+    // 7. Build the sync closure and spawn the scheduler
     let sync_state = state.clone();
     let sync_providers = providers.clone();
+    let sync_notify = notify_engine.clone();
 
     let scheduler_task = tokio::spawn(async move {
         scheduler
             .run(move || {
                 let state = sync_state.clone();
                 let providers = sync_providers.clone();
-                async move { sync_all_providers(&providers, &state).await }
+                let engine = sync_notify.clone();
+                async move {
+                    let result = sync_all_providers(&providers, &state).await;
+
+                    // After sync, run notifications on the updated meetings
+                    let meetings = state.read().await.get_meetings(None);
+                    engine.check_and_notify(&meetings).await;
+                    engine.check_morning_agenda(&meetings).await;
+
+                    result
+                }
             })
             .await;
     });
@@ -177,6 +192,35 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
     }
 
     Ok(providers)
+}
+
+/// Builds a NotifyConfig from client configuration.
+fn build_notify_config(config: &ClientConfig) -> NotifyConfig {
+    let notifications = &config.notifications;
+
+    let mut notify_config = if notifications.minutes_before.is_empty() {
+        NotifyConfig::default()
+    } else {
+        NotifyConfig::new(notifications.minutes_before.clone())
+    };
+
+    if let Some(ref urgency) = notifications.urgency {
+        notify_config = notify_config.with_urgency(urgency);
+    }
+
+    if let Some(expiry) = notifications.expiry {
+        notify_config = notify_config.with_expiry_secs(expiry);
+    }
+
+    if let Some(ref icon) = notifications.icon {
+        notify_config = notify_config.with_icon_path(icon);
+    }
+
+    if let Some(ref time) = notifications.morning_agenda {
+        notify_config = notify_config.with_morning_agenda_time(time);
+    }
+
+    notify_config
 }
 
 /// Fetches events from all providers, normalizes them, and updates shared state.

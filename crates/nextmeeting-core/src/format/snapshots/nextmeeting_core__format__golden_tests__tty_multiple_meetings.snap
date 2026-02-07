@@ -25,6 +25,7 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/15",
             ),
+            calendar_id: "primary",
             user_response_status: Unknown,
             other_attendee_count: 0,
         },
@@ -51,6 +52,7 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/60",
             ),
+            calendar_id: "primary",
             user_response_status: Unknown,
             other_attendee_count: 0,
         },
@@ -77,6 +79,7 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/120",
             ),
+            calendar_id: "primary",
             user_response_status: Unknown,
             other_attendee_count: 0,
         },

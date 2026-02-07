@@ -4,26 +4,26 @@ expression: output
 ---
 [
     FormattedMeeting {
-        text: "In 3 minutes - Urgent Sync",
-        urgency: Soon,
+        text: "In 15 minutes - Busy",
+        urgency: Upcoming,
         meeting: MeetingView {
-            id: "evt-3",
-            title: "Urgent Sync",
-            start_local: 2025-02-05T11:03:00+01:00,
-            end_local: 2025-02-05T11:33:00+01:00,
+            id: "evt-15",
+            title: "Secret Meeting",
+            start_local: 2025-02-05T11:15:00+01:00,
+            end_local: 2025-02-05T11:45:00+01:00,
             is_all_day: false,
             is_ongoing: false,
             primary_link: Some(
                 EventLink {
                     kind: GoogleMeet,
-                    url: "https://meet.google.com/abc-3",
+                    url: "https://meet.google.com/abc-15",
                     meeting_id: None,
                     passcode: None,
                 },
             ),
             secondary_links: [],
             calendar_url: Some(
-                "https://calendar.google.com/event/3",
+                "https://calendar.google.com/event/15",
             ),
             calendar_id: "primary",
             user_response_status: Unknown,

@@ -25,6 +25,7 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/60",
             ),
+            calendar_id: "primary",
             user_response_status: Unknown,
             other_attendee_count: 0,
         },

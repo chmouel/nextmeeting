@@ -108,6 +108,39 @@ impl Request {
     }
 }
 
+/// Deserializes a value that can be either a single string or a Vec<String>.
+/// Used for backward compatibility with the old single-pattern fields.
+fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct StringOrVec;
+
+    impl<'de> de::Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string or a sequence of strings")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<Vec<String>, E> {
+            Ok(vec![value.to_string()])
+        }
+
+        fn visit_seq<S: de::SeqAccess<'de>>(self, mut seq: S) -> Result<Vec<String>, S::Error> {
+            let mut v = Vec::new();
+            while let Some(s) = seq.next_element()? {
+                v.push(s);
+            }
+            Ok(v)
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec)
+}
+
 /// Filter options for GetMeetings request.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MeetingsFilter {
@@ -123,13 +156,51 @@ pub struct MeetingsFilter {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_all_day: bool,
 
-    /// Only include events matching this title pattern.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub include_title: Option<String>,
+    /// Only include events matching these title patterns (any match retains).
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "include_title",
+        deserialize_with = "string_or_vec",
+    )]
+    pub include_titles: Vec<String>,
 
-    /// Exclude events matching this title pattern.
+    /// Exclude events matching these title patterns (any match removes).
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        alias = "exclude_title",
+        deserialize_with = "string_or_vec",
+    )]
+    pub exclude_titles: Vec<String>,
+
+    /// Only include events from these calendars.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include_calendars: Vec<String>,
+
+    /// Exclude events from these calendars.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_calendars: Vec<String>,
+
+    /// Only include events starting within N minutes from now.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exclude_title: Option<String>,
+    pub within_minutes: Option<u32>,
+
+    /// Only include events that have a meeting link.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub only_with_link: bool,
+
+    /// Only include events within work hours (format: "HH:MM-HH:MM").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_hours: Option<String>,
+
+    /// Enable privacy mode (replace titles with privacy_title).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub privacy: bool,
+
+    /// Title to use when privacy mode is enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privacy_title: Option<String>,
 
     /// Skip events where the user has declined.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -172,15 +243,81 @@ impl MeetingsFilter {
         self
     }
 
-    /// Builder: set include_title pattern.
+    /// Builder: add an include title pattern.
     pub fn include_title(mut self, pattern: impl Into<String>) -> Self {
-        self.include_title = Some(pattern.into());
+        self.include_titles.push(pattern.into());
         self
     }
 
-    /// Builder: set exclude_title pattern.
+    /// Builder: set all include title patterns.
+    pub fn include_titles(mut self, patterns: Vec<String>) -> Self {
+        self.include_titles = patterns;
+        self
+    }
+
+    /// Builder: add an exclude title pattern.
     pub fn exclude_title(mut self, pattern: impl Into<String>) -> Self {
-        self.exclude_title = Some(pattern.into());
+        self.exclude_titles.push(pattern.into());
+        self
+    }
+
+    /// Builder: set all exclude title patterns.
+    pub fn exclude_titles(mut self, patterns: Vec<String>) -> Self {
+        self.exclude_titles = patterns;
+        self
+    }
+
+    /// Builder: add an include calendar pattern.
+    pub fn include_calendar(mut self, pattern: impl Into<String>) -> Self {
+        self.include_calendars.push(pattern.into());
+        self
+    }
+
+    /// Builder: set all include calendar patterns.
+    pub fn include_calendars(mut self, patterns: Vec<String>) -> Self {
+        self.include_calendars = patterns;
+        self
+    }
+
+    /// Builder: add an exclude calendar pattern.
+    pub fn exclude_calendar(mut self, pattern: impl Into<String>) -> Self {
+        self.exclude_calendars.push(pattern.into());
+        self
+    }
+
+    /// Builder: set all exclude calendar patterns.
+    pub fn exclude_calendars(mut self, patterns: Vec<String>) -> Self {
+        self.exclude_calendars = patterns;
+        self
+    }
+
+    /// Builder: set within_minutes filter.
+    pub fn within_minutes(mut self, minutes: u32) -> Self {
+        self.within_minutes = Some(minutes);
+        self
+    }
+
+    /// Builder: set only_with_link filter.
+    pub fn only_with_link(mut self, only: bool) -> Self {
+        self.only_with_link = only;
+        self
+    }
+
+    /// Builder: set work_hours filter (format: "HH:MM-HH:MM").
+    pub fn work_hours(mut self, spec: impl Into<String>) -> Self {
+        self.work_hours = Some(spec.into());
+        self
+    }
+
+    /// Builder: enable privacy mode.
+    pub fn privacy(mut self, privacy: bool) -> Self {
+        self.privacy = privacy;
+        self
+    }
+
+    /// Builder: set privacy title.
+    pub fn privacy_title(mut self, title: impl Into<String>) -> Self {
+        self.privacy_title = Some(title.into());
         self
     }
 
@@ -591,13 +728,36 @@ mod tests {
             .limit(10)
             .skip_all_day(true)
             .include_title("standup")
-            .exclude_title("optional");
+            .exclude_title("optional")
+            .include_calendar("primary")
+            .exclude_calendar("holidays")
+            .within_minutes(30)
+            .only_with_link(true)
+            .work_hours("09:00-18:00")
+            .privacy(true)
+            .privacy_title("Busy");
 
         assert!(filter.today_only);
         assert_eq!(filter.limit, Some(10));
         assert!(filter.skip_all_day);
-        assert_eq!(filter.include_title, Some("standup".to_string()));
-        assert_eq!(filter.exclude_title, Some("optional".to_string()));
+        assert_eq!(filter.include_titles, vec!["standup".to_string()]);
+        assert_eq!(filter.exclude_titles, vec!["optional".to_string()]);
+        assert_eq!(filter.include_calendars, vec!["primary".to_string()]);
+        assert_eq!(filter.exclude_calendars, vec!["holidays".to_string()]);
+        assert_eq!(filter.within_minutes, Some(30));
+        assert!(filter.only_with_link);
+        assert_eq!(filter.work_hours, Some("09:00-18:00".to_string()));
+        assert!(filter.privacy);
+        assert_eq!(filter.privacy_title, Some("Busy".to_string()));
+    }
+
+    #[test]
+    fn meetings_filter_serde_alias() {
+        // Test backward compatibility with singular field names
+        let json = r#"{"include_title":"standup","exclude_title":"optional"}"#;
+        let filter: MeetingsFilter = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.include_titles, vec!["standup".to_string()]);
+        assert_eq!(filter.exclude_titles, vec!["optional".to_string()]);
     }
 
     #[test]

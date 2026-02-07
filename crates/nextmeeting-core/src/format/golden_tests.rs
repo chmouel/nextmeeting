@@ -585,3 +585,166 @@ fn golden_special_characters_in_title() {
 
     insta::assert_debug_snapshot!("tty_special_characters", output);
 }
+
+// =============================================================================
+// Custom Format Template Tests
+// =============================================================================
+
+#[test]
+fn golden_custom_format_template() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
+
+    let mut options = FormatOptions::default();
+    options.hyperlinks = false;
+    options.custom_format = Some("{when} | {title}".to_string());
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_tty_at(&meetings, now_local);
+
+    insta::assert_debug_snapshot!("tty_custom_format", output);
+}
+
+#[test]
+fn golden_custom_format_all_placeholders() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
+
+    let mut options = FormatOptions::default();
+    options.hyperlinks = false;
+    options.custom_format = Some(
+        "{title} @ {start_time} - {end_time} ({minutes_until}m) all_day={is_all_day} ongoing={is_ongoing}"
+            .to_string(),
+    );
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_tty_at(&meetings, now_local);
+
+    insta::assert_debug_snapshot!("tty_custom_format_all_placeholders", output);
+}
+
+// =============================================================================
+// Privacy Mode Tests
+// =============================================================================
+
+#[test]
+fn golden_privacy_mode_tty() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 15, "Secret Meeting")];
+
+    let mut options = FormatOptions::default();
+    options.hyperlinks = false;
+    options.privacy = true;
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_tty_at(&meetings, now_local);
+
+    insta::assert_debug_snapshot!("tty_privacy_mode", output);
+}
+
+#[test]
+fn golden_privacy_custom_title() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 15, "Secret Meeting")];
+
+    let mut options = FormatOptions::default();
+    options.hyperlinks = false;
+    options.privacy = true;
+    options.privacy_title = "Meeting".to_string();
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_tty_at(&meetings, now_local);
+
+    insta::assert_debug_snapshot!("tty_privacy_custom_title", output);
+}
+
+#[test]
+fn golden_privacy_waybar() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 15, "Secret Meeting")];
+
+    let mut options = FormatOptions::default();
+    options.privacy = true;
+    options.privacy_title = "Busy".to_string();
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
+
+    insta::assert_json_snapshot!("waybar_privacy", output);
+}
+
+// =============================================================================
+// Waybar Color Markup Tests
+// =============================================================================
+
+#[test]
+fn golden_waybar_soon_with_colors() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 3, "Urgent Call")]; // 3 min = soon
+
+    let mut options = FormatOptions::default();
+    options.notify_min_color = Some("#ff0000".to_string());
+    options.notify_min_color_foreground = Some("#ffffff".to_string());
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
+
+    insta::assert_json_snapshot!("waybar_soon_with_colors", output);
+}
+
+#[test]
+fn golden_waybar_hide_all_day() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![all_day_meeting(now_utc, "Holiday")];
+
+    let mut options = FormatOptions::default();
+    options.waybar_show_all_day = false;
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
+
+    insta::assert_json_snapshot!("waybar_hide_all_day", output);
+}
+
+// =============================================================================
+// Until Offset Tests
+// =============================================================================
+
+#[test]
+fn golden_until_offset_within_threshold() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
+
+    let mut options = FormatOptions::default();
+    options.hyperlinks = false;
+    options.until_offset_minutes = Some(30); // 30 min threshold, meeting is 15 min away -> show countdown
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_tty_at(&meetings, now_local);
+
+    insta::assert_debug_snapshot!("tty_until_offset_within", output);
+}
+
+#[test]
+fn golden_until_offset_beyond_threshold() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![sample_meeting(now_utc, 90, "Later Meeting")];
+
+    let mut options = FormatOptions::default();
+    options.hyperlinks = false;
+    options.until_offset_minutes = Some(30); // 30 min threshold, meeting is 90 min away -> show absolute time
+    let formatter = OutputFormatter::new(options);
+
+    let output = formatter.format_tty_at(&meetings, now_local);
+
+    insta::assert_debug_snapshot!("tty_until_offset_beyond", output);
+}

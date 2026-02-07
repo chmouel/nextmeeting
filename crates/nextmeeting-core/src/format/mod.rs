@@ -89,6 +89,20 @@ pub struct FormatOptions {
     pub tooltip_limit: Option<usize>,
     /// Custom format template for the tooltip.
     pub tooltip_format: Option<String>,
+    /// Custom format template for the main display.
+    pub custom_format: Option<String>,
+    /// When the meeting is more than this many minutes away, show absolute time instead of countdown.
+    pub until_offset_minutes: Option<i64>,
+    /// Enable privacy mode (replace titles).
+    pub privacy: bool,
+    /// Title to use when privacy mode is enabled.
+    pub privacy_title: String,
+    /// Background color for "soon" notifications in Waybar (Pango markup).
+    pub notify_min_color: Option<String>,
+    /// Foreground color for "soon" notifications in Waybar (Pango markup).
+    pub notify_min_color_foreground: Option<String>,
+    /// Whether to show all-day meetings in Waybar output.
+    pub waybar_show_all_day: bool,
 }
 
 impl Default for FormatOptions {
@@ -102,6 +116,13 @@ impl Default for FormatOptions {
             show_relative_time: true,
             tooltip_limit: None,
             tooltip_format: None,
+            custom_format: None,
+            until_offset_minutes: None,
+            privacy: false,
+            privacy_title: "Busy".to_string(),
+            notify_min_color: None,
+            notify_min_color_foreground: None,
+            waybar_show_all_day: true,
         }
     }
 }
@@ -270,19 +291,31 @@ impl OutputFormatter {
             return WaybarOutput::new(no_meeting_text, "No upcoming meetings");
         }
 
+        // If waybar_show_all_day is false and only all-day meetings exist, show no_meeting_text
+        if !self.options.waybar_show_all_day && meetings.iter().all(|m| m.is_all_day) {
+            return WaybarOutput::new(no_meeting_text, "No upcoming meetings");
+        }
+
         // Get the next non-all-day meeting for the main display
         let next_meeting = self.get_next_meeting_for_display(meetings);
 
         let (text, class) = if let Some(meeting) = next_meeting {
             let formatted = self.format_single_meeting(meeting, now, false);
-            (
-                formatted.text.clone(),
-                Some(formatted.urgency.as_str().to_string()),
-            )
+            let urgency = formatted.urgency;
+
+            // Apply Pango color markup for "soon" meetings in Waybar
+            let display_text = if urgency == UrgencyClass::Soon {
+                self.apply_waybar_colors(&formatted.text)
+            } else {
+                formatted.text.clone()
+            };
+
+            (display_text, Some(urgency.as_str().to_string()))
         } else {
             // Only all-day meetings
             let first = &meetings[0];
-            let title = self.truncate_title(&first.title);
+            let raw_title = self.privacy_title(&first.title);
+            let title = self.truncate_title(&raw_title);
             (format!("All day: {}", title), Some("allday".to_string()))
         };
 
@@ -303,6 +336,26 @@ impl OutputFormatter {
         let mut output = WaybarOutput::new(text, tooltip);
         output.class = class;
         output
+    }
+
+    /// Wraps text in Pango `<span>` with configured notification colors.
+    fn apply_waybar_colors(&self, text: &str) -> String {
+        let has_bg = self.options.notify_min_color.is_some();
+        let has_fg = self.options.notify_min_color_foreground.is_some();
+
+        if !has_bg && !has_fg {
+            return text.to_string();
+        }
+
+        let mut attrs = String::new();
+        if let Some(ref bg) = self.options.notify_min_color {
+            attrs.push_str(&format!(" background=\"{}\"", html_escape(bg)));
+        }
+        if let Some(ref fg) = self.options.notify_min_color_foreground {
+            attrs.push_str(&format!(" foreground=\"{}\"", html_escape(fg)));
+        }
+
+        format!("<span{}>{}</span>", attrs, html_escape(text))
     }
 
     /// Formats meetings for Polybar output.
@@ -374,10 +427,14 @@ impl OutputFormatter {
         hyperlink: bool,
     ) -> FormattedMeeting {
         let urgency = self.compute_urgency(meeting, now);
-        let time_str = self.format_time(meeting, now);
-        let title = self.format_title(meeting, hyperlink);
 
-        let text = format!("{} - {}", time_str, title);
+        let text = if let Some(ref template) = self.options.custom_format {
+            self.format_with_template(meeting, now, template)
+        } else {
+            let time_str = self.format_time(meeting, now);
+            let title = self.format_title(meeting, hyperlink);
+            format!("{} - {}", time_str, title)
+        };
 
         FormattedMeeting {
             text,
@@ -392,7 +449,8 @@ impl OutputFormatter {
             self.format_with_template(meeting, now, template)
         } else {
             let time_str = self.format_absolute_time(meeting);
-            let title = self.truncate_title(&meeting.title);
+            let raw_title = self.privacy_title(&meeting.title);
+            let title = self.truncate_title(&raw_title);
             format!("{} - {}", time_str, title)
         }
     }
@@ -401,12 +459,22 @@ impl OutputFormatter {
     fn format_with_template(
         &self,
         meeting: &MeetingView,
-        _now: DateTime<Local>,
+        now: DateTime<Local>,
         template: &str,
     ) -> String {
-        // Simple template replacement
+        let title = self.privacy_title(&meeting.title);
+        let meet_url = meeting
+            .primary_link
+            .as_ref()
+            .map(|l| l.url.as_str())
+            .unwrap_or("");
+        let calendar_url = meeting.calendar_url.as_deref().unwrap_or("");
+        let minutes_until = meeting.minutes_until_start(now);
+        let when = self.format_time(meeting, now);
+
         template
-            .replace("{title}", &meeting.title)
+            .replace("{title}", &title)
+            .replace("{when}", &when)
             .replace(
                 "{start_time:%H:%M}",
                 &meeting.start_local.format("%H:%M").to_string(),
@@ -420,6 +488,11 @@ impl OutputFormatter {
                 &meeting.start_local.format("%H:%M").to_string(),
             )
             .replace("{end_time}", &meeting.end_local.format("%H:%M").to_string())
+            .replace("{meet_url}", meet_url)
+            .replace("{calendar_url}", calendar_url)
+            .replace("{minutes_until}", &minutes_until.to_string())
+            .replace("{is_all_day}", &meeting.is_all_day.to_string())
+            .replace("{is_ongoing}", &meeting.is_ongoing.to_string())
     }
 
     /// Computes the urgency class for a meeting.
@@ -453,6 +526,15 @@ impl OutputFormatter {
 
         if self.options.show_relative_time {
             let minutes_until = meeting.minutes_until_start(now);
+
+            // If until_offset_minutes is set and the meeting is farther away than
+            // that threshold, use absolute time instead of the countdown.
+            if let Some(offset) = self.options.until_offset_minutes {
+                if minutes_until > offset {
+                    return self.format_absolute_time(meeting);
+                }
+            }
+
             self.format_time_until(minutes_until)
         } else {
             self.format_absolute_time(meeting)
@@ -526,9 +608,19 @@ impl OutputFormatter {
         }
     }
 
+    /// Applies privacy substitution to a title.
+    fn privacy_title<'a>(&'a self, title: &'a str) -> Cow<'a, str> {
+        if self.options.privacy {
+            Cow::Borrowed(self.options.privacy_title.as_str())
+        } else {
+            Cow::Borrowed(title)
+        }
+    }
+
     /// Formats the meeting title, optionally with hyperlink.
     fn format_title(&self, meeting: &MeetingView, hyperlink: bool) -> String {
-        let title = self.truncate_title(&meeting.title);
+        let raw_title = self.privacy_title(&meeting.title);
+        let title = self.truncate_title(&raw_title);
 
         if hyperlink {
             if let Some(ref link) = meeting.primary_link {
@@ -568,10 +660,12 @@ impl OutputFormatter {
         let urgency = self.compute_urgency(meeting, now);
         let time_display = self.format_time(meeting, now);
         let minutes_until = meeting.minutes_until_start(now);
+        let raw_title = self.privacy_title(&meeting.title);
+        let title = self.truncate_title(&raw_title).into_owned();
 
         JsonMeeting {
             id: meeting.id.clone(),
-            title: self.truncate_title(&meeting.title).into_owned(),
+            title,
             start_time: meeting.start_local.to_rfc3339(),
             end_time: meeting.end_local.to_rfc3339(),
             time_display,

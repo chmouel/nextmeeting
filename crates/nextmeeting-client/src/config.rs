@@ -53,6 +53,30 @@ pub struct DisplaySettings {
 
     /// Text to show when there are no meetings.
     pub no_meeting_text: String,
+
+    /// Custom format template for main display.
+    pub format: Option<String>,
+
+    /// Custom format template for tooltip.
+    pub tooltip_format: Option<String>,
+
+    /// Hour separator character (e.g., ":", "h").
+    pub hour_separator: Option<String>,
+
+    /// Minutes offset after which absolute time is shown instead of countdown.
+    pub until_offset: Option<i64>,
+
+    /// Time format preference ("24h" or "12h").
+    pub time_format: Option<String>,
+
+    /// Maximum number of meetings in tooltip.
+    pub tooltip_limit: Option<usize>,
+
+    /// Whether to show all-day meetings in Waybar output.
+    pub waybar_show_all_day: Option<bool>,
+
+    /// Number of hours to treat all-day meetings as (for display).
+    pub all_day_meeting_hours: Option<u32>,
 }
 
 impl Default for DisplaySettings {
@@ -60,6 +84,14 @@ impl Default for DisplaySettings {
         Self {
             max_title_length: None,
             no_meeting_text: "No meeting".to_string(),
+            format: None,
+            tooltip_format: None,
+            hour_separator: None,
+            until_offset: None,
+            time_format: None,
+            tooltip_limit: None,
+            waybar_show_all_day: None,
+            all_day_meeting_hours: None,
         }
     }
 }
@@ -85,6 +117,31 @@ pub struct FilterSettings {
     #[serde(default)]
     pub exclude_titles: Vec<String>,
 
+    /// Only include events from these calendars.
+    #[serde(default)]
+    pub include_calendars: Vec<String>,
+
+    /// Exclude events from these calendars.
+    #[serde(default)]
+    pub exclude_calendars: Vec<String>,
+
+    /// Only include events starting within N minutes.
+    pub within_minutes: Option<u32>,
+
+    /// Only include events within work hours (format: "HH:MM-HH:MM").
+    pub work_hours: Option<String>,
+
+    /// Only include events that have a meeting link.
+    #[serde(default)]
+    pub only_with_link: bool,
+
+    /// Enable privacy mode.
+    #[serde(default)]
+    pub privacy: bool,
+
+    /// Title to use when privacy mode is enabled.
+    pub privacy_title: Option<String>,
+
     /// Skip events where the user has declined.
     pub skip_declined: bool,
 
@@ -105,6 +162,24 @@ pub struct NotificationSettings {
     /// Minutes before meetings to send notifications.
     #[serde(default)]
     pub minutes_before: Vec<u32>,
+
+    /// Override urgency level ("low", "normal", "critical").
+    pub urgency: Option<String>,
+
+    /// Override notification expiry in seconds.
+    pub expiry: Option<u32>,
+
+    /// Custom notification icon path.
+    pub icon: Option<String>,
+
+    /// Time for morning agenda notification (format: "HH:MM").
+    pub morning_agenda: Option<String>,
+
+    /// Background color for "soon" notifications in Waybar.
+    pub min_color: Option<String>,
+
+    /// Foreground color for "soon" notifications in Waybar.
+    pub min_color_foreground: Option<String>,
 }
 
 /// Server/connection settings.

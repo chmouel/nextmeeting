@@ -119,6 +119,9 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
 
     // Handle action flags (open/copy) before rendering
     if cli.open_meet_url {
+        if let Some(ref cmd) = cli.open_with {
+            return nextmeeting_client::actions::open_meeting_url_with(&meetings, cmd);
+        }
         return nextmeeting_client::actions::open_meeting_url(&meetings);
     }
 
@@ -126,24 +129,29 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         return nextmeeting_client::actions::copy_meeting_url(&meetings);
     }
 
+    if cli.copy_meeting_id {
+        return nextmeeting_client::actions::copy_meeting_id(&meetings);
+    }
+
+    if cli.copy_meeting_passcode {
+        return nextmeeting_client::actions::copy_meeting_passcode(&meetings);
+    }
+
+    if cli.open_link_from_clipboard {
+        return nextmeeting_client::actions::open_link_from_clipboard();
+    }
+
+    if let Some(ref service) = cli.create {
+        let google_domain = get_google_domain(cli, config);
+        return nextmeeting_client::actions::create_meeting(
+            service,
+            cli.create_url.as_deref(),
+            google_domain,
+        );
+    }
+
     if cli.open_calendar_day {
-        let domain = {
-            #[cfg(feature = "google")]
-            {
-                config
-                    .google
-                    .as_ref()
-                    .and_then(|g| {
-                        g.accounts
-                            .iter()
-                            .find_map(|a| a.domain.as_deref())
-                    })
-            }
-            #[cfg(not(feature = "google"))]
-            {
-                None
-            }
-        };
+        let domain = get_google_domain(cli, config);
         return nextmeeting_client::actions::open_calendar_day(&meetings, domain);
     }
 
@@ -196,8 +204,8 @@ async fn fetch_meetings(
     }
 }
 
-/// Builds a MeetingsFilter from config settings.
-fn build_filter(_cli: &Cli, config: &ClientConfig) -> MeetingsFilter {
+/// Builds a MeetingsFilter from config and CLI settings (CLI overrides config).
+fn build_filter(cli: &Cli, config: &ClientConfig) -> MeetingsFilter {
     let filters = &config.filters;
     let mut filter = MeetingsFilter::new();
 
@@ -213,13 +221,61 @@ fn build_filter(_cli: &Cli, config: &ClientConfig) -> MeetingsFilter {
         filter = filter.skip_all_day(true);
     }
 
-    // Use the first include/exclude title pattern (protocol supports one)
-    if let Some(pattern) = filters.include_titles.first() {
-        filter = filter.include_title(pattern.clone());
+    // Include/exclude title patterns from config
+    if !filters.include_titles.is_empty() {
+        filter = filter.include_titles(filters.include_titles.clone());
     }
 
-    if let Some(pattern) = filters.exclude_titles.first() {
-        filter = filter.exclude_title(pattern.clone());
+    if !filters.exclude_titles.is_empty() {
+        filter = filter.exclude_titles(filters.exclude_titles.clone());
+    }
+
+    // Calendar filters (CLI takes priority over config)
+    let include_calendars = if !cli.include_calendar.is_empty() {
+        &cli.include_calendar
+    } else {
+        &filters.include_calendars
+    };
+    if !include_calendars.is_empty() {
+        filter = filter.include_calendars(include_calendars.clone());
+    }
+
+    let exclude_calendars = if !cli.exclude_calendar.is_empty() {
+        &cli.exclude_calendar
+    } else {
+        &filters.exclude_calendars
+    };
+    if !exclude_calendars.is_empty() {
+        filter = filter.exclude_calendars(exclude_calendars.clone());
+    }
+
+    // Within-minutes filter (CLI overrides config)
+    let within_mins = cli.within_mins.or(filters.within_minutes);
+    if let Some(mins) = within_mins {
+        filter = filter.within_minutes(mins);
+    }
+
+    // Work hours filter (CLI overrides config)
+    let work_hours = cli.work_hours.as_ref().or(filters.work_hours.as_ref());
+    if let Some(spec) = work_hours {
+        filter = filter.work_hours(spec.clone());
+    }
+
+    // Only-with-link filter
+    if cli.only_with_link || filters.only_with_link {
+        filter = filter.only_with_link(true);
+    }
+
+    // Privacy filter (CLI overrides config)
+    if cli.privacy || filters.privacy {
+        filter = filter.privacy(true);
+        let title = cli
+            .privacy_title
+            .as_ref()
+            .or(filters.privacy_title.as_ref());
+        if let Some(t) = title {
+            filter = filter.privacy_title(t.clone());
+        }
     }
 
     // Apply response status and attendee filters
@@ -247,8 +303,14 @@ fn filter_is_empty(filter: &MeetingsFilter) -> bool {
     !filter.today_only
         && filter.limit.is_none()
         && !filter.skip_all_day
-        && filter.include_title.is_none()
-        && filter.exclude_title.is_none()
+        && filter.include_titles.is_empty()
+        && filter.exclude_titles.is_empty()
+        && filter.include_calendars.is_empty()
+        && filter.exclude_calendars.is_empty()
+        && filter.within_minutes.is_none()
+        && !filter.only_with_link
+        && filter.work_hours.is_none()
+        && !filter.privacy
         && !filter.skip_declined
         && !filter.skip_tentative
         && !filter.skip_pending
@@ -259,10 +321,59 @@ fn filter_is_empty(filter: &MeetingsFilter) -> bool {
 fn render_output(cli: &Cli, config: &ClientConfig, meetings: &[MeetingView]) {
     let format = cli.output_format();
     let display = &config.display;
+    let notifications = &config.notifications;
 
     let mut format_options = FormatOptions::default();
     if let Some(max_len) = display.max_title_length {
         format_options.max_title_length = Some(max_len);
+    }
+
+    // Custom format template (CLI overrides config)
+    format_options.custom_format = cli.format.clone().or_else(|| display.format.clone());
+
+    // Tooltip format
+    format_options.tooltip_format = cli
+        .tooltip_format
+        .clone()
+        .or_else(|| display.tooltip_format.clone());
+
+    // Hour separator (CLI overrides config)
+    if let Some(ref sep) = cli.hour_separator.as_ref().or(display.hour_separator.as_ref()) {
+        format_options.hour_separator = sep.to_string();
+    }
+
+    // Until offset (CLI overrides config)
+    format_options.until_offset_minutes = cli.until_offset.or(display.until_offset);
+
+    // Time format from config
+    if let Some(ref tf) = display.time_format
+        && (tf == "12h" || tf == "12")
+    {
+        format_options.time_format = nextmeeting_core::format::TimeFormat::H12;
+    }
+
+    // Tooltip limit
+    format_options.tooltip_limit = display.tooltip_limit;
+
+    // Privacy (from filter CLI/config)
+    if cli.privacy || config.filters.privacy {
+        format_options.privacy = true;
+        if let Some(ref title) = cli
+            .privacy_title
+            .as_ref()
+            .or(config.filters.privacy_title.as_ref())
+        {
+            format_options.privacy_title = title.to_string();
+        }
+    }
+
+    // Waybar color settings from notifications config
+    format_options.notify_min_color = notifications.min_color.clone();
+    format_options.notify_min_color_foreground = notifications.min_color_foreground.clone();
+
+    // Waybar show all-day
+    if let Some(show) = display.waybar_show_all_day {
+        format_options.waybar_show_all_day = show;
     }
 
     let formatter = OutputFormatter::new(format_options);
@@ -434,6 +545,27 @@ fn make_client(cli: &Cli, config: &ClientConfig) -> SocketClient {
     let timeout = Duration::from_secs(config.server.timeout);
 
     SocketClient::new(socket_path, timeout)
+}
+
+/// Gets the Google Workspace domain from CLI flag or config.
+fn get_google_domain<'a>(cli: &'a Cli, config: &'a ClientConfig) -> Option<&'a str> {
+    if let Some(ref domain) = cli.google_domain {
+        return Some(domain.as_str());
+    }
+
+    #[cfg(feature = "google")]
+    {
+        config
+            .google
+            .as_ref()
+            .and_then(|g| g.accounts.iter().find_map(|a| a.domain.as_deref()))
+    }
+
+    #[cfg(not(feature = "google"))]
+    {
+        let _ = config;
+        None
+    }
 }
 
 /// Formats seconds as a human-readable duration.

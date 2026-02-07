@@ -287,6 +287,7 @@ mod tests {
             primary_link: None,
             secondary_links: vec![],
             calendar_url: None,
+            calendar_id: "primary".to_string(),
             user_response_status: nextmeeting_core::ResponseStatus::Unknown,
             other_attendee_count: 0,
         }

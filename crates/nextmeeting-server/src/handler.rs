@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveTime, Utc};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
@@ -89,16 +89,26 @@ impl ServerState {
                 meetings.retain(|m| !m.is_all_day);
             }
 
-            // Apply include_title filter
-            if let Some(ref pattern) = filter.include_title {
-                let pattern_lower = pattern.to_lowercase();
-                meetings.retain(|m| m.title.to_lowercase().contains(&pattern_lower));
+            // Apply include_titles filter (retain if ANY pattern matches)
+            if !filter.include_titles.is_empty() {
+                meetings.retain(|m| {
+                    let title_lower = m.title.to_lowercase();
+                    filter
+                        .include_titles
+                        .iter()
+                        .any(|p| title_lower.contains(&p.to_lowercase()))
+                });
             }
 
-            // Apply exclude_title filter
-            if let Some(ref pattern) = filter.exclude_title {
-                let pattern_lower = pattern.to_lowercase();
-                meetings.retain(|m| !m.title.to_lowercase().contains(&pattern_lower));
+            // Apply exclude_titles filter (remove if ANY pattern matches)
+            if !filter.exclude_titles.is_empty() {
+                meetings.retain(|m| {
+                    let title_lower = m.title.to_lowercase();
+                    !filter
+                        .exclude_titles
+                        .iter()
+                        .any(|p| title_lower.contains(&p.to_lowercase()))
+                });
             }
 
             // Apply today_only filter
@@ -123,6 +133,70 @@ impl ServerState {
             // Apply solo event filter
             if filter.skip_without_guests {
                 meetings.retain(|m| m.other_attendee_count > 0);
+            }
+
+            // Apply include_calendars filter (retain if ANY match)
+            if !filter.include_calendars.is_empty() {
+                meetings.retain(|m| {
+                    let cal_id_lower = m.calendar_id.to_lowercase();
+                    filter
+                        .include_calendars
+                        .iter()
+                        .any(|p| cal_id_lower.contains(&p.to_lowercase()))
+                });
+            }
+
+            // Apply exclude_calendars filter (remove if ANY match)
+            if !filter.exclude_calendars.is_empty() {
+                meetings.retain(|m| {
+                    let cal_id_lower = m.calendar_id.to_lowercase();
+                    !filter
+                        .exclude_calendars
+                        .iter()
+                        .any(|p| cal_id_lower.contains(&p.to_lowercase()))
+                });
+            }
+
+            // Apply within_minutes filter (retain if starts within N minutes, skip all-day)
+            if let Some(within) = filter.within_minutes {
+                let now = chrono::Local::now();
+                meetings.retain(|m| {
+                    if m.is_all_day {
+                        return false;
+                    }
+                    let mins = m.minutes_until_start(now);
+                    mins >= 0 && mins <= within as i64
+                });
+            }
+
+            // Apply only_with_link filter
+            if filter.only_with_link {
+                meetings.retain(|m| m.primary_link.is_some());
+            }
+
+            // Apply work_hours filter
+            if let Some(ref spec) = filter.work_hours {
+                if let Some((start_time, end_time)) = parse_work_hours(spec) {
+                    meetings.retain(|m| {
+                        if m.is_all_day {
+                            return true; // pass all-day events through
+                        }
+                        let event_time = m.start_local.time();
+                        event_time >= start_time && event_time <= end_time
+                    });
+                }
+            }
+
+            // Apply privacy filter (mutate titles)
+            if filter.privacy {
+                let privacy_title = filter
+                    .privacy_title
+                    .as_deref()
+                    .unwrap_or("Busy")
+                    .to_string();
+                for m in &mut meetings {
+                    m.title = privacy_title.clone();
+                }
             }
 
             // Apply limit
@@ -184,6 +258,17 @@ impl ServerState {
             self.providers.push(status);
         }
     }
+}
+
+/// Parses a work hours specification (format: "HH:MM-HH:MM") into start and end times.
+pub fn parse_work_hours(spec: &str) -> Option<(NaiveTime, NaiveTime)> {
+    let parts: Vec<&str> = spec.split('-').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let start = NaiveTime::parse_from_str(parts[0].trim(), "%H:%M").ok()?;
+    let end = NaiveTime::parse_from_str(parts[1].trim(), "%H:%M").ok()?;
+    Some((start, end))
 }
 
 /// Shared server state wrapped in an Arc<RwLock>.
@@ -311,6 +396,7 @@ pub fn make_connection_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Local;
 
     #[test]
     fn server_state_uptime() {
@@ -357,6 +443,7 @@ mod tests {
                 primary_link: None,
                 secondary_links: vec![],
                 calendar_url: None,
+                calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
             },
@@ -370,6 +457,7 @@ mod tests {
                 primary_link: None,
                 secondary_links: vec![],
                 calendar_url: None,
+                calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
             },
@@ -383,6 +471,7 @@ mod tests {
                 primary_link: None,
                 secondary_links: vec![],
                 calendar_url: None,
+                calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
             },
@@ -462,5 +551,210 @@ mod tests {
 
         let state = state.read().await;
         assert!(state.shutdown_requested());
+    }
+
+    #[test]
+    fn filter_include_calendars() {
+        let now = Local::now();
+        let meetings = vec![
+            MeetingView {
+                id: "1".to_string(),
+                title: "Work Meeting".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "work@example.com".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+            MeetingView {
+                id: "2".to_string(),
+                title: "Personal Meeting".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "personal@example.com".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+        ];
+
+        let mut state = ServerState::new();
+        state.set_meetings(meetings);
+
+        let filter = MeetingsFilter::new().include_calendar("work");
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].calendar_id, "work@example.com");
+
+        let filter = MeetingsFilter::new().exclude_calendar("work");
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].calendar_id, "personal@example.com");
+    }
+
+    #[test]
+    fn filter_only_with_link() {
+        use nextmeeting_core::{EventLink, LinkKind};
+
+        let now = Local::now();
+        let meetings = vec![
+            MeetingView {
+                id: "1".to_string(),
+                title: "With Link".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: Some(EventLink::new(LinkKind::Zoom, "https://zoom.us/j/123")),
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+            MeetingView {
+                id: "2".to_string(),
+                title: "No Link".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+        ];
+
+        let mut state = ServerState::new();
+        state.set_meetings(meetings);
+
+        let filter = MeetingsFilter::new().only_with_link(true);
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "1");
+    }
+
+    #[test]
+    fn filter_privacy() {
+        let now = Local::now();
+        let meetings = vec![MeetingView {
+            id: "1".to_string(),
+            title: "Secret Meeting".to_string(),
+            start_local: now,
+            end_local: now + chrono::Duration::hours(1),
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: ResponseStatus::Unknown,
+            other_attendee_count: 0,
+        }];
+
+        let mut state = ServerState::new();
+        state.set_meetings(meetings);
+
+        let filter = MeetingsFilter::new()
+            .privacy(true)
+            .privacy_title("Occupied");
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Occupied");
+    }
+
+    #[test]
+    fn filter_multi_title_patterns() {
+        let now = Local::now();
+        let meetings = vec![
+            MeetingView {
+                id: "1".to_string(),
+                title: "Daily Standup".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+            MeetingView {
+                id: "2".to_string(),
+                title: "Sprint Review".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+            MeetingView {
+                id: "3".to_string(),
+                title: "Lunch".to_string(),
+                start_local: now,
+                end_local: now + chrono::Duration::hours(1),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+            },
+        ];
+
+        let mut state = ServerState::new();
+        state.set_meetings(meetings);
+
+        // Include multiple patterns
+        let filter = MeetingsFilter::new()
+            .include_title("standup")
+            .include_title("review");
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 2);
+
+        // Exclude multiple patterns
+        let filter = MeetingsFilter::new()
+            .exclude_title("standup")
+            .exclude_title("lunch");
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].title, "Sprint Review");
+    }
+
+    #[test]
+    fn parse_work_hours_valid() {
+        let result = super::parse_work_hours("09:00-18:00");
+        assert!(result.is_some());
+        let (start, end) = result.unwrap();
+        assert_eq!(start, chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+        assert_eq!(end, chrono::NaiveTime::from_hms_opt(18, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn parse_work_hours_invalid() {
+        assert!(super::parse_work_hours("invalid").is_none());
+        assert!(super::parse_work_hours("09:00").is_none());
+        assert!(super::parse_work_hours("").is_none());
     }
 }

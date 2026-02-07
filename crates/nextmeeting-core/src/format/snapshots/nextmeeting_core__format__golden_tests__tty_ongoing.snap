@@ -23,6 +23,7 @@ expression: output
             ),
             secondary_links: [],
             calendar_url: None,
+            calendar_id: "primary",
             user_response_status: Unknown,
             other_attendee_count: 0,
         },

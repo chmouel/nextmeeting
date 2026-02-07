@@ -425,6 +425,8 @@ pub struct MeetingView {
     pub secondary_links: Vec<EventLink>,
     /// URL to the calendar event.
     pub calendar_url: Option<String>,
+    /// Calendar ID this event belongs to.
+    pub calendar_id: String,
     /// User's response status for this event.
     pub user_response_status: ResponseStatus,
     /// Number of non-self attendees.
@@ -449,6 +451,7 @@ impl MeetingView {
             primary_link: event.primary_link().cloned(),
             secondary_links: event.secondary_links().into_iter().cloned().collect(),
             calendar_url: event.calendar_url.clone(),
+            calendar_id: event.calendar_id.clone(),
             user_response_status: event.user_response_status,
             other_attendee_count: event.other_attendee_count,
         }
