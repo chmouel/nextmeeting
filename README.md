@@ -14,7 +14,7 @@ and other status bars.
 - **Background daemon** -- Persistent server with event caching, automatic polling, and exponential backoff
 - **Auto-spawn** -- The client starts the server automatically if it isn't running
 - **Desktop notifications** -- Configurable alerts before meetings with SHA-256 deduplication and snooze
-- **Meeting link detection** -- Extracts Zoom, Google Meet, Teams, and Jitsi links (including SafeLinks unwrapping)
+- **Meeting link detection** -- Extracts meeting links from Zoom, Google Meet, Teams, Webex, Jitsi, and many other services (including SafeLinks unwrapping)
 - **Actions** -- Open meeting URLs, copy to clipboard, open calendar day view
 - **Hot reload** -- Server reloads configuration on SIGHUP
 - **Terminal hyperlinks** -- OSC8 clickable links in terminal output
@@ -83,6 +83,9 @@ nextmeeting [OPTIONS] [COMMAND]
 
 | Flag                    | Description                                   |
 |-------------------------|-----------------------------------------------|
+| `--config` / `-c`       | Path to configuration file                     |
+| `--debug` / `-v`        | Enable debug output                            |
+| `--socket-path`         | Path to server socket                          |
 | `--max-title-length N`  | Truncate titles with ellipsis                  |
 | `--no-meeting-text TXT` | Text when no meetings (default: "No meeting")  |
 | `--today-only`          | Only show today's meetings                     |
@@ -103,6 +106,7 @@ nextmeeting [OPTIONS] [COMMAND]
 | `--open-meet-url`     | Open the meeting link in browser     |
 | `--copy-meeting-url`  | Copy the meeting URL to clipboard    |
 | `--open-calendar-day` | Open the calendar day view           |
+| `--refresh`           | Force refresh calendar data from providers |
 
 ### Notifications
 
@@ -115,12 +119,23 @@ nextmeeting [OPTIONS] [COMMAND]
 
 | Command           | Description                        |
 |-------------------|------------------------------------|
-| `auth google`     | Authenticate with Google Calendar  |
+| `auth google`     | Authenticate with Google Calendar   |
 | `config dump`     | Print current configuration        |
 | `config validate` | Validate configuration file        |
 | `config path`     | Show configuration file path       |
 | `status`          | Show daemon status                 |
 | `server`          | Run the server in the foreground   |
+
+#### `auth google` flags
+
+| Flag                  | Description                          |
+|-----------------------|--------------------------------------|
+| `--account` / `-a`    | Account name to authenticate         |
+| `--client-id`         | OAuth client ID                      |
+| `--client-secret`     | OAuth client secret                  |
+| `--credentials-file`  | Google Cloud Console credentials JSON |
+| `--domain`            | Google Workspace domain              |
+| `--force` / `-f`      | Force re-authentication              |
 
 ## Configuration
 
@@ -143,6 +158,24 @@ calendar_ids = ["primary"]
 # client_id = "OTHER_CLIENT_ID.apps.googleusercontent.com"
 # client_secret = "OTHER_CLIENT_SECRET"
 # calendar_ids = ["primary"]
+
+# [display]
+# max_title_length = 30                # Truncate titles with ellipsis
+# no_meeting_text = "No meeting"       # Text when no meetings
+
+# [filters]
+# today_only = false                   # Only show today's meetings
+# limit = 5                            # Maximum number of meetings
+# skip_all_day = false                 # Hide all-day events
+# include_titles = ["standup"]         # Only show matching titles
+# exclude_titles = ["lunch"]           # Hide matching titles
+
+# [notifications]
+# minutes_before = [5, 1]              # Minutes before to notify
+
+# [server]
+# socket_path = "/tmp/nextmeeting.sock"  # Path to server socket
+# timeout = 5                            # Connection timeout in seconds
 ```
 
 ### Secret references
@@ -178,8 +211,8 @@ reading from config, `--account` can be omitted if only one account exists.
 
 ### CalDAV
 
-CalDAV providers are configured with a server URL and optional credentials.
-The provider supports digest authentication and optional TLS verification.
+CalDAV is supported as an additional calendar provider alongside Google
+Calendar. It supports digest authentication and optional TLS verification.
 
 ## Status Bar Integration
 
