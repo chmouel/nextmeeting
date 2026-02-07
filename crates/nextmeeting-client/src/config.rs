@@ -1,12 +1,12 @@
 //! Client configuration.
 //!
-//! Configuration is split across two files:
+//! All settings live in a single `config.toml` file at
+//! `~/.config/nextmeeting/config.toml` by default.
 //!
-//! - `config.toml` — non-secret settings (display, filters, notifications, server, google
-//!   calendar IDs, domain, etc.)
-//! - `auth.yaml` — sensitive credentials (OAuth client_id/client_secret)
-//!
-//! Both files live in `~/.config/nextmeeting/` by default.
+//! Credential values (`client_id`, `client_secret`) support secret references:
+//! - `pass::path/in/store` — resolved via `pass show`
+//! - `env::VAR_NAME` — resolved from the environment
+//! - plain text — used as-is
 
 use std::path::PathBuf;
 
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClientConfig {
-    /// Google Calendar settings (non-secret).
+    /// Google Calendar settings.
     #[cfg(feature = "google")]
     pub google: Option<GoogleSettings>,
 
@@ -156,111 +156,21 @@ impl ClientConfig {
 }
 
 // ---------------------------------------------------------------------------
-// AuthConfig (auth.yaml)
+// GoogleSettings (in config.toml, including credentials)
 // ---------------------------------------------------------------------------
 
-/// Authentication credentials loaded from `auth.yaml`.
+/// Google Calendar provider settings.
 ///
-/// This file holds sensitive OAuth credentials separately from the main config.
-///
-/// # Format
-///
-/// ```yaml
-/// google:
-///   client_id: "xxx.apps.googleusercontent.com"
-///   client_secret: "xxx"
-/// ```
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct AuthConfig {
-    /// Google OAuth credentials.
-    #[cfg(feature = "google")]
-    pub google: Option<GoogleAuthCredentials>,
-}
-
-/// Google OAuth credentials stored in `auth.yaml`.
-#[cfg(feature = "google")]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GoogleAuthCredentials {
-    /// OAuth client ID.
-    pub client_id: String,
-
-    /// OAuth client secret.
-    pub client_secret: String,
-}
-
-impl AuthConfig {
-    /// Loads auth config from the default path (`~/.config/nextmeeting/auth.yaml`).
-    pub fn load() -> Result<Self, String> {
-        let path = Self::default_path();
-        if path.exists() {
-            Self::load_from(&path)
-        } else {
-            Ok(Self::default())
-        }
-    }
-
-    /// Loads auth config from a specific path.
-    pub fn load_from(path: &PathBuf) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("failed to read auth config: {}", e))?;
-        serde_yaml::from_str(&content).map_err(|e| format!("failed to parse auth config: {}", e))
-    }
-
-    /// Saves auth config to the default path.
-    pub fn save(&self) -> Result<(), String> {
-        let path = Self::default_path();
-        Self::save_to(self, &path)
-    }
-
-    /// Saves auth config to a specific path.
-    pub fn save_to(&self, path: &PathBuf) -> Result<(), String> {
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("failed to create directory {}: {}", parent.display(), e))?;
-        }
-
-        let yaml = serde_yaml::to_string(self)
-            .map_err(|e| format!("failed to serialize auth config: {}", e))?;
-        std::fs::write(path, yaml)
-            .map_err(|e| format!("failed to write auth config to {}: {}", path.display(), e))?;
-
-        // Set restrictive permissions on the auth file (Unix only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            let _ = std::fs::set_permissions(path, perms);
-        }
-
-        Ok(())
-    }
-
-    /// Returns the default auth config file path (`~/.config/nextmeeting/auth.yaml`).
-    pub fn default_path() -> PathBuf {
-        ClientConfig::default_config_dir().join("auth.yaml")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// GoogleSettings (non-secret, in config.toml)
-// ---------------------------------------------------------------------------
-
-/// Google Calendar provider settings (non-secret).
-///
-/// OAuth credentials (`client_id`, `client_secret`) are stored separately
-/// in `auth.yaml`. This struct holds only non-secret configuration like
-/// domain, calendar IDs, and token path.
+/// Credentials (`client_id`, `client_secret`) are stored inline and support
+/// secret references (`pass::…`, `env::…`).
 #[cfg(feature = "google")]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GoogleSettings {
-    /// Path to Google Cloud Console credentials JSON file.
-    ///
-    /// This is the JSON file downloaded from the Google Cloud Console OAuth 2.0
-    /// credentials page. If provided, client_id and client_secret are extracted
-    /// from this file instead of `auth.yaml`.
-    pub credentials_file: Option<PathBuf>,
+    /// OAuth client ID (supports `pass::` and `env::` prefixes).
+    pub client_id: Option<String>,
+
+    /// OAuth client secret (supports `pass::` and `env::` prefixes).
+    pub client_secret: Option<String>,
 
     /// Google Workspace domain (optional).
     pub domain: Option<String>,
@@ -282,17 +192,14 @@ fn default_calendar_ids() -> Vec<String> {
 impl GoogleSettings {
     /// Converts to provider configuration.
     ///
-    /// Resolves credentials using the following priority:
-    /// 1. `auth.yaml` (`client_id` + `client_secret`)
-    /// 2. `credentials_file` from config.toml
-    /// 3. Default credentials file at `~/.local/share/nextmeeting/oauth.json`
+    /// Resolves credentials (expanding `pass::` / `env::` references) and
+    /// builds a `GoogleConfig` suitable for the provider.
     pub fn to_provider_config(
         &self,
-        auth: &AuthConfig,
     ) -> Result<nextmeeting_providers::google::GoogleConfig, String> {
         use nextmeeting_providers::google::GoogleConfig;
 
-        let credentials = self.resolve_credentials(auth)?;
+        let credentials = self.resolve_credentials()?;
         credentials.validate().map_err(|e| e.to_string())?;
 
         let mut config = GoogleConfig::new(credentials);
@@ -312,55 +219,36 @@ impl GoogleSettings {
         Ok(config)
     }
 
-    /// Resolves Google OAuth credentials from multiple sources.
+    /// Resolves Google OAuth credentials from inline fields.
     ///
-    /// Priority (highest to lowest):
-    /// 1. `auth.yaml` (`client_id` + `client_secret`)
-    /// 2. `credentials_file` path from config.toml
-    /// 3. Default credentials file at `~/.local/share/nextmeeting/oauth.json`
+    /// Both `client_id` and `client_secret` must be set. Each value is passed
+    /// through `secret::resolve()` to expand `pass::` and `env::` references.
     pub(crate) fn resolve_credentials(
         &self,
-        auth: &AuthConfig,
     ) -> Result<nextmeeting_providers::google::OAuthCredentials, String> {
         use nextmeeting_providers::google::OAuthCredentials;
 
-        // Priority 1: auth.yaml client_id + client_secret
-        if let Some(ref google_auth) = auth.google {
-            if !google_auth.client_id.is_empty() && !google_auth.client_secret.is_empty() {
-                return Ok(OAuthCredentials::new(
-                    &google_auth.client_id,
-                    &google_auth.client_secret,
-                ));
-            }
-        }
+        let raw_id = self.client_id.as_deref().ok_or_else(|| {
+            format!(
+                "Google credentials not found. Add to {}:\n  \
+                 [google]\n  \
+                 client_id = \"YOUR_ID.apps.googleusercontent.com\"\n  \
+                 client_secret = \"YOUR_SECRET\"\n\n  \
+                 Or run: nextmeeting auth google --credentials-file <path>",
+                ClientConfig::default_path().display()
+            )
+        })?;
 
-        // Priority 2: credentials_file from config.toml
-        if let Some(ref path) = self.credentials_file {
-            return OAuthCredentials::from_file(path)
-                .map_err(|e| format!("failed to load credentials from {}: {}", path.display(), e));
-        }
+        let raw_secret = self.client_secret.as_deref().ok_or_else(|| {
+            "client_secret is missing from [google] section in config.toml".to_string()
+        })?;
 
-        // Priority 3: Default credentials file
-        let default_path = ClientConfig::default_data_dir().join("oauth.json");
-        if default_path.exists() {
-            return OAuthCredentials::from_file(&default_path).map_err(|e| {
-                format!(
-                    "failed to load credentials from {}: {}",
-                    default_path.display(),
-                    e
-                )
-            });
-        }
+        let resolved_id = crate::secret::resolve(raw_id)
+            .map_err(|e| format!("failed to resolve client_id: {}", e))?;
+        let resolved_secret = crate::secret::resolve(raw_secret)
+            .map_err(|e| format!("failed to resolve client_secret: {}", e))?;
 
-        let auth_path = AuthConfig::default_path();
-        Err(format!(
-            "Google credentials not found. Provide via:\n  \
-             - client_id + client_secret in {}\n  \
-             - credentials_file in config.toml [google] section\n  \
-             - Place credentials JSON at ~/.local/share/nextmeeting/oauth.json\n  \
-             - Run: nextmeeting auth google --credentials-file <path>",
-            auth_path.display()
-        ))
+        Ok(OAuthCredentials::new(resolved_id, resolved_secret))
     }
 }
 
@@ -368,122 +256,88 @@ impl GoogleSettings {
 #[cfg(feature = "google")]
 mod tests {
     use super::*;
-    use std::io::Write;
 
-    /// Helper: create a temp credentials JSON file with valid Google OAuth format.
-    fn write_credentials_file(dir: &std::path::Path, filename: &str) -> PathBuf {
-        let path = dir.join(filename);
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(
-            f,
-            r#"{{
-  "installed": {{
-    "client_id": "file-id.apps.googleusercontent.com",
-    "client_secret": "file-secret"
-  }}
-}}"#
-        )
-        .unwrap();
-        path
+    #[test]
+    fn resolve_credentials_plain_text() {
+        let settings = GoogleSettings {
+            client_id: Some("test-id.apps.googleusercontent.com".to_string()),
+            client_secret: Some("test-secret".to_string()),
+            ..Default::default()
+        };
+        let creds = settings.resolve_credentials().unwrap();
+        assert_eq!(creds.client_id, "test-id.apps.googleusercontent.com");
+        assert_eq!(creds.client_secret, "test-secret");
     }
 
-    /// Helper: create an AuthConfig with inline credentials.
-    fn auth_with_creds(client_id: &str, client_secret: &str) -> AuthConfig {
-        AuthConfig {
-            google: Some(GoogleAuthCredentials {
-                client_id: client_id.to_string(),
-                client_secret: client_secret.to_string(),
-            }),
+    #[test]
+    fn resolve_credentials_env_prefix() {
+        unsafe {
+            std::env::set_var(
+                "_NM_TEST_CLIENT_ID",
+                "env-id.apps.googleusercontent.com",
+            );
+            std::env::set_var("_NM_TEST_CLIENT_SECRET", "env-secret");
+        }
+
+        let settings = GoogleSettings {
+            client_id: Some("env::_NM_TEST_CLIENT_ID".to_string()),
+            client_secret: Some("env::_NM_TEST_CLIENT_SECRET".to_string()),
+            ..Default::default()
+        };
+        let creds = settings.resolve_credentials().unwrap();
+        assert_eq!(creds.client_id, "env-id.apps.googleusercontent.com");
+        assert_eq!(creds.client_secret, "env-secret");
+
+        unsafe {
+            std::env::remove_var("_NM_TEST_CLIENT_ID");
+            std::env::remove_var("_NM_TEST_CLIENT_SECRET");
         }
     }
 
-    /// Helper: create an empty AuthConfig (no credentials).
-    fn auth_empty() -> AuthConfig {
-        AuthConfig::default()
-    }
-
     #[test]
-    fn resolve_credentials_from_auth_yaml() {
-        let auth = auth_with_creds("auth-id.apps.googleusercontent.com", "auth-secret");
-        let settings = GoogleSettings::default();
-        let creds = settings.resolve_credentials(&auth).unwrap();
-        assert_eq!(creds.client_id, "auth-id.apps.googleusercontent.com");
-        assert_eq!(creds.client_secret, "auth-secret");
-    }
-
-    #[test]
-    fn resolve_credentials_from_credentials_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        let creds_path = write_credentials_file(tmp.path(), "creds.json");
-
-        let auth = auth_empty();
+    fn resolve_credentials_missing_id_errors() {
         let settings = GoogleSettings {
-            credentials_file: Some(creds_path),
+            client_secret: Some("secret".to_string()),
             ..Default::default()
         };
-        let creds = settings.resolve_credentials(&auth).unwrap();
-        assert_eq!(creds.client_id, "file-id.apps.googleusercontent.com");
-        assert_eq!(creds.client_secret, "file-secret");
-    }
-
-    #[test]
-    fn resolve_credentials_auth_yaml_takes_priority_over_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        let creds_path = write_credentials_file(tmp.path(), "creds.json");
-
-        let auth = auth_with_creds("auth-id.apps.googleusercontent.com", "auth-secret");
-        let settings = GoogleSettings {
-            credentials_file: Some(creds_path),
-            ..Default::default()
-        };
-        let creds = settings.resolve_credentials(&auth).unwrap();
-        assert_eq!(creds.client_id, "auth-id.apps.googleusercontent.com");
-        assert_eq!(creds.client_secret, "auth-secret");
-    }
-
-    #[test]
-    fn resolve_credentials_missing_file_errors() {
-        let auth = auth_empty();
-        let settings = GoogleSettings {
-            credentials_file: Some(PathBuf::from("/nonexistent/path/creds.json")),
-            ..Default::default()
-        };
-        let result = settings.resolve_credentials(&auth);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("failed to load credentials"));
-    }
-
-    #[test]
-    fn resolve_credentials_no_sources_errors() {
-        // Skip if default credentials file exists (would be used as fallback)
-        if ClientConfig::default_data_dir().join("oauth.json").exists() {
-            return;
-        }
-        let auth = auth_empty();
-        let settings = GoogleSettings::default();
-        let result = settings.resolve_credentials(&auth);
+        let result = settings.resolve_credentials();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("credentials not found"));
     }
 
     #[test]
-    fn to_provider_config_with_credentials_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        let creds_path = write_credentials_file(tmp.path(), "creds.json");
-
-        let auth = auth_empty();
+    fn resolve_credentials_missing_secret_errors() {
         let settings = GoogleSettings {
-            credentials_file: Some(creds_path),
+            client_id: Some("id.apps.googleusercontent.com".to_string()),
+            ..Default::default()
+        };
+        let result = settings.resolve_credentials();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("client_secret"));
+    }
+
+    #[test]
+    fn resolve_credentials_both_missing_errors() {
+        let settings = GoogleSettings::default();
+        let result = settings.resolve_credentials();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn to_provider_config_with_inline_credentials() {
+        let settings = GoogleSettings {
+            client_id: Some("test.apps.googleusercontent.com".to_string()),
+            client_secret: Some("test-secret".to_string()),
             domain: Some("example.com".to_string()),
             calendar_ids: vec!["cal1".to_string(), "cal2".to_string()],
             token_path: None,
         };
-        let config = settings.to_provider_config(&auth).unwrap();
+        let config = settings.to_provider_config().unwrap();
         assert_eq!(
             config.credentials.client_id,
-            "file-id.apps.googleusercontent.com"
+            "test.apps.googleusercontent.com"
         );
-        assert_eq!(config.credentials.client_secret, "file-secret");
+        assert_eq!(config.credentials.client_secret, "test-secret");
         assert_eq!(config.domain, Some("example.com".to_string()));
         assert_eq!(
             config.calendar_ids,
@@ -492,97 +346,61 @@ mod tests {
     }
 
     #[test]
-    fn to_provider_config_with_auth_yaml_credentials() {
-        let auth = auth_with_creds("test.apps.googleusercontent.com", "test-secret");
-        let settings = GoogleSettings {
-            calendar_ids: vec!["primary".to_string()],
-            ..Default::default()
-        };
-        let config = settings.to_provider_config(&auth).unwrap();
-        assert_eq!(
-            config.credentials.client_id,
-            "test.apps.googleusercontent.com"
-        );
-        assert_eq!(config.credentials.client_secret, "test-secret");
-    }
-
-    #[test]
-    fn config_toml_with_credentials_file_only() {
-        let tmp = tempfile::tempdir().unwrap();
-        let creds_path = write_credentials_file(tmp.path(), "creds.json");
-
-        let toml_content = format!(
-            r#"[google]
-credentials_file = "{}"
-"#,
-            creds_path.display()
-        );
-        let config: ClientConfig = toml::from_str(&toml_content).unwrap();
+    fn config_toml_with_inline_credentials() {
+        let toml_content = r#"
+[google]
+client_id = "toml-id.apps.googleusercontent.com"
+client_secret = "toml-secret"
+calendar_ids = ["primary"]
+"#;
+        let config: ClientConfig = toml::from_str(toml_content).unwrap();
         let google = config.google.unwrap();
-        assert_eq!(google.credentials_file, Some(creds_path.clone()));
+        assert_eq!(
+            google.client_id,
+            Some("toml-id.apps.googleusercontent.com".to_string())
+        );
+        assert_eq!(google.client_secret, Some("toml-secret".to_string()));
 
-        // Should successfully resolve credentials from the file
-        let auth = auth_empty();
-        let provider_config = google.to_provider_config(&auth).unwrap();
+        let provider_config = google.to_provider_config().unwrap();
         assert_eq!(
             provider_config.credentials.client_id,
-            "file-id.apps.googleusercontent.com"
+            "toml-id.apps.googleusercontent.com"
         );
     }
 
     #[test]
-    fn config_toml_bare_google_section_no_default_file() {
-        // Skip if default credentials file exists (would be used as fallback)
-        if ClientConfig::default_data_dir().join("oauth.json").exists() {
-            return;
-        }
+    fn config_toml_bare_google_section_errors() {
         let toml_content = "[google]\n";
         let config: ClientConfig = toml::from_str(toml_content).unwrap();
         let google = config.google.unwrap();
-        let auth = auth_empty();
-        let result = google.resolve_credentials(&auth);
+        let result = google.resolve_credentials();
         assert!(result.is_err());
     }
 
     #[test]
-    fn auth_yaml_roundtrip() {
-        let tmp = tempfile::tempdir().unwrap();
-        let auth_path = tmp.path().join("auth.yaml");
-
-        let auth = auth_with_creds("test.apps.googleusercontent.com", "test-secret");
-        auth.save_to(&auth_path).unwrap();
-
-        let loaded = AuthConfig::load_from(&auth_path).unwrap();
-        let google = loaded.google.unwrap();
-        assert_eq!(google.client_id, "test.apps.googleusercontent.com");
-        assert_eq!(google.client_secret, "test-secret");
-    }
-
-    #[test]
-    fn auth_yaml_file_permissions() {
-        let tmp = tempfile::tempdir().unwrap();
-        let auth_path = tmp.path().join("auth.yaml");
-
-        let auth = auth_with_creds("id", "secret");
-        auth.save_to(&auth_path).unwrap();
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::metadata(&auth_path).unwrap().permissions();
-            assert_eq!(perms.mode() & 0o777, 0o600);
+    fn config_toml_with_env_references() {
+        unsafe {
+            std::env::set_var(
+                "_NM_TOML_TEST_ID",
+                "env-toml-id.apps.googleusercontent.com",
+            );
+            std::env::set_var("_NM_TOML_TEST_SECRET", "env-toml-secret");
         }
-    }
 
-    #[test]
-    fn auth_yaml_missing_file_returns_default() {
-        let tmp = tempfile::tempdir().unwrap();
-        let auth_path = tmp.path().join("nonexistent.yaml");
+        let toml_content = r#"
+[google]
+client_id = "env::_NM_TOML_TEST_ID"
+client_secret = "env::_NM_TOML_TEST_SECRET"
+"#;
+        let config: ClientConfig = toml::from_str(toml_content).unwrap();
+        let google = config.google.unwrap();
+        let creds = google.resolve_credentials().unwrap();
+        assert_eq!(creds.client_id, "env-toml-id.apps.googleusercontent.com");
+        assert_eq!(creds.client_secret, "env-toml-secret");
 
-        // load_from should fail on missing file
-        assert!(AuthConfig::load_from(&auth_path).is_err());
-
-        // But load() returns default when default path doesn't exist
-        // (we can't test this without mocking the default path)
+        unsafe {
+            std::env::remove_var("_NM_TOML_TEST_ID");
+            std::env::remove_var("_NM_TOML_TEST_SECRET");
+        }
     }
 }

@@ -7,6 +7,7 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod error;
+pub mod secret;
 pub mod socket;
 
 pub use cli::Cli;

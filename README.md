@@ -132,8 +132,26 @@ client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 client_secret = "YOUR_CLIENT_SECRET"
 # domain = "example.com"              # Google Workspace domain
 calendar_ids = ["primary"]
-# credentials_file = "path/to/oauth.json"
 # token_path = "~/.config/nextmeeting/google-tokens.json"
+```
+
+### Secret references
+
+Credential values (`client_id`, `client_secret`) support secret references
+so you don't have to store secrets in cleartext:
+
+| Prefix       | Behaviour                                         |
+|--------------|----------------------------------------------------|
+| `pass::path` | Runs `pass show path`, returns first line of stdout |
+| `env::VAR`   | Reads environment variable `$VAR`                   |
+| *(none)*     | Used as plain text                                  |
+
+Example:
+
+```toml
+[google]
+client_id = "pass::google/nextmeeting/client_id"
+client_secret = "env::GOOGLE_CLIENT_SECRET"
 ```
 
 ### Google credentials
@@ -142,9 +160,7 @@ Credentials can be provided in order of priority:
 
 1. CLI flags `--client-id` / `--client-secret`
 2. CLI flag `--credentials-file` (Google Cloud Console JSON)
-3. Config file `client_id` / `client_secret`
-4. Config file `credentials_file`
-5. Default file at `~/.local/share/nextmeeting/oauth.json`
+3. Config file `client_id` / `client_secret` (with secret reference resolution)
 
 ### CalDAV
 

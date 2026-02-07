@@ -8,7 +8,7 @@ use tracing::{Level, debug, info};
 use tracing_subscriber::EnvFilter;
 
 use nextmeeting_client::cli::{AuthProvider, Cli, Command, ConfigAction};
-use nextmeeting_client::config::{AuthConfig, ClientConfig};
+use nextmeeting_client::config::ClientConfig;
 use nextmeeting_client::error::{ClientError, ClientResult};
 use nextmeeting_client::socket::SocketClient;
 
@@ -46,11 +46,8 @@ async fn main() -> ExitCode {
         .with_target(false)
         .init();
 
-    // Load auth config (auth.yaml)
-    let auth = AuthConfig::load().unwrap_or_default();
-
     // Run the command
-    match run(cli, config, auth).await {
+    match run(cli, config).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {}", e);
@@ -59,7 +56,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(cli: Cli, config: ClientConfig, auth: AuthConfig) -> ClientResult<()> {
+async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
     // Handle subcommands
     match cli.command {
         Some(Command::Auth { provider }) => match provider {
@@ -78,7 +75,6 @@ async fn run(cli: Cli, config: ClientConfig, auth: AuthConfig) -> ClientResult<(
                     domain,
                     force,
                     &config,
-                    &auth,
                 )
                 .await
             }
@@ -93,7 +89,7 @@ async fn run(cli: Cli, config: ClientConfig, auth: AuthConfig) -> ClientResult<(
             run_status(&client).await
         }
         Some(Command::Server) => {
-            nextmeeting_client::commands::server::run(&cli, &config, &auth).await
+            nextmeeting_client::commands::server::run(&cli, &config).await
         }
         None => {
             // Default behavior: connect to server, fetch meetings, render output
