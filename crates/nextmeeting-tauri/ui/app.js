@@ -3,7 +3,11 @@ const meetingListNode = document.querySelector("#meetingList");
 const actionListNode = document.querySelector("#actionList");
 const sourceBadgeNode = document.querySelector("#sourceBadge");
 const todayTitleNode = document.querySelector("#todayTitle");
+const heroTitleNode = document.querySelector("#heroTitle");
+const heroMetaNode = document.querySelector("#heroMeta");
 const statusLineNode = document.querySelector("#statusLine");
+const joinNowButtonNode = document.querySelector("#joinNowButton");
+const createMeetingButtonNode = document.querySelector("#createMeetingButton");
 
 function parseClockOnDate(baseDate, hhmm) {
   const [hourText, minuteText] = String(hhmm || "00:00").split(":");
@@ -94,16 +98,17 @@ function renderTimeline(meetings = []) {
 
 function renderMeetings(meetings) {
   if (!meetings.length) {
-    meetingListNode.innerHTML = '<p class="empty">No meetings right now.</p>';
+    meetingListNode.innerHTML = '<p class="empty">No meetings scheduled in this window.</p>';
     return;
   }
 
   meetingListNode.innerHTML = meetings
+    .slice(0, 4)
     .map(
       (meeting) => `
         <article class="meeting">
           <p class="meeting-day">${meeting.dayLabel}</p>
-          <h2 class="meeting-title">${meeting.title}</h2>
+          <h3 class="meeting-title">${meeting.title}</h3>
           <p class="meeting-time">${meeting.startTime} - ${meeting.endTime}</p>
           <div class="meeting-service">
             ${meeting.service}
@@ -115,35 +120,49 @@ function renderMeetings(meetings) {
     .join("");
 }
 
-function renderActions(actions) {
-  actionListNode.innerHTML = actions
-    .map((action) => `<button class="action" type="button">${action}</button>`)
+function renderUtilityActions() {
+  const utilityActions = [
+    { label: "Open calendar day", command: "open_calendar_day", status: "Opening your calendar..." },
+    { label: "Preferences", command: "open_preferences", status: "Opening preferences..." },
+    { label: "Quit", command: "quit" },
+  ];
+
+  actionListNode.innerHTML = utilityActions
+    .map((action) => `<button class="utility-action" type="button">${action.label}</button>`)
     .join("");
 
-  actionListNode.querySelectorAll(".action").forEach((button) => {
+  actionListNode.querySelectorAll(".utility-action").forEach((button, index) => {
     button.addEventListener("click", async () => {
-      const action = button.textContent;
-      if (action === "Join next meeting") {
-        await runCommand("join_next_meeting", "Opening your next meeting...");
+      const action = utilityActions[index];
+      if (action.command === "quit") {
+        await quitApp();
         return;
       }
-      if (action === "Create meeting") {
-        await runCommand("create_meeting", "Creating a new meeting...");
-        return;
-      }
-      if (action === "Quick Actions") {
-        await runCommand("open_calendar_day", "Opening your calendar...");
-        return;
-      }
-      if (action === "Preferences") {
-        await runCommand("open_preferences", "Opening preferences...");
-        return;
-      }
-      if (action === "Quit") {
-        quitApp();
-      }
+      await runCommand(action.command, action.status);
     });
   });
+}
+
+function renderHero(meetings) {
+  const ongoing = meetings.find((meeting) => meeting.status === "ongoing");
+  const nextMeeting = meetings[0];
+
+  if (ongoing) {
+    heroTitleNode.textContent = `Live now: ${ongoing.title}`;
+    heroMetaNode.textContent = `${ongoing.startTime} - ${ongoing.endTime} on ${ongoing.service}`;
+    joinNowButtonNode.textContent = "Join live meeting";
+    return;
+  }
+
+  joinNowButtonNode.textContent = "Join next meeting";
+  if (nextMeeting) {
+    heroTitleNode.textContent = `Next: ${nextMeeting.title}`;
+    heroMetaNode.textContent = `${nextMeeting.startTime} - ${nextMeeting.endTime} on ${nextMeeting.service}`;
+    return;
+  }
+
+  heroTitleNode.textContent = "No meeting right now";
+  heroMetaNode.textContent = "You are free for the moment.";
 }
 
 function updateTitleFromMeetings(meetings) {
@@ -152,29 +171,19 @@ function updateTitleFromMeetings(meetings) {
     return;
   }
 
-  todayTitleNode.textContent = `Today (${meetings[0].dayLabel})`;
+  todayTitleNode.textContent = `${meetings[0].dayLabel} agenda`;
 }
 
 function fallbackData() {
   return {
     source: "unavailable",
     meetings: [],
-    actions: [
-      "Join next meeting",
-      "Create meeting",
-      "Quick Actions",
-      "Preferences",
-      "Quit",
-    ],
+    actions: [],
   };
 }
 
 function setStatus(message) {
   statusLineNode.textContent = message;
-}
-
-async function joinNextMeeting() {
-  await runCommand("join_next_meeting", "Opening your next meeting...");
 }
 
 async function runCommand(command, successMessage) {
@@ -214,12 +223,25 @@ async function loadDashboard() {
   }
 }
 
+function bindPrimaryActions() {
+  joinNowButtonNode.addEventListener("click", async () => {
+    await runCommand("join_next_meeting", "Opening your next meeting...");
+  });
+
+  createMeetingButtonNode.addEventListener("click", async () => {
+    await runCommand("create_meeting", "Creating a new meeting...");
+  });
+}
+
 async function main() {
+  bindPrimaryActions();
+  renderUtilityActions();
+
   const dashboard = await loadDashboard();
   sourceBadgeNode.textContent = dashboard.source;
+  renderHero(dashboard.meetings || []);
   renderTimeline(dashboard.meetings || []);
   renderMeetings(dashboard.meetings || []);
-  renderActions(dashboard.actions || []);
   updateTitleFromMeetings(dashboard.meetings || []);
   setStatus("");
 }

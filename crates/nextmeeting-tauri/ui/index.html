@@ -8,21 +8,42 @@
   </head>
   <body>
     <main class="panel">
-      <header class="timeline-shell">
-        <div class="timeline" id="timeline"></div>
+      <header class="topbar">
+        <p class="app-name">nextmeeting</p>
+        <span class="source" id="sourceBadge">mock</span>
       </header>
 
-      <section class="content">
-        <div class="meta-row">
-          <h1 id="todayTitle">Today</h1>
-          <span class="source" id="sourceBadge">mock</span>
+      <section class="now-card">
+        <p class="eyebrow" id="todayTitle">Today</p>
+        <h1 id="heroTitle">No meeting right now</h1>
+        <p class="hero-meta" id="heroMeta">You are free for the moment.</p>
+        <div class="hero-actions">
+          <button class="btn btn-primary" id="joinNowButton" type="button">
+            Join next meeting
+          </button>
+          <button class="btn btn-secondary" id="createMeetingButton" type="button">
+            Create meeting
+          </button>
         </div>
-
-        <p class="status" id="statusLine" aria-live="polite"></p>
-        <div class="meeting-list" id="meetingList"></div>
-
-        <nav class="actions" id="actionList"></nav>
       </section>
+
+      <section class="timeline-shell">
+        <div class="timeline" id="timeline"></div>
+      </section>
+
+      <section class="agenda">
+        <h2>Schedule</h2>
+        <div class="meeting-list" id="meetingList"></div>
+      </section>
+
+      <section class="utility-shell">
+        <details class="utility-menu">
+          <summary>More actions</summary>
+          <div class="utility-actions" id="actionList"></div>
+        </details>
+      </section>
+
+      <p class="status" id="statusLine" aria-live="polite"></p>
     </main>
 
     <script type="module" src="app.js"></script>
