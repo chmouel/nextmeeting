@@ -49,7 +49,7 @@ nextmeeting/
 - [x] `NormalizedEvent`, `EventLink`, `LinkKind`, `MeetingView`
 - [x] Link detection (Zoom, Meet, Teams, Jitsi, SafeLinks)
 - [x] Link test corpus
-- [x] Output formatting (TTY/Waybar/Polybar/JSON)
+- [x] Output formatting (TTY/Waybar/JSON)
 - [x] Golden tests for outputs
 - [x] Protocol v1 framing + types
 - [x] Tracing setup
@@ -113,7 +113,7 @@ nextmeeting/
 ## MVP CLI Flags
 
 ```
---waybar, --polybar, --json
+--waybar, --json
 --max-title-length, --today-only, --limit
 --skip-all-day-meeting, --include-title, --exclude-title
 --notify-min-before-events, --snooze

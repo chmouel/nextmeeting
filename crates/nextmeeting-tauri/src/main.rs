@@ -171,7 +171,6 @@ async fn auto_spawn_server(client: &SocketClient) -> Result<(), String> {
             config: None,
             debug: config.debug,
             waybar: false,
-            polybar: false,
             json: false,
             privacy: false,
             snooze: None,

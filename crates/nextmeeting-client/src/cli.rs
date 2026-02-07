@@ -22,10 +22,6 @@ pub struct Cli {
     #[arg(long, group = "output_format")]
     pub waybar: bool,
 
-    /// Output in Polybar format
-    #[arg(long, group = "output_format")]
-    pub polybar: bool,
-
     /// Output in JSON format
     #[arg(long, group = "output_format")]
     pub json: bool,
@@ -90,8 +86,6 @@ impl Cli {
     pub fn output_format(&self) -> nextmeeting_core::OutputFormat {
         if self.waybar {
             nextmeeting_core::OutputFormat::Waybar
-        } else if self.polybar {
-            nextmeeting_core::OutputFormat::Polybar
         } else if self.json {
             nextmeeting_core::OutputFormat::Json
         } else {

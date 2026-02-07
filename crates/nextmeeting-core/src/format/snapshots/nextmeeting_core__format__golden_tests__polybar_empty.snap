@@ -1,6 +1,0 @@
----
-source: crates/nextmeeting-core/src/format/golden_tests.rs
-assertion_line: 334
-expression: output
----
-No meetings

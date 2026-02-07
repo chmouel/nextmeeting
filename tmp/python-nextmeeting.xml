@@ -1131,7 +1131,7 @@ dev = [
 </file>
 
 <file path="README.md">
-# nextmeeting: Calendar Widget for Waybar and Polybar
+# nextmeeting: Calendar Widget for Waybar
 
 ## Overview
 
@@ -1140,7 +1140,7 @@ upcoming meetings in bars, terminals, and other scripts.
 
 It goes beyond basic `gcalcli` output:
 
-- Integrates with status bars like [Waybar](https://github.com/Alexays/Waybar) and [Polybar](https://github.com/polybar/polybar).
+- Integrates with status bars like [Waybar](https://github.com/Alexays/Waybar).
 - Displays dates in natural English ("tomorrow", "next Monday") instead of raw timestamps.
 - Shows time-to-meeting countdowns and changes color when events are imminent.
 - Provides clickable hyperlinks in the default terminal view.
@@ -1336,12 +1336,12 @@ Reduce calls to `gcalcli` by caching its raw output for a short period:
 nextmeeting --cache-events-ttl 2   # cache for 2 minutes
 ```
 
-### Polybar output
+### Waybar output
 
-For Polybar, print a single-line text with the next meeting:
+For Waybar, print a single-line text with the next meeting:
 
 ```shell
-nextmeeting --polybar
+nextmeeting --waybar
 ```
 
 It uses the same formatting and filters as other modes and respects
@@ -1354,7 +1354,7 @@ placeholders: `{when}`, `{title}`, `{start_time}`, `{end_time}`, `{meet_url}`,
 `{calendar_url}`, `{minutes_until}`, `{is_all_day}`, `{is_ongoing}`.
 
 ```shell
-# Single-line formatting (TTY, Polybar, and Waybar text)
+# Single-line formatting (TTY and Waybar text)
 nextmeeting --format "{when} • {title}"
 
 # Waybar tooltip formatting (applies to the tooltip only)
@@ -1880,9 +1880,9 @@ fields, _ = self.formatter._compute_fields(  # pylint: disable=protected-access
 tooltip_lines = tooltip_lines[: self.args.limit]
 result = {
 ⋮----
-def format_for_polybar(self, meetings: list[Meeting]) -> str
+def format_for_waybar(self, meetings: list[Meeting]) -> str
 ⋮----
-"""Format a single-line string for Polybar."""
+"""Format a single-line string for Waybar."""
 ⋮----
 # Reuse the same selection logic as Waybar
 ⋮----
@@ -2010,7 +2010,7 @@ output = (
 # Format and output meetings
 formatter = OutputFormatter(args)
 ⋮----
-result = formatter.format_for_polybar(meetings)
+result = formatter.format_for_waybar(meetings)
 ⋮----
 result = formatter.format_for_waybar(meetings)
 ⋮----

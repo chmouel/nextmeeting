@@ -3,7 +3,6 @@
 //! This module provides formatters for displaying meetings in various output formats:
 //! - **TTY**: Human-readable terminal output with optional hyperlinks
 //! - **Waybar**: JSON output for Waybar status bar integration
-//! - **Polybar**: Single-line text output for Polybar status bar
 //! - **JSON**: Machine-readable JSON output
 //!
 //! # Example
@@ -38,8 +37,6 @@ pub enum OutputFormat {
     Tty,
     /// JSON output for Waybar status bar.
     Waybar,
-    /// Single-line text output for Polybar.
-    Polybar,
     /// Machine-readable JSON output.
     Json,
 }
@@ -356,40 +353,6 @@ impl OutputFormatter {
         }
 
         format!("<span{}>{}</span>", attrs, html_escape(text))
-    }
-
-    /// Formats meetings for Polybar output.
-    ///
-    /// Returns a single-line string suitable for Polybar display.
-    pub fn format_polybar(&self, meetings: &[MeetingView], no_meeting_text: &str) -> String {
-        self.format_polybar_at(meetings, no_meeting_text, Local::now())
-    }
-
-    /// Formats meetings for Polybar output at a specific time.
-    ///
-    /// This variant is useful for testing with a fixed time.
-    pub fn format_polybar_at(
-        &self,
-        meetings: &[MeetingView],
-        no_meeting_text: &str,
-        now: DateTime<Local>,
-    ) -> String {
-        if meetings.is_empty() {
-            return no_meeting_text.to_string();
-        }
-
-        // Get the next non-all-day meeting
-        let next_meeting = self.get_next_meeting_for_display(meetings);
-
-        if let Some(meeting) = next_meeting {
-            let formatted = self.format_single_meeting(meeting, now, false);
-            formatted.text
-        } else {
-            // Only all-day meetings
-            let first = &meetings[0];
-            let title = self.truncate_title(&first.title);
-            format!("All day: {}", title)
-        }
     }
 
     /// Formats meetings as JSON output.
@@ -957,27 +920,6 @@ mod tests {
             assert!(output.text.contains("Team Standup"));
             assert!(output.class.is_some());
             assert!(!output.tooltip.is_empty());
-        }
-
-        #[test]
-        fn format_polybar_empty() {
-            let formatter = OutputFormatter::with_defaults();
-            let output = formatter.format_polybar(&[], "No meetings");
-
-            assert_eq!(output, "No meetings");
-        }
-
-        #[test]
-        fn format_polybar_with_meeting() {
-            let now_utc = utc(2025, 2, 5, 10, 0, 0);
-            let now_local = local_from_utc(now_utc);
-            let meeting = sample_meeting(now_utc, 15);
-            let formatter = OutputFormatter::with_defaults();
-
-            let output = formatter.format_polybar_at(&[meeting], "No meetings", now_local);
-
-            assert!(output.contains("Team Standup"));
-            assert!(output.contains("In 15 minutes"));
         }
 
         #[test]

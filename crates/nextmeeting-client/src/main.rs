@@ -363,10 +363,6 @@ fn render_output(cli: &Cli, config: &ClientConfig, meetings: &[MeetingView]) {
                 Err(e) => eprintln!("error: failed to serialize waybar output: {}", e),
             }
         }
-        OutputFormat::Polybar => {
-            let output = formatter.format_polybar(meetings, no_meeting_text);
-            println!("{}", output);
-        }
         OutputFormat::Json => {
             let output = formatter.format_json(meetings);
             match serde_json::to_string_pretty(&output) {

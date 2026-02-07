@@ -4,13 +4,13 @@ Show your next calendar meeting in your terminal or status bar.
 
 nextmeeting is a client/server tool that fetches events from Google Calendar
 and CalDAV servers, then displays the next meeting with countdown timers,
-meeting links, and desktop notifications. It integrates with Waybar, Polybar,
-and other status bars.
+meeting links, and desktop notifications. It integrates with Waybar and other
+status bars.
 
 ## Features
 
 - **Multiple providers** -- Google Calendar (OAuth) and CalDAV
-- **Status bar integration** -- Waybar JSON, Polybar single-line, plain TTY, or raw JSON output
+- **Status bar integration** -- Waybar JSON, plain TTY, or raw JSON output
 - **Desktop GUI (preview)** -- Tauri-based desktop panel inspired by MeetingBar
 - **Background daemon** -- Persistent server with event caching, automatic polling, and exponential backoff
 - **Auto-spawn** -- The client starts the server automatically if it isn't running
@@ -96,7 +96,6 @@ nextmeeting [OPTIONS] [COMMAND]
 |--------------|---------------------------------|
 | *(default)*  | Human-readable terminal output  |
 | `--waybar`   | JSON for Waybar custom module   |
-| `--polybar`  | Single-line text for Polybar    |
 | `--json`     | Machine-readable JSON           |
 
 ### Display options
@@ -280,17 +279,6 @@ Style with CSS classes `ongoing`, `soon`, `upcoming`, and `allday`:
 #custom-nextmeeting.ongoing {
     color: #b5bd68;
 }
-```
-
-### Polybar
-
-```ini
-[module/nextmeeting]
-type = custom/script
-exec = nextmeeting --polybar --max-title-length 30 --skip-all-day-meeting
-interval = 60
-click-left = nextmeeting --open-meet-url
-click-right = nextmeeting --copy-meeting-url
 ```
 
 ## Server
