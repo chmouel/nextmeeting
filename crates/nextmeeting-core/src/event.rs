@@ -11,6 +11,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::time::EventTime;
 
+/// The response status for an event attendee.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseStatus {
+    /// The attendee has accepted the invitation.
+    Accepted,
+    /// The attendee has declined the invitation.
+    Declined,
+    /// The attendee has tentatively accepted.
+    Tentative,
+    /// The attendee has not responded.
+    NeedsAction,
+    /// Unknown response status.
+    #[default]
+    Unknown,
+}
+
 /// The kind of meeting link.
 ///
 /// This enum represents the various video conferencing services that can be
@@ -256,6 +273,10 @@ pub struct NormalizedEvent {
     pub calendar_url: Option<String>,
     /// Whether this is an instance of a recurring event.
     pub is_recurring_instance: bool,
+    /// User's response status for this event.
+    pub user_response_status: ResponseStatus,
+    /// Number of non-self attendees (for filtering solo events).
+    pub other_attendee_count: usize,
 }
 
 impl NormalizedEvent {
@@ -279,6 +300,8 @@ impl NormalizedEvent {
             calendar_id: calendar_id.into(),
             calendar_url: None,
             is_recurring_instance: false,
+            user_response_status: ResponseStatus::Unknown,
+            other_attendee_count: 0,
         }
     }
 
@@ -364,6 +387,18 @@ impl NormalizedEvent {
         self.is_recurring_instance = is_recurring;
         self
     }
+
+    /// Builder method to set user response status.
+    pub fn with_user_response_status(mut self, status: ResponseStatus) -> Self {
+        self.user_response_status = status;
+        self
+    }
+
+    /// Builder method to set other attendee count.
+    pub fn with_other_attendee_count(mut self, count: usize) -> Self {
+        self.other_attendee_count = count;
+        self
+    }
 }
 
 /// A display-ready view of a meeting.
@@ -390,6 +425,10 @@ pub struct MeetingView {
     pub secondary_links: Vec<EventLink>,
     /// URL to the calendar event.
     pub calendar_url: Option<String>,
+    /// User's response status for this event.
+    pub user_response_status: ResponseStatus,
+    /// Number of non-self attendees.
+    pub other_attendee_count: usize,
 }
 
 impl MeetingView {
@@ -410,6 +449,8 @@ impl MeetingView {
             primary_link: event.primary_link().cloned(),
             secondary_links: event.secondary_links().into_iter().cloned().collect(),
             calendar_url: event.calendar_url.clone(),
+            user_response_status: event.user_response_status,
+            other_attendee_count: event.other_attendee_count,
         }
     }
 

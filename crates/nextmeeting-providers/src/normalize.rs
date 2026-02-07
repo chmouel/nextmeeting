@@ -11,7 +11,7 @@
 
 use nextmeeting_core::{EventLink, EventTime, LinkKind, NormalizedEvent, extract_links_from_text};
 
-use crate::raw_event::{RawConferenceData, RawEvent, RawEventTime};
+use crate::raw_event::{RawConferenceData, RawEvent, RawEventTime, ResponseStatus};
 
 /// Converts a [`RawEvent`] to a [`NormalizedEvent`].
 ///
@@ -34,11 +34,28 @@ pub fn normalize_event(raw: &RawEvent) -> NormalizedEvent {
     // Extract links from all available sources
     let links = extract_all_links(raw);
 
+    // Extract user's response status
+    let user_response_status = raw
+        .attendees
+        .iter()
+        .find(|a| a.is_self)
+        .map(|a| a.response_status)
+        .unwrap_or(ResponseStatus::Unknown);
+
+    // Count other attendees (excluding self and resources)
+    let other_attendee_count = raw
+        .attendees
+        .iter()
+        .filter(|a| !a.is_self && !a.resource)
+        .count();
+
     // Build the normalized event
     let mut event =
         NormalizedEvent::new(&raw.id, raw.effective_title(), start, end, &raw.calendar_id)
             .with_recurring(raw.is_recurring_instance)
-            .with_links(links);
+            .with_links(links)
+            .with_user_response_status(user_response_status)
+            .with_other_attendee_count(other_attendee_count);
 
     // Set optional fields
     if let Some(ref tz) = raw.timezone {

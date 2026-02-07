@@ -1,6 +1,5 @@
 ---
 source: crates/nextmeeting-core/src/format/golden_tests.rs
-assertion_line: 150
 expression: output
 ---
 [
@@ -24,6 +23,8 @@ expression: output
             ),
             secondary_links: [],
             calendar_url: None,
+            user_response_status: Unknown,
+            other_attendee_count: 0,
         },
     },
 ]

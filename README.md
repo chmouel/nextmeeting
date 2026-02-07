@@ -169,6 +169,10 @@ calendar_ids = ["primary"]
 # skip_all_day = false                 # Hide all-day events
 # include_titles = ["standup"]         # Only show matching titles
 # exclude_titles = ["lunch"]           # Hide matching titles
+# skip_declined = false                # Skip events where you've declined
+# skip_tentative = false               # Skip events where you've tentatively accepted
+# skip_pending = false                 # Skip events where you haven't responded
+# skip_without_guests = false          # Skip events without other attendees (solo events)
 
 # [notifications]
 # minutes_before = [5, 1]              # Minutes before to notify
@@ -279,16 +283,6 @@ nextmeeting server
 | `GOOGLE_CLIENT_SECRET`    | OAuth client secret                  |
 | `GOOGLE_CREDENTIALS_FILE` | Path to Google credentials JSON      |
 | `RUST_LOG`                | Logging level (e.g. `debug`, `info`) |
-
-## Roadmap
-
-| Version | Features                                              |
-|---------|-------------------------------------------------------|
-| v0.2    | Copy meeting ID/passcode, morning agenda              |
-| v0.3    | Time window filters, work hours, notification offsets  |
-| v0.4    | Privacy mode, calendar include/exclude filters         |
-| v0.5    | Clipboard link opening, event creation                 |
-| v1.0    | Full parity, 12h time format, custom templates         |
 
 ## License
 

@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use nextmeeting_core::MeetingView;
+use nextmeeting_core::{MeetingView, ResponseStatus};
 use nextmeeting_protocol::{
     ErrorCode, MeetingsFilter, ProviderStatus, Request, Response, StatusInfo,
 };
@@ -105,6 +105,24 @@ impl ServerState {
             if filter.today_only {
                 let today = chrono::Local::now().date_naive();
                 meetings.retain(|m| m.start_local.date_naive() == today);
+            }
+
+            // Apply response status filters
+            if filter.skip_declined {
+                meetings.retain(|m| m.user_response_status != ResponseStatus::Declined);
+            }
+
+            if filter.skip_tentative {
+                meetings.retain(|m| m.user_response_status != ResponseStatus::Tentative);
+            }
+
+            if filter.skip_pending {
+                meetings.retain(|m| m.user_response_status != ResponseStatus::NeedsAction);
+            }
+
+            // Apply solo event filter
+            if filter.skip_without_guests {
+                meetings.retain(|m| m.other_attendee_count > 0);
             }
 
             // Apply limit
@@ -339,6 +357,8 @@ mod tests {
                 primary_link: None,
                 secondary_links: vec![],
                 calendar_url: None,
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -350,6 +370,8 @@ mod tests {
                 primary_link: None,
                 secondary_links: vec![],
                 calendar_url: None,
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
             },
             MeetingView {
                 id: "3".to_string(),
@@ -361,6 +383,8 @@ mod tests {
                 primary_link: None,
                 secondary_links: vec![],
                 calendar_url: None,
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
             },
         ];
 

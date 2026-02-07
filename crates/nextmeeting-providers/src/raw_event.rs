@@ -10,6 +10,9 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
+// Re-export ResponseStatus from core
+pub use nextmeeting_core::ResponseStatus;
+
 /// The time specification for a raw event.
 ///
 /// Calendar providers return times in different formats:
@@ -40,23 +43,6 @@ impl RawEventTime {
     pub fn is_all_day(&self) -> bool {
         matches!(self, Self::Date(_))
     }
-}
-
-/// The response status for an event attendee.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResponseStatus {
-    /// The attendee has accepted the invitation.
-    Accepted,
-    /// The attendee has declined the invitation.
-    Declined,
-    /// The attendee has tentatively accepted.
-    Tentative,
-    /// The attendee has not responded.
-    NeedsAction,
-    /// Unknown response status.
-    #[default]
-    Unknown,
 }
 
 /// An attendee of a calendar event.

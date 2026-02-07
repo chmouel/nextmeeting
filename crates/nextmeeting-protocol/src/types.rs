@@ -130,6 +130,22 @@ pub struct MeetingsFilter {
     /// Exclude events matching this title pattern.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclude_title: Option<String>,
+
+    /// Skip events where the user has declined.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_declined: bool,
+
+    /// Skip events where the user has tentatively accepted.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_tentative: bool,
+
+    /// Skip events where the user hasn't responded yet.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_pending: bool,
+
+    /// Skip events without other attendees (solo events).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_without_guests: bool,
 }
 
 impl MeetingsFilter {
@@ -165,6 +181,30 @@ impl MeetingsFilter {
     /// Builder: set exclude_title pattern.
     pub fn exclude_title(mut self, pattern: impl Into<String>) -> Self {
         self.exclude_title = Some(pattern.into());
+        self
+    }
+
+    /// Builder: set skip_declined.
+    pub fn skip_declined(mut self, skip: bool) -> Self {
+        self.skip_declined = skip;
+        self
+    }
+
+    /// Builder: set skip_tentative.
+    pub fn skip_tentative(mut self, skip: bool) -> Self {
+        self.skip_tentative = skip;
+        self
+    }
+
+    /// Builder: set skip_pending.
+    pub fn skip_pending(mut self, skip: bool) -> Self {
+        self.skip_pending = skip;
+        self
+    }
+
+    /// Builder: set skip_without_guests.
+    pub fn skip_without_guests(mut self, skip: bool) -> Self {
+        self.skip_without_guests = skip;
         self
     }
 }

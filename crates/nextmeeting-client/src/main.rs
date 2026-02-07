@@ -159,8 +159,8 @@ async fn fetch_meetings(
     config: &ClientConfig,
     client: &SocketClient,
 ) -> ClientResult<Vec<MeetingView>> {
-    // Build filter from config
-    let filter = build_filter(config);
+    // Build filter from config and CLI
+    let filter = build_filter(cli, config);
     let request = if filter_is_empty(&filter) {
         Request::get_meetings()
     } else {
@@ -197,7 +197,7 @@ async fn fetch_meetings(
 }
 
 /// Builds a MeetingsFilter from config settings.
-fn build_filter(config: &ClientConfig) -> MeetingsFilter {
+fn build_filter(_cli: &Cli, config: &ClientConfig) -> MeetingsFilter {
     let filters = &config.filters;
     let mut filter = MeetingsFilter::new();
 
@@ -222,6 +222,23 @@ fn build_filter(config: &ClientConfig) -> MeetingsFilter {
         filter = filter.exclude_title(pattern.clone());
     }
 
+    // Apply response status and attendee filters
+    if filters.skip_declined {
+        filter = filter.skip_declined(true);
+    }
+
+    if filters.skip_tentative {
+        filter = filter.skip_tentative(true);
+    }
+
+    if filters.skip_pending {
+        filter = filter.skip_pending(true);
+    }
+
+    if filters.skip_without_guests {
+        filter = filter.skip_without_guests(true);
+    }
+
     filter
 }
 
@@ -232,6 +249,10 @@ fn filter_is_empty(filter: &MeetingsFilter) -> bool {
         && !filter.skip_all_day
         && filter.include_title.is_none()
         && filter.exclude_title.is_none()
+        && !filter.skip_declined
+        && !filter.skip_tentative
+        && !filter.skip_pending
+        && !filter.skip_without_guests
 }
 
 /// Renders meetings to stdout based on the output format.

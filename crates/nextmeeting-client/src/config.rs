@@ -84,6 +84,18 @@ pub struct FilterSettings {
     /// Exclude meetings matching these title patterns.
     #[serde(default)]
     pub exclude_titles: Vec<String>,
+
+    /// Skip events where the user has declined.
+    pub skip_declined: bool,
+
+    /// Skip events where the user has tentatively accepted.
+    pub skip_tentative: bool,
+
+    /// Skip events where the user hasn't responded yet.
+    pub skip_pending: bool,
+
+    /// Skip events without other attendees (solo events).
+    pub skip_without_guests: bool,
 }
 
 /// Notification settings.

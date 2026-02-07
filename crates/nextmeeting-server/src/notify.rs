@@ -347,6 +347,8 @@ mod tests {
             primary_link: None,
             secondary_links: vec![],
             calendar_url: None,
+            user_response_status: nextmeeting_core::ResponseStatus::Unknown,
+            other_attendee_count: 0,
         }
     }
 

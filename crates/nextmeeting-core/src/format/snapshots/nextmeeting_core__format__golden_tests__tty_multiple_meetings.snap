@@ -1,6 +1,5 @@
 ---
 source: crates/nextmeeting-core/src/format/golden_tests.rs
-assertion_line: 184
 expression: output
 ---
 [
@@ -26,6 +25,8 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/15",
             ),
+            user_response_status: Unknown,
+            other_attendee_count: 0,
         },
     },
     FormattedMeeting {
@@ -50,6 +51,8 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/60",
             ),
+            user_response_status: Unknown,
+            other_attendee_count: 0,
         },
     },
     FormattedMeeting {
@@ -74,6 +77,8 @@ expression: output
             calendar_url: Some(
                 "https://calendar.google.com/event/120",
             ),
+            user_response_status: Unknown,
+            other_attendee_count: 0,
         },
     },
 ]
