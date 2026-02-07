@@ -62,6 +62,7 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
         Some(Command::Auth { provider }) => match provider {
             #[cfg(feature = "google")]
             AuthProvider::Google {
+                account,
                 client_id,
                 client_secret,
                 credentials_file,
@@ -69,6 +70,7 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
                 force,
             } => {
                 nextmeeting_client::commands::auth::google(
+                    account,
                     client_id,
                     client_secret,
                     credentials_file,
@@ -123,7 +125,14 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         let domain = {
             #[cfg(feature = "google")]
             {
-                config.google.as_ref().and_then(|g| g.domain.as_deref())
+                config
+                    .google
+                    .as_ref()
+                    .and_then(|g| {
+                        g.accounts
+                            .iter()
+                            .find_map(|a| a.domain.as_deref())
+                    })
             }
             #[cfg(not(feature = "google"))]
             {

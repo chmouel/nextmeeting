@@ -41,12 +41,14 @@ The binary is at `target/release/nextmeeting`.
 
    ```sh
    nextmeeting auth google \
+     --account work \
      --client-id YOUR_CLIENT_ID.apps.googleusercontent.com \
      --client-secret YOUR_CLIENT_SECRET
    ```
 
    This opens a browser for OAuth consent. Tokens are stored in
-   `~/.config/nextmeeting/google-tokens.json`.
+   `~/.config/nextmeeting/google-tokens-work.json`. If you only have one
+   account configured, `--account` can be omitted.
 
 2. **Show your next meeting:**
 
@@ -127,12 +129,20 @@ Configuration file: `~/.config/nextmeeting/config.toml`
 ```toml
 debug = false
 
-[google]
+[[google.accounts]]
+name = "work"
 client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 client_secret = "YOUR_CLIENT_SECRET"
 # domain = "example.com"              # Google Workspace domain
 calendar_ids = ["primary"]
-# token_path = "~/.config/nextmeeting/google-tokens.json"
+# token_path = "~/.config/nextmeeting/google-tokens-work.json"
+
+# Add more accounts as needed:
+# [[google.accounts]]
+# name = "personal"
+# client_id = "OTHER_CLIENT_ID.apps.googleusercontent.com"
+# client_secret = "OTHER_CLIENT_SECRET"
+# calendar_ids = ["primary"]
 ```
 
 ### Secret references
@@ -149,7 +159,8 @@ so you don't have to store secrets in cleartext:
 Example:
 
 ```toml
-[google]
+[[google.accounts]]
+name = "work"
 client_id = "pass::google/nextmeeting/client_id"
 client_secret = "env::GOOGLE_CLIENT_SECRET"
 ```
@@ -158,9 +169,12 @@ client_secret = "env::GOOGLE_CLIENT_SECRET"
 
 Credentials can be provided in order of priority:
 
-1. CLI flags `--client-id` / `--client-secret`
-2. CLI flag `--credentials-file` (Google Cloud Console JSON)
-3. Config file `client_id` / `client_secret` (with secret reference resolution)
+1. CLI flags `--account <name> --client-id` / `--client-secret`
+2. CLI flag `--account <name> --credentials-file` (Google Cloud Console JSON)
+3. Config file `[[google.accounts]]` entries (with secret reference resolution)
+
+When using CLI flags, `--account` is required to name the account. When
+reading from config, `--account` can be omitted if only one account exists.
 
 ### CalDAV
 

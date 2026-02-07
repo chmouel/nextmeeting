@@ -107,6 +107,10 @@ pub enum AuthProvider {
     /// Authenticate with Google Calendar
     #[cfg(feature = "google")]
     Google {
+        /// Account name to authenticate (required when multiple accounts exist)
+        #[arg(long, short)]
+        account: Option<String>,
+
         /// OAuth client ID (from Google Cloud Console)
         #[arg(long, env = "GOOGLE_CLIENT_ID")]
         client_id: Option<String>,

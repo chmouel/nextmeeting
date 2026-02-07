@@ -25,6 +25,7 @@ use super::tokens::TokenStorage;
 /// It handles authentication via OAuth 2.0 PKCE flow.
 pub struct GoogleProvider {
     config: GoogleConfig,
+    display_name: String,
     token_storage: TokenStorage,
     oauth_client: OAuthClient,
     /// API client wrapped in tokio RwLock for async access
@@ -41,6 +42,7 @@ impl GoogleProvider {
     pub fn new(config: GoogleConfig) -> ProviderResult<Self> {
         config.validate().map_err(ProviderError::configuration)?;
 
+        let display_name = config.provider_name();
         let token_storage = TokenStorage::new(&config.token_path);
         let _ = token_storage.load();
 
@@ -62,6 +64,7 @@ impl GoogleProvider {
 
         Ok(Self {
             config,
+            display_name,
             token_storage,
             oauth_client,
             api_client: TokioRwLock::new(api_client),
@@ -271,7 +274,7 @@ impl GoogleProvider {
 
 impl CalendarProvider for GoogleProvider {
     fn name(&self) -> &str {
-        "google"
+        &self.display_name
     }
 
     fn fetch_events(&self, options: FetchOptions) -> BoxFuture<'_, ProviderResult<FetchResult>> {
@@ -284,7 +287,7 @@ impl CalendarProvider for GoogleProvider {
 
     fn status(&self) -> BoxFuture<'_, ProviderStatus> {
         Box::pin(async move {
-            let mut status = ProviderStatus::new("google");
+            let mut status = ProviderStatus::new(&self.display_name);
 
             status.is_authenticated = self.is_authenticated();
             status.last_sync = *self.last_sync.read().unwrap();
@@ -349,7 +352,18 @@ mod tests {
     fn provider_name() {
         let config = test_config();
         let provider = GoogleProvider::new(config).unwrap();
-        assert_eq!(provider.name(), "google");
+        assert_eq!(provider.name(), "google:default");
+    }
+
+    #[test]
+    fn provider_name_with_account() {
+        let credentials =
+            OAuthCredentials::new("test-client.apps.googleusercontent.com", "test-secret");
+        let config = GoogleConfig::new(credentials)
+            .with_account_name("work")
+            .with_token_path("/tmp/nonexistent-tokens.json");
+        let provider = GoogleProvider::new(config).unwrap();
+        assert_eq!(provider.name(), "google:work");
     }
 
     #[test]

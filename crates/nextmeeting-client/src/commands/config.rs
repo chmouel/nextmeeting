@@ -19,19 +19,30 @@ pub fn validate(config: &ClientConfig) -> ClientResult<()> {
     // Validate Google settings if present
     #[cfg(feature = "google")]
     if let Some(ref google) = config.google {
-        // Validate that calendar_ids is not empty
-        if google.calendar_ids.is_empty() {
-            return Err(crate::error::ClientError::Config(
-                "Google calendar_ids must not be empty".to_string(),
-            ));
-        }
+        // Validate account structure (duplicate names, invalid characters, etc.)
+        google.validate().map_err(|e| {
+            crate::error::ClientError::Config(format!("invalid Google configuration: {}", e))
+        })?;
 
-        // Validate credentials if present
-        if google.client_id.is_some() || google.client_secret.is_some() {
-            google.resolve_credentials().map_err(|e| {
-                crate::error::ClientError::Config(format!("invalid Google credentials: {}", e))
-            })?;
-            println!("Google credentials are valid.");
+        for account in &google.accounts {
+            // Validate that calendar_ids is not empty
+            if account.calendar_ids.is_empty() {
+                return Err(crate::error::ClientError::Config(format!(
+                    "Google account '{}': calendar_ids must not be empty",
+                    account.name
+                )));
+            }
+
+            // Validate credentials if present
+            if account.client_id.is_some() || account.client_secret.is_some() {
+                account.resolve_credentials().map_err(|e| {
+                    crate::error::ClientError::Config(format!(
+                        "invalid Google credentials for account '{}': {}",
+                        account.name, e
+                    ))
+                })?;
+                println!("Google account '{}': credentials are valid.", account.name);
+            }
         }
     }
 

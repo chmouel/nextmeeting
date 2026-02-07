@@ -111,6 +111,12 @@ impl OAuthCredentials {
 /// Configuration for the Google Calendar provider.
 #[derive(Debug, Clone)]
 pub struct GoogleConfig {
+    /// Account name for multi-account support.
+    ///
+    /// Used to distinguish between multiple Google accounts.
+    /// Defaults to `"default"`.
+    pub account_name: String,
+
     /// OAuth credentials for API access.
     pub credentials: OAuthCredentials,
 
@@ -122,8 +128,7 @@ pub struct GoogleConfig {
 
     /// Path to store OAuth tokens.
     ///
-    /// Defaults to `$XDG_CONFIG_HOME/nextmeeting/google-tokens.json` or
-    /// `~/.config/nextmeeting/google-tokens.json`.
+    /// Defaults to `~/.local/share/nextmeeting/google-tokens-{account}.json`.
     pub token_path: PathBuf,
 
     /// Specific calendar IDs to fetch from.
@@ -159,9 +164,10 @@ impl GoogleConfig {
     /// Creates a new Google configuration with the given credentials.
     pub fn new(credentials: OAuthCredentials) -> Self {
         Self {
+            account_name: "default".to_string(),
             credentials,
             domain: None,
-            token_path: Self::default_token_path(),
+            token_path: Self::default_token_path("default"),
             calendar_ids: vec!["primary".to_string()],
             timeout: Duration::from_secs(Self::DEFAULT_TIMEOUT_SECS),
             user_agent: format!("nextmeeting/{}", env!("CARGO_PKG_VERSION")),
@@ -170,12 +176,30 @@ impl GoogleConfig {
         }
     }
 
-    /// Returns the default token storage path.
-    fn default_token_path() -> PathBuf {
-        let config_dir = dirs::config_dir()
+    /// Returns the default token storage path for a given account name.
+    pub fn default_token_path(account_name: &str) -> PathBuf {
+        let data_dir = dirs::home_dir()
+            .map(|h| h.join(".local").join("share"))
             .unwrap_or_else(|| PathBuf::from("."))
             .join("nextmeeting");
-        config_dir.join("google-tokens.json")
+        data_dir.join(format!("google-tokens-{}.json", account_name))
+    }
+
+    /// Sets the account name.
+    pub fn with_account_name(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        // Update token_path to match the new account name if it's still the default
+        let old_default = Self::default_token_path(&self.account_name);
+        if self.token_path == old_default {
+            self.token_path = Self::default_token_path(&name);
+        }
+        self.account_name = name;
+        self
+    }
+
+    /// Returns the provider name for this account (e.g. `"google:work"`).
+    pub fn provider_name(&self) -> String {
+        format!("google:{}", self.account_name)
     }
 
     /// Sets the Google Workspace domain.

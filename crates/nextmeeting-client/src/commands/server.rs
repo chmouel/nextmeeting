@@ -37,7 +37,7 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         return Err(ClientError::Config(format!(
             "no calendar providers configured. To fix this, either:\n  \
              1. Run: nextmeeting auth google --credentials-file <path-to-google-credentials.json>\n  \
-             2. Add client_id + client_secret to [google] section in {}",
+             2. Add a [[google.accounts]] entry in {}",
             config_path.display()
         )));
     }
@@ -131,33 +131,46 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
     #[cfg(feature = "google")]
     {
         if let Some(ref google_settings) = config.google {
-            match google_settings.to_provider_config() {
-                Ok(google_config) => {
-                    match nextmeeting_providers::google::GoogleProvider::new(google_config) {
-                        Ok(provider) => {
-                            if provider.is_authenticated() {
-                                info!("Google Calendar provider initialized (authenticated)");
-                            } else {
-                                warn!(
-                                    "Google Calendar provider initialized but not authenticated; \
-                                     run `nextmeeting auth google` to authenticate"
-                                );
+            // Validate accounts before creating providers
+            google_settings.validate().map_err(|e| {
+                ClientError::Config(format!("invalid Google configuration: {}", e))
+            })?;
+
+            for account in &google_settings.accounts {
+                let account_name = &account.name;
+
+                match account.to_provider_config() {
+                    Ok(google_config) => {
+                        match nextmeeting_providers::google::GoogleProvider::new(google_config) {
+                            Ok(provider) => {
+                                if provider.is_authenticated() {
+                                    info!(
+                                        account = %account_name,
+                                        "Google Calendar provider initialized (authenticated)"
+                                    );
+                                } else {
+                                    warn!(
+                                        account = %account_name,
+                                        "Google Calendar provider initialized but not authenticated; \
+                                         run `nextmeeting auth google --account {account_name}` to authenticate"
+                                    );
+                                }
+                                providers.push(Box::new(provider));
                             }
-                            providers.push(Box::new(provider));
-                        }
-                        Err(e) => {
-                            return Err(ClientError::Provider(format!(
-                                "failed to create Google provider: {}",
-                                e
-                            )));
+                            Err(e) => {
+                                return Err(ClientError::Provider(format!(
+                                    "failed to create Google provider for account '{}': {}",
+                                    account_name, e
+                                )));
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    return Err(ClientError::Config(format!(
-                        "invalid Google configuration: {}",
-                        e
-                    )));
+                    Err(e) => {
+                        return Err(ClientError::Config(format!(
+                            "invalid Google configuration for account '{}': {}",
+                            account_name, e
+                        )));
+                    }
                 }
             }
         }
