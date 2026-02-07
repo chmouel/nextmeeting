@@ -147,9 +147,9 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
     {
         if let Some(ref google_settings) = config.google {
             // Validate accounts before creating providers
-            google_settings.validate().map_err(|e| {
-                ClientError::Config(format!("invalid Google configuration: {}", e))
-            })?;
+            google_settings
+                .validate()
+                .map_err(|e| ClientError::Config(format!("invalid Google configuration: {}", e)))?;
 
             for account in &google_settings.accounts {
                 let account_name = &account.name;

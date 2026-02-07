@@ -337,14 +337,15 @@ impl GoogleSettings {
 
         for account in &self.accounts {
             if !seen_names.insert(&account.name) {
-                return Err(format!(
-                    "duplicate Google account name: '{}'",
-                    account.name
-                ));
+                return Err(format!("duplicate Google account name: '{}'", account.name));
             }
 
             // Validate account name format
-            if !account.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            if !account
+                .name
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
                 return Err(format!(
                     "account name '{}' contains invalid characters (only alphanumeric, hyphen, underscore allowed)",
                     account.name
@@ -474,10 +475,7 @@ mod tests {
     #[test]
     fn resolve_credentials_env_prefix() {
         unsafe {
-            std::env::set_var(
-                "_NM_TEST_CLIENT_ID",
-                "env-id.apps.googleusercontent.com",
-            );
+            std::env::set_var("_NM_TEST_CLIENT_ID", "env-id.apps.googleusercontent.com");
             std::env::set_var("_NM_TEST_CLIENT_SECRET", "env-secret");
         }
 
@@ -596,10 +594,7 @@ client_secret = "personal-secret"
     #[test]
     fn config_toml_with_env_references() {
         unsafe {
-            std::env::set_var(
-                "_NM_TOML_TEST_ID",
-                "env-toml-id.apps.googleusercontent.com",
-            );
+            std::env::set_var("_NM_TOML_TEST_ID", "env-toml-id.apps.googleusercontent.com");
             std::env::set_var("_NM_TOML_TEST_SECRET", "env-toml-secret");
         }
 

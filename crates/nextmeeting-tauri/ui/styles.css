@@ -1,0 +1,232 @@
+:root {
+  --bg-0: #020512;
+  --bg-1: #090e2e;
+  --panel: rgba(13, 18, 42, 0.86);
+  --line: rgba(172, 181, 233, 0.2);
+  --text-primary: #eef2ff;
+  --text-secondary: #a8b0d6;
+  --text-muted: #7e88b8;
+  --accent: #2f8eff;
+  --accent-soft: rgba(47, 142, 255, 0.28);
+  --good: #9bd2ff;
+  --soon: #f4cf70;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: "SF Pro Display", "Avenir Next", "Segoe UI", sans-serif;
+  background: radial-gradient(circle at top left, #1d2a78 0%, #050816 50%, #02030a 100%);
+  color: var(--text-primary);
+}
+
+body {
+  padding: 18px;
+}
+
+.panel {
+  margin: 0 auto;
+  max-width: 460px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  backdrop-filter: blur(26px);
+  background: linear-gradient(160deg, rgba(22, 29, 67, 0.92), rgba(7, 10, 30, 0.88));
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.timeline-shell {
+  border-bottom: 1px solid var(--line);
+  padding: 20px 22px 14px;
+}
+
+.timeline {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-ticks {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(20px, 1fr));
+  gap: 10px;
+}
+
+.tick {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  color: var(--text-muted);
+  font-weight: 650;
+}
+
+.tick-line {
+  width: 2px;
+  height: 44px;
+  background: var(--line);
+}
+
+.tick.active .tick-line {
+  background: var(--accent);
+  box-shadow: 0 0 16px var(--accent-soft);
+}
+
+.timeline-meetings {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(172, 181, 233, 0.14);
+  overflow: hidden;
+}
+
+.timeline-meeting {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 4px;
+  border-radius: 999px;
+  background: rgba(126, 136, 184, 0.8);
+}
+
+.timeline-meeting.ongoing {
+  background: var(--good);
+}
+
+.timeline-meeting.soon {
+  background: var(--soon);
+}
+
+.timeline-meeting.upcoming {
+  background: var(--accent);
+}
+
+.content {
+  padding: 16px 22px 22px;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.68rem;
+  font-weight: 720;
+  letter-spacing: 0.01em;
+}
+
+.source {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status {
+  min-height: 1.2rem;
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.meeting-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.meeting {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(12, 15, 38, 0.72);
+}
+
+.meeting-title {
+  margin: 0 0 6px;
+  font-size: 1.06rem;
+  font-weight: 640;
+  color: var(--text-primary);
+}
+
+.meeting-time,
+.meeting-day {
+  margin: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.meeting-service {
+  margin-top: 8px;
+  display: inline-flex;
+  font-size: 0.82rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.meeting-status {
+  margin-left: 8px;
+  font-weight: 700;
+}
+
+.meeting-status.ongoing {
+  color: var(--good);
+}
+
+.meeting-status.soon {
+  color: var(--soon);
+}
+
+.actions {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.action {
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: left;
+  font-size: 1.03rem;
+  font-weight: 630;
+  color: var(--text-primary);
+  background: rgba(25, 31, 72, 0.54);
+}
+
+.action:hover {
+  background: rgba(45, 57, 120, 0.62);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 520px) {
+  body {
+    padding: 8px;
+  }
+
+  .panel {
+    border-radius: 18px;
+  }
+
+  h1 {
+    font-size: 1.34rem;
+  }
+}

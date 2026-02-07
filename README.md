@@ -11,6 +11,7 @@ and other status bars.
 
 - **Multiple providers** -- Google Calendar (OAuth) and CalDAV
 - **Status bar integration** -- Waybar JSON, Polybar single-line, plain TTY, or raw JSON output
+- **Desktop GUI (preview)** -- Tauri-based desktop panel inspired by MeetingBar
 - **Background daemon** -- Persistent server with event caching, automatic polling, and exponential backoff
 - **Auto-spawn** -- The client starts the server automatically if it isn't running
 - **Desktop notifications** -- Configurable alerts before meetings with SHA-256 deduplication and snooze
@@ -34,6 +35,25 @@ cargo build --release
 ```
 
 The binary is at `target/release/nextmeeting`.
+
+### GUI preview (Tauri)
+
+The repository now includes a focused desktop GUI shell in
+`crates/nextmeeting-tauri`. It presents a compact meeting panel suitable for a
+desktop menu or popover workflow.
+
+To run it from source:
+
+```sh
+cargo run -p nextmeeting-tauri --bin nextmeeting-gui
+```
+
+The GUI attempts to load live meetings via the existing nextmeeting socket
+protocol. If the daemon is unavailable, it gracefully falls back to mock data
+for preview and interface development.
+
+The wired desktop actions currently are **Join next meeting**, **Create
+meeting**, **Quick Actions** (open calendar day), and **Preferences**.
 
 ## Quick Start
 

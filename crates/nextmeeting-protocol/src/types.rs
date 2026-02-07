@@ -161,7 +161,7 @@ pub struct MeetingsFilter {
         default,
         skip_serializing_if = "Vec::is_empty",
         alias = "include_title",
-        deserialize_with = "string_or_vec",
+        deserialize_with = "string_or_vec"
     )]
     pub include_titles: Vec<String>,
 
@@ -170,7 +170,7 @@ pub struct MeetingsFilter {
         default,
         skip_serializing_if = "Vec::is_empty",
         alias = "exclude_title",
-        deserialize_with = "string_or_vec",
+        deserialize_with = "string_or_vec"
     )]
     pub exclude_titles: Vec<String>,
 

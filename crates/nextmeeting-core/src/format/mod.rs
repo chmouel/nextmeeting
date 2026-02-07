@@ -529,10 +529,10 @@ impl OutputFormatter {
 
             // If until_offset_minutes is set and the meeting is farther away than
             // that threshold, use absolute time instead of the countdown.
-            if let Some(offset) = self.options.until_offset_minutes {
-                if minutes_until > offset {
-                    return self.format_absolute_time(meeting);
-                }
+            if let Some(offset) = self.options.until_offset_minutes
+                && minutes_until > offset
+            {
+                return self.format_absolute_time(meeting);
             }
 
             self.format_time_until(minutes_until)

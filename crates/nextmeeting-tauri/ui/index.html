@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>nextmeeting</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="timeline-shell">
+        <div class="timeline" id="timeline"></div>
+      </header>
+
+      <section class="content">
+        <div class="meta-row">
+          <h1 id="todayTitle">Today</h1>
+          <span class="source" id="sourceBadge">mock</span>
+        </div>
+
+        <p class="status" id="statusLine" aria-live="polite"></p>
+        <div class="meeting-list" id="meetingList"></div>
+
+        <nav class="actions" id="actionList"></nav>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

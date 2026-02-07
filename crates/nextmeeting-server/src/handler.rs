@@ -175,16 +175,16 @@ impl ServerState {
             }
 
             // Apply work_hours filter
-            if let Some(ref spec) = filter.work_hours {
-                if let Some((start_time, end_time)) = parse_work_hours(spec) {
-                    meetings.retain(|m| {
-                        if m.is_all_day {
-                            return true; // pass all-day events through
-                        }
-                        let event_time = m.start_local.time();
-                        event_time >= start_time && event_time <= end_time
-                    });
-                }
+            if let Some(ref spec) = filter.work_hours
+                && let Some((start_time, end_time)) = parse_work_hours(spec)
+            {
+                meetings.retain(|m| {
+                    if m.is_all_day {
+                        return true; // pass all-day events through
+                    }
+                    let event_time = m.start_local.time();
+                    event_time >= start_time && event_time <= end_time
+                });
             }
 
             // Apply privacy filter (mutate titles)

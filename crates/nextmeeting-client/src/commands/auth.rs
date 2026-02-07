@@ -44,7 +44,8 @@ pub async fn google(
         crate::error::ClientError::Config(format!("invalid Google credentials: {}", e))
     })?;
 
-    let mut google_config = GoogleConfig::new(credentials).with_account_name(&resolved.account_name);
+    let mut google_config =
+        GoogleConfig::new(credentials).with_account_name(&resolved.account_name);
 
     if let Some(ref d) = resolved.final_domain {
         google_config = google_config.with_domain(d);
@@ -128,9 +129,8 @@ fn resolve_target_account(
     cli_domain: Option<String>,
     config: &ClientConfig,
 ) -> ClientResult<ResolvedAccount> {
-    let has_cli_creds = cli_client_id.is_some()
-        || cli_client_secret.is_some()
-        || cli_credentials_file.is_some();
+    let has_cli_creds =
+        cli_client_id.is_some() || cli_client_secret.is_some() || cli_credentials_file.is_some();
 
     // Priority 1: CLI credentials (require --account name)
     if has_cli_creds {
@@ -312,22 +312,22 @@ fn save_credentials_to_config(resolved: &ResolvedAccount) {
     // Check if account already exists
     let mut found = false;
     for table in accounts.iter_mut() {
-        if let Some(name) = table.get("name").and_then(|v| v.as_str()) {
-            if name == resolved.account_name {
-                // Update existing account
-                table["client_id"] = toml_edit::value(&resolved.final_client_id);
-                table["client_secret"] = toml_edit::value(&resolved.final_client_secret);
-                if let Some(ref domain) = resolved.final_domain {
-                    table["domain"] = toml_edit::value(domain.as_str());
-                }
-                if !table.contains_key("calendar_ids") {
-                    let mut arr = toml_edit::Array::new();
-                    arr.push("primary");
-                    table["calendar_ids"] = toml_edit::value(arr);
-                }
-                found = true;
-                break;
+        if let Some(name) = table.get("name").and_then(|v| v.as_str())
+            && name == resolved.account_name
+        {
+            // Update existing account
+            table["client_id"] = toml_edit::value(&resolved.final_client_id);
+            table["client_secret"] = toml_edit::value(&resolved.final_client_secret);
+            if let Some(ref domain) = resolved.final_domain {
+                table["domain"] = toml_edit::value(domain.as_str());
             }
+            if !table.contains_key("calendar_ids") {
+                let mut arr = toml_edit::Array::new();
+                arr.push("primary");
+                table["calendar_ids"] = toml_edit::value(arr);
+            }
+            found = true;
+            break;
         }
     }
 
@@ -347,15 +347,15 @@ fn save_credentials_to_config(resolved: &ResolvedAccount) {
     }
 
     // Ensure parent directory exists
-    if let Some(parent) = config_path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            info!(
-                "could not create config directory {}: {}",
-                parent.display(),
-                e
-            );
-            return;
-        }
+    if let Some(parent) = config_path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        info!(
+            "could not create config directory {}: {}",
+            parent.display(),
+            e
+        );
+        return;
     }
 
     match std::fs::write(&config_path, doc.to_string()) {
@@ -410,7 +410,10 @@ mod tests {
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert_eq!(resolved.account_name, "work");
-        assert_eq!(resolved.final_client_id, "cli-id.apps.googleusercontent.com");
+        assert_eq!(
+            resolved.final_client_id,
+            "cli-id.apps.googleusercontent.com"
+        );
         assert_eq!(resolved.final_client_secret, "cli-secret");
         assert_eq!(resolved.source, CredentialSource::Cli);
     }
@@ -437,7 +440,10 @@ mod tests {
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert_eq!(resolved.account_name, "work");
-        assert_eq!(resolved.final_client_id, "work-id.apps.googleusercontent.com");
+        assert_eq!(
+            resolved.final_client_id,
+            "work-id.apps.googleusercontent.com"
+        );
         assert_eq!(resolved.source, CredentialSource::Config);
     }
 
@@ -508,18 +514,15 @@ mod tests {
         .unwrap();
 
         let config = ClientConfig::default();
-        let result = resolve_target_account(
-            Some("work"),
-            None,
-            None,
-            Some(creds_path),
-            None,
-            &config,
-        );
+        let result =
+            resolve_target_account(Some("work"), None, None, Some(creds_path), None, &config);
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert_eq!(resolved.account_name, "work");
-        assert_eq!(resolved.final_client_id, "file-id.apps.googleusercontent.com");
+        assert_eq!(
+            resolved.final_client_id,
+            "file-id.apps.googleusercontent.com"
+        );
         assert_eq!(resolved.final_client_secret, "file-secret");
         assert_eq!(resolved.source, CredentialSource::Cli);
     }
@@ -554,8 +557,7 @@ mod tests {
 
         let google = doc["google"].as_table_mut().unwrap();
         if !google.contains_key("accounts") {
-            google["accounts"] =
-                toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+            google["accounts"] = toml_edit::Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
         }
 
         let accounts = google["accounts"].as_array_of_tables_mut().unwrap();

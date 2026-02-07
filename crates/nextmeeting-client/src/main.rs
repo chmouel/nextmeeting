@@ -90,9 +90,7 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
             let client = make_client(&cli, &config);
             run_status(&client).await
         }
-        Some(Command::Server) => {
-            nextmeeting_client::commands::server::run(&cli, &config).await
-        }
+        Some(Command::Server) => nextmeeting_client::commands::server::run(&cli, &config).await,
         None => {
             // Default behavior: connect to server, fetch meetings, render output
             run_default(&cli, &config).await

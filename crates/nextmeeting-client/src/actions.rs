@@ -208,7 +208,10 @@ pub fn create_meeting(
         match service.to_lowercase().as_str() {
             "meet" | "google" | "gmeet" => {
                 if let Some(domain) = google_domain {
-                    format!("https://meet.google.com/new?authuser=0&hs=122&hd={}", domain)
+                    format!(
+                        "https://meet.google.com/new?authuser=0&hs=122&hd={}",
+                        domain
+                    )
                 } else {
                     "https://meet.google.com/new".to_string()
                 }
@@ -241,33 +244,33 @@ pub fn create_meeting(
 /// Extracts the meeting ID from a URL.
 fn extract_meeting_id(url: &str) -> String {
     // Google Meet: last path segment
-    if url.contains("meet.google.com") {
-        if let Some(id) = url.rsplit('/').next() {
-            return id.split('?').next().unwrap_or(id).to_string();
-        }
+    if url.contains("meet.google.com")
+        && let Some(id) = url.rsplit('/').next()
+    {
+        return id.split('?').next().unwrap_or(id).to_string();
     }
 
     // Zoom: extract from /j/ path
-    if url.contains("zoom.us") || url.contains("zoom.com") {
-        if let Some(pos) = url.find("/j/") {
-            let after = &url[pos + 3..];
-            return after.split('?').next().unwrap_or(after).to_string();
-        }
+    if (url.contains("zoom.us") || url.contains("zoom.com"))
+        && let Some(pos) = url.find("/j/")
+    {
+        let after = &url[pos + 3..];
+        return after.split('?').next().unwrap_or(after).to_string();
     }
 
     // Teams: return meeting ID from path
-    if url.contains("teams.microsoft.com") || url.contains("teams.live.com") {
-        if let Some(pos) = url.find("/meetup-join/") {
-            let after = &url[pos + 13..];
-            return after
-                .split('?')
-                .next()
-                .unwrap_or(after)
-                .split('/')
-                .next()
-                .unwrap_or(after)
-                .to_string();
-        }
+    if (url.contains("teams.microsoft.com") || url.contains("teams.live.com"))
+        && let Some(pos) = url.find("/meetup-join/")
+    {
+        let after = &url[pos + 13..];
+        return after
+            .split('?')
+            .next()
+            .unwrap_or(after)
+            .split('/')
+            .next()
+            .unwrap_or(after)
+            .to_string();
     }
 
     // Fallback: last path segment
@@ -342,10 +345,7 @@ mod tests {
 
     #[test]
     fn extract_meeting_id_zoom() {
-        assert_eq!(
-            extract_meeting_id("https://zoom.us/j/12345678"),
-            "12345678"
-        );
+        assert_eq!(extract_meeting_id("https://zoom.us/j/12345678"), "12345678");
         assert_eq!(
             extract_meeting_id("https://zoom.us/j/12345678?pwd=abc"),
             "12345678"
@@ -354,10 +354,7 @@ mod tests {
 
     #[test]
     fn extract_meeting_id_fallback() {
-        assert_eq!(
-            extract_meeting_id("https://example.com/meeting/xyz"),
-            "xyz"
-        );
+        assert_eq!(extract_meeting_id("https://example.com/meeting/xyz"), "xyz");
     }
 
     #[test]
