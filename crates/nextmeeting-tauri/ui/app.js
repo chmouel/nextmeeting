@@ -207,17 +207,20 @@ function renderHero(meetings) {
     const meta = `${ongoing.startTime} - ${ongoing.endTime} on ${ongoing.service}`;
     heroMetaNode.textContent = ongoing.relativeTime ? `${meta} \u00b7 ${ongoing.relativeTime}` : meta;
     joinNowButtonNode.textContent = "Join live meeting";
+    joinNowButtonNode.style.display = "";
     return;
   }
 
-  joinNowButtonNode.textContent = "Join next meeting";
   if (nextMeeting) {
+    joinNowButtonNode.textContent = "Join next meeting";
+    joinNowButtonNode.style.display = "";
     heroTitleNode.textContent = `Next: ${nextMeeting.title}`;
     const meta = `${nextMeeting.startTime} - ${nextMeeting.endTime} on ${nextMeeting.service}`;
     heroMetaNode.textContent = nextMeeting.relativeTime ? `${meta} \u00b7 ${nextMeeting.relativeTime}` : meta;
     return;
   }
 
+  joinNowButtonNode.style.display = "none";
   heroTitleNode.textContent = "";
   heroMetaNode.textContent = "";
 }
@@ -327,6 +330,7 @@ function applyDashboard(dashboard) {
   if (!meetings.length && dashboard.source !== "unavailable") {
     heroTitleNode.textContent = "No meeting right now";
     heroMetaNode.textContent = "You are free for the moment.";
+    joinNowButtonNode.style.display = "none";
   }
 }
 
