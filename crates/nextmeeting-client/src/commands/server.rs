@@ -22,25 +22,24 @@ use nextmeeting_server::{
 };
 
 use crate::cli::Cli;
-use crate::config::ClientConfig;
+use crate::config::{AuthConfig, ClientConfig};
 use crate::error::{ClientError, ClientResult};
 
 /// Starts the server daemon in the foreground.
 ///
 /// This function blocks until a shutdown signal is received (SIGTERM/SIGINT)
 /// or the process is otherwise terminated.
-pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
-    // 1. Build providers from config
-    let providers = build_providers(config)?;
+pub async fn run(cli: &Cli, config: &ClientConfig, auth: &AuthConfig) -> ClientResult<()> {
+    // 1. Build providers from config + auth
+    let providers = build_providers(config, auth)?;
     if providers.is_empty() {
-        let default_creds = crate::config::ClientConfig::default_data_dir().join("oauth.json");
+        let auth_path = AuthConfig::default_path();
         return Err(ClientError::Config(format!(
             "no calendar providers configured. To fix this, either:\n  \
              1. Run: nextmeeting auth google --credentials-file <path-to-google-credentials.json>\n  \
-             2. Place your Google OAuth credentials JSON at {}\n  \
-             3. Add a [google] section to your config.toml with client_id/client_secret \
-                or credentials_file",
-            default_creds.display()
+             2. Add credentials to {}\n  \
+             3. Add a [google] section to your config.toml with credentials_file",
+            auth_path.display()
         )));
     }
 
@@ -90,9 +89,11 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     });
 
     // 7. Socket server
+    // CLI --socket-path overrides config, which overrides default
     let socket_path = cli
         .socket_path
         .clone()
+        .or_else(|| config.server.socket_path.clone())
         .unwrap_or_else(nextmeeting_server::default_socket_path);
 
     let server_config = ServerConfig::new(&socket_path);
@@ -124,20 +125,23 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     Ok(())
 }
 
-/// Builds calendar providers from client configuration.
+/// Builds calendar providers from client configuration and auth credentials.
 ///
-/// If an explicit `[google]` section exists in config, uses that.
-/// Otherwise, attempts auto-detection by checking for credentials at
-/// the default path (`~/.local/share/nextmeeting/oauth.json`) and
-/// existing tokens at the default token path.
-fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarProvider>>> {
+/// If an explicit `[google]` section exists in config, uses that with
+/// credentials from `auth.yaml`. Otherwise, attempts auto-detection by
+/// checking for credentials in `auth.yaml`, at the default path
+/// (`~/.local/share/nextmeeting/oauth.json`), and existing tokens.
+fn build_providers(
+    config: &ClientConfig,
+    auth: &AuthConfig,
+) -> ClientResult<Vec<Box<dyn CalendarProvider>>> {
     let mut providers: Vec<Box<dyn CalendarProvider>> = Vec::new();
 
     #[cfg(feature = "google")]
     {
         if let Some(ref google_settings) = config.google {
-            // Explicit [google] section in config — use it (now with credential resolution)
-            match google_settings.to_provider_config() {
+            // Explicit [google] section in config — use it with auth.yaml credentials
+            match google_settings.to_provider_config(auth) {
                 Ok(google_config) => {
                     match nextmeeting_providers::google::GoogleProvider::new(google_config) {
                         Ok(provider) => {
@@ -167,8 +171,8 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
                 }
             }
         } else {
-            // No [google] section — try auto-detection from default paths
-            match try_auto_detect_google() {
+            // No [google] section — try auto-detection from auth.yaml or default paths
+            match try_auto_detect_google(auth) {
                 Ok(Some(provider)) => {
                     if provider.is_authenticated() {
                         info!(
@@ -199,15 +203,31 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
     Ok(providers)
 }
 
-/// Attempts to auto-detect a Google provider from default credential and token paths.
+/// Attempts to auto-detect a Google provider from auth.yaml or default credential paths.
 ///
-/// Returns `Ok(Some(provider))` if credentials were found at the default data dir,
-/// `Ok(None)` if no credentials exist, or `Err` if credentials exist but are invalid.
+/// Returns `Ok(Some(provider))` if credentials were found in `auth.yaml` or at
+/// the default data dir, `Ok(None)` if no credentials exist, or `Err` if
+/// credentials exist but are invalid.
 #[cfg(feature = "google")]
 fn try_auto_detect_google(
+    auth: &AuthConfig,
 ) -> Result<Option<nextmeeting_providers::google::GoogleProvider>, String> {
     use nextmeeting_providers::google::{GoogleConfig, GoogleProvider, OAuthCredentials};
 
+    // Try auth.yaml first
+    if let Some(ref google_auth) = auth.google {
+        if !google_auth.client_id.is_empty() && !google_auth.client_secret.is_empty() {
+            let credentials =
+                OAuthCredentials::new(&google_auth.client_id, &google_auth.client_secret);
+            credentials.validate().map_err(|e| e.to_string())?;
+
+            let config = GoogleConfig::new(credentials);
+            let provider = GoogleProvider::new(config).map_err(|e| e.to_string())?;
+            return Ok(Some(provider));
+        }
+    }
+
+    // Fallback: default credentials file
     let default_creds_path =
         crate::config::ClientConfig::default_data_dir().join("oauth.json");
     if !default_creds_path.exists() {

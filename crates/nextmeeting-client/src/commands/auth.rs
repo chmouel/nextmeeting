@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use tracing::info;
 
-use crate::config::{ClientConfig, GoogleSettings};
+use crate::config::{AuthConfig, ClientConfig, GoogleAuthCredentials, GoogleSettings};
 use crate::error::ClientResult;
 
 // Import the trait to access is_authenticated method
@@ -21,12 +21,13 @@ use nextmeeting_providers::CalendarProvider;
 ///
 /// # Arguments
 ///
-/// * `client_id` - OAuth client ID (can be provided via CLI, env, or config)
-/// * `client_secret` - OAuth client secret (can be provided via CLI, env, or config)
+/// * `client_id` - OAuth client ID (can be provided via CLI or env)
+/// * `client_secret` - OAuth client secret (can be provided via CLI or env)
 /// * `credentials_file` - Path to Google Cloud Console credentials JSON file
 /// * `domain` - Optional Google Workspace domain
 /// * `force` - Force re-authentication even if already authenticated
-/// * `config` - Client configuration (for reading saved credentials)
+/// * `config` - Client configuration
+/// * `auth` - Auth configuration (from auth.yaml)
 pub async fn google(
     client_id: Option<String>,
     client_secret: Option<String>,
@@ -34,17 +35,16 @@ pub async fn google(
     domain: Option<String>,
     force: bool,
     config: &ClientConfig,
+    auth: &AuthConfig,
 ) -> ClientResult<()> {
     use nextmeeting_providers::google::{GoogleConfig, GoogleProvider, OAuthCredentials};
 
-    // Track whether credentials came from a non-default source (CLI flags or --credentials-file)
-    let credentials_from_cli = client_id.is_some() || credentials_file.is_some();
-
-    // Resolve credentials from CLI args, environment, or config
-    let (final_client_id, final_client_secret) = resolve_google_credentials(
+    // Resolve credentials from CLI args, auth.yaml, or credentials file
+    let (final_client_id, final_client_secret, source) = resolve_google_credentials(
         client_id,
         client_secret,
-        credentials_file.clone(),
+        credentials_file,
+        auth,
         config.google.as_ref(),
     )?;
 
@@ -74,13 +74,8 @@ pub async fn google(
 
     // Check if already authenticated
     if provider.is_authenticated() && !force {
-        // Even if already authenticated, ensure credentials are saved at the default path
-        save_credentials_to_default_path(
-            credentials_from_cli,
-            credentials_file.as_ref(),
-            &final_client_id,
-            &final_client_secret,
-        );
+        // Save credentials to auth.yaml if they came from CLI or credentials file
+        save_credentials_to_auth_yaml(&final_client_id, &final_client_secret, &source);
         println!("Already authenticated with Google Calendar.");
         println!("Use --force to re-authenticate.");
         return Ok(());
@@ -95,13 +90,8 @@ pub async fn google(
 
     provider.authenticate().await?;
 
-    // Save credentials to default path so the server can auto-detect them
-    save_credentials_to_default_path(
-        credentials_from_cli,
-        credentials_file.as_ref(),
-        &final_client_id,
-        &final_client_secret,
-    );
+    // Save credentials to auth.yaml so the server can find them
+    save_credentials_to_auth_yaml(&final_client_id, &final_client_secret, &source);
 
     info!("Google authentication successful");
     println!();
@@ -113,99 +103,52 @@ pub async fn google(
     Ok(())
 }
 
-/// Saves credentials to the default data directory so the server can auto-detect them.
+/// Where the credentials were resolved from.
+#[derive(Debug, PartialEq)]
+enum CredentialSource {
+    /// From CLI flags (--client-id/--client-secret or --credentials-file)
+    Cli,
+    /// From auth.yaml (already persisted)
+    AuthYaml,
+    /// From config.toml credentials_file
+    ConfigFile,
+    /// From the default oauth.json fallback
+    DefaultFile,
+}
+
+/// Saves credentials to `auth.yaml` so the server can auto-detect them.
 ///
-/// If a `--credentials-file` was used, copies that file. If `--client-id`/`--client-secret`
-/// were used, writes a simple JSON with those values. Skips if credentials are already at
-/// the default path or came from config (which the server can already read).
-fn save_credentials_to_default_path(
-    credentials_from_cli: bool,
-    credentials_file: Option<&PathBuf>,
+/// Only saves if the credentials came from a transient source (CLI flags,
+/// credentials file, or default oauth.json). If they're already in auth.yaml,
+/// this is a no-op.
+fn save_credentials_to_auth_yaml(
     client_id: &str,
     client_secret: &str,
+    source: &CredentialSource,
 ) {
-    if !credentials_from_cli {
+    if *source == CredentialSource::AuthYaml {
+        // Already persisted in auth.yaml
         return;
     }
 
-    let default_path = default_credentials_path();
+    let auth_config = AuthConfig {
+        #[cfg(feature = "google")]
+        google: Some(GoogleAuthCredentials {
+            client_id: client_id.to_string(),
+            client_secret: client_secret.to_string(),
+        }),
+    };
 
-    // If credentials file was provided and it's already at the default path, skip
-    if let Some(src) = credentials_file {
-        if let (Ok(src_canon), Ok(dst_canon)) =
-            (src.canonicalize(), default_path.canonicalize())
-        {
-            if src_canon == dst_canon {
-                return;
-            }
+    let auth_path = AuthConfig::default_path();
+    match auth_config.save() {
+        Ok(()) => {
+            info!("Credentials saved to {}", auth_path.display());
+            println!("Credentials saved to {}", auth_path.display());
+        }
+        Err(e) => {
+            info!("could not save credentials to {}: {}", auth_path.display(), e);
         }
     }
-
-    // Ensure parent directory exists
-    if let Some(parent) = default_path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            info!("could not create data directory {}: {}", parent.display(), e);
-            return;
-        }
-    }
-
-    if let Some(src) = credentials_file {
-        // Copy the credentials file to the default location
-        match std::fs::copy(src, &default_path) {
-            Ok(_) => {
-                info!(
-                    "Credentials saved to {}",
-                    default_path.display()
-                );
-                println!(
-                    "Credentials saved to {}",
-                    default_path.display()
-                );
-            }
-            Err(e) => {
-                info!(
-                    "could not copy credentials to {}: {}",
-                    default_path.display(),
-                    e
-                );
-            }
-        }
-    } else {
-        // Write a simple JSON with client_id and client_secret
-        let json = format!(
-            "{{\n  \"client_id\": \"{}\",\n  \"client_secret\": \"{}\"\n}}\n",
-            client_id, client_secret
-        );
-        match std::fs::write(&default_path, json) {
-            Ok(_) => {
-                info!(
-                    "Credentials saved to {}",
-                    default_path.display()
-                );
-                println!(
-                    "Credentials saved to {}",
-                    default_path.display()
-                );
-            }
-            Err(e) => {
-                info!(
-                    "could not write credentials to {}: {}",
-                    default_path.display(),
-                    e
-                );
-            }
-        }
-    }
-}
-
-/// Default credentials file name.
-const DEFAULT_CREDENTIALS_FILE: &str = "oauth.json";
-
-/// Returns the default path for Google credentials file.
-///
-/// This is `~/.local/share/nextmeeting/oauth.json` on Linux.
-fn default_credentials_path() -> PathBuf {
-    crate::config::ClientConfig::default_data_dir().join(DEFAULT_CREDENTIALS_FILE)
 }
 
 /// Resolves Google credentials from multiple sources.
@@ -213,20 +156,21 @@ fn default_credentials_path() -> PathBuf {
 /// Priority (highest to lowest):
 /// 1. CLI `--client-id` + `--client-secret`
 /// 2. CLI `--credentials-file`
-/// 3. Config inline `client_id` + `client_secret`
+/// 3. `auth.yaml` (`client_id` + `client_secret`)
 /// 4. Config `credentials_file`
 /// 5. Default file at `~/.local/share/nextmeeting/oauth.json`
 fn resolve_google_credentials(
     cli_client_id: Option<String>,
     cli_client_secret: Option<String>,
     cli_credentials_file: Option<PathBuf>,
+    auth: &AuthConfig,
     config_google: Option<&GoogleSettings>,
-) -> ClientResult<(String, String)> {
+) -> ClientResult<(String, String, CredentialSource)> {
     use nextmeeting_providers::google::OAuthCredentials;
 
     // Priority 1: CLI client_id + client_secret
     if let (Some(id), Some(secret)) = (&cli_client_id, &cli_client_secret) {
-        return Ok((id.clone(), secret.clone()));
+        return Ok((id.clone(), secret.clone(), CredentialSource::Cli));
     }
 
     // Priority 2: CLI credentials file
@@ -238,16 +182,23 @@ fn resolve_google_credentials(
                 e
             ))
         })?;
-        return Ok((creds.client_id, creds.client_secret));
+        return Ok((creds.client_id, creds.client_secret, CredentialSource::Cli));
     }
 
-    // Priority 3: Config inline client_id + client_secret
-    if let Some(google) = config_google {
-        if !google.client_id.is_empty() && !google.client_secret.is_empty() {
-            return Ok((google.client_id.clone(), google.client_secret.clone()));
+    // Priority 3: auth.yaml client_id + client_secret
+    #[cfg(feature = "google")]
+    if let Some(ref google_auth) = auth.google {
+        if !google_auth.client_id.is_empty() && !google_auth.client_secret.is_empty() {
+            return Ok((
+                google_auth.client_id.clone(),
+                google_auth.client_secret.clone(),
+                CredentialSource::AuthYaml,
+            ));
         }
+    }
 
-        // Priority 4: Config credentials_file
+    // Priority 4: Config credentials_file
+    if let Some(google) = config_google {
         if let Some(ref path) = google.credentials_file {
             let creds = OAuthCredentials::from_file(path).map_err(|e| {
                 crate::error::ClientError::Config(format!(
@@ -256,7 +207,7 @@ fn resolve_google_credentials(
                     e
                 ))
             })?;
-            return Ok((creds.client_id, creds.client_secret));
+            return Ok((creds.client_id, creds.client_secret, CredentialSource::ConfigFile));
         }
     }
 
@@ -270,7 +221,7 @@ fn resolve_google_credentials(
                 e
             ))
         })?;
-        return Ok((creds.client_id, creds.client_secret));
+        return Ok((creds.client_id, creds.client_secret, CredentialSource::DefaultFile));
     }
 
     // Handle partial CLI args (only id or only secret provided)
@@ -281,73 +232,94 @@ fn resolve_google_credentials(
         ));
     }
 
-    let default_path_str = default_path.display();
+    let auth_path = AuthConfig::default_path();
     Err(crate::error::ClientError::Config(format!(
         "Google credentials are required. Provide via:\n  \
-         - Place credentials JSON at {default_path_str}\n  \
+         - client_id + client_secret in {}\n  \
          - --client-id and --client-secret flags\n  \
          - --credentials-file flag (path to Google Cloud Console JSON)\n  \
          - GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars\n  \
-         - GOOGLE_CREDENTIALS_FILE env var\n  \
-         - config file (client_id/client_secret or credentials_file)"
+         - credentials_file in config.toml [google] section",
+        auth_path.display()
     )))
+}
+
+/// Default credentials file name (legacy fallback).
+const DEFAULT_CREDENTIALS_FILE: &str = "oauth.json";
+
+/// Returns the default path for Google credentials file (legacy fallback).
+///
+/// This is `~/.local/share/nextmeeting/oauth.json` on Linux.
+fn default_credentials_path() -> PathBuf {
+    crate::config::ClientConfig::default_data_dir().join(DEFAULT_CREDENTIALS_FILE)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn auth_with_creds(client_id: &str, client_secret: &str) -> AuthConfig {
+        AuthConfig {
+            google: Some(GoogleAuthCredentials {
+                client_id: client_id.to_string(),
+                client_secret: client_secret.to_string(),
+            }),
+        }
+    }
+
+    fn auth_empty() -> AuthConfig {
+        AuthConfig::default()
+    }
+
     #[test]
     fn resolve_credentials_from_cli() {
+        let auth = auth_empty();
         let result = resolve_google_credentials(
             Some("cli-id.apps.googleusercontent.com".to_string()),
             Some("cli-secret".to_string()),
             None,
+            &auth,
             None,
         );
         assert!(result.is_ok());
-        let (id, secret) = result.unwrap();
+        let (id, secret, source) = result.unwrap();
         assert_eq!(id, "cli-id.apps.googleusercontent.com");
         assert_eq!(secret, "cli-secret");
+        assert_eq!(source, CredentialSource::Cli);
     }
 
     #[test]
-    fn resolve_credentials_from_config() {
-        let google_settings = GoogleSettings {
-            client_id: "config-id.apps.googleusercontent.com".to_string(),
-            client_secret: "config-secret".to_string(),
-            credentials_file: None,
-            domain: None,
-            calendar_ids: vec![],
-            token_path: None,
-        };
-        let result = resolve_google_credentials(None, None, None, Some(&google_settings));
+    fn resolve_credentials_from_auth_yaml() {
+        let auth = auth_with_creds(
+            "auth-id.apps.googleusercontent.com",
+            "auth-secret",
+        );
+        let result = resolve_google_credentials(None, None, None, &auth, None);
         assert!(result.is_ok());
-        let (id, secret) = result.unwrap();
-        assert_eq!(id, "config-id.apps.googleusercontent.com");
-        assert_eq!(secret, "config-secret");
+        let (id, secret, source) = result.unwrap();
+        assert_eq!(id, "auth-id.apps.googleusercontent.com");
+        assert_eq!(secret, "auth-secret");
+        assert_eq!(source, CredentialSource::AuthYaml);
     }
 
     #[test]
-    fn resolve_credentials_cli_overrides_config() {
-        let google_settings = GoogleSettings {
-            client_id: "config-id.apps.googleusercontent.com".to_string(),
-            client_secret: "config-secret".to_string(),
-            credentials_file: None,
-            domain: None,
-            calendar_ids: vec![],
-            token_path: None,
-        };
+    fn resolve_credentials_cli_overrides_auth_yaml() {
+        let auth = auth_with_creds(
+            "auth-id.apps.googleusercontent.com",
+            "auth-secret",
+        );
         let result = resolve_google_credentials(
             Some("cli-id.apps.googleusercontent.com".to_string()),
             Some("cli-secret".to_string()),
             None,
-            Some(&google_settings),
+            &auth,
+            None,
         );
         assert!(result.is_ok());
-        let (id, secret) = result.unwrap();
+        let (id, secret, source) = result.unwrap();
         assert_eq!(id, "cli-id.apps.googleusercontent.com");
         assert_eq!(secret, "cli-secret");
+        assert_eq!(source, CredentialSource::Cli);
     }
 
     #[test]
@@ -357,17 +329,21 @@ mod tests {
             return;
         }
 
+        let auth = auth_empty();
+
         // Only client_id without client_secret should fail
         let result = resolve_google_credentials(
             Some("id.apps.googleusercontent.com".to_string()),
             None,
             None,
+            &auth,
             None,
         );
         assert!(result.is_err());
 
         // Only client_secret without client_id should fail
-        let result = resolve_google_credentials(None, Some("secret".to_string()), None, None);
+        let result =
+            resolve_google_credentials(None, Some("secret".to_string()), None, &auth, None);
         assert!(result.is_err());
     }
 
@@ -377,7 +353,8 @@ mod tests {
         if default_credentials_path().exists() {
             return;
         }
-        let result = resolve_google_credentials(None, None, None, None);
+        let auth = auth_empty();
+        let result = resolve_google_credentials(None, None, None, &auth, None);
         assert!(result.is_err());
     }
 
@@ -396,54 +373,65 @@ mod tests {
         )
         .unwrap();
 
-        let result = resolve_google_credentials(None, None, Some(creds_path), None);
+        let auth = auth_empty();
+        let result = resolve_google_credentials(None, None, Some(creds_path), &auth, None);
         assert!(result.is_ok());
-        let (id, secret) = result.unwrap();
+        let (id, secret, source) = result.unwrap();
         assert_eq!(id, "file-id.apps.googleusercontent.com");
         assert_eq!(secret, "file-secret");
+        assert_eq!(source, CredentialSource::Cli);
     }
 
     #[test]
-    fn save_credentials_copies_file_to_default_path() {
+    fn resolve_credentials_from_config_credentials_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let src_path = tmp.path().join("source-creds.json");
-        let dest_path = tmp.path().join("dest-oauth.json");
+        let creds_path = tmp.path().join("creds.json");
+        std::fs::write(
+            &creds_path,
+            r#"{
+                "installed": {
+                    "client_id": "config-file-id.apps.googleusercontent.com",
+                    "client_secret": "config-file-secret"
+                }
+            }"#,
+        )
+        .unwrap();
 
-        let creds_json = r#"{
-            "installed": {
-                "client_id": "test.apps.googleusercontent.com",
-                "client_secret": "test-secret"
-            }
-        }"#;
-        std::fs::write(&src_path, creds_json).unwrap();
-
-        // We can't easily test save_credentials_to_default_path directly
-        // because it uses the hardcoded default_credentials_path().
-        // Instead, we test the copy logic indirectly:
-        // If the source file exists, copying it should work.
-        std::fs::copy(&src_path, &dest_path).unwrap();
-        assert!(dest_path.exists());
-
-        let content = std::fs::read_to_string(&dest_path).unwrap();
-        assert!(content.contains("test.apps.googleusercontent.com"));
+        let auth = auth_empty();
+        let settings = GoogleSettings {
+            credentials_file: Some(creds_path),
+            ..Default::default()
+        };
+        let result = resolve_google_credentials(None, None, None, &auth, Some(&settings));
+        assert!(result.is_ok());
+        let (id, secret, source) = result.unwrap();
+        assert_eq!(id, "config-file-id.apps.googleusercontent.com");
+        assert_eq!(secret, "config-file-secret");
+        assert_eq!(source, CredentialSource::ConfigFile);
     }
 
     #[test]
-    fn save_credentials_writes_json_for_inline_creds() {
+    fn save_credentials_to_auth_yaml_writes_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let dest_path = tmp.path().join("oauth.json");
+        let auth_path = tmp.path().join("auth.yaml");
 
-        // Simulate what save_credentials_to_default_path does for inline creds
-        let json = format!(
-            "{{\n  \"client_id\": \"{}\",\n  \"client_secret\": \"{}\"\n}}\n",
-            "test.apps.googleusercontent.com", "test-secret"
-        );
-        std::fs::write(&dest_path, &json).unwrap();
+        let auth = AuthConfig {
+            google: Some(GoogleAuthCredentials {
+                client_id: "test.apps.googleusercontent.com".to_string(),
+                client_secret: "test-secret".to_string(),
+            }),
+        };
+        auth.save_to(&auth_path).unwrap();
 
-        // Verify the written file can be parsed back
-        let creds =
-            nextmeeting_providers::google::OAuthCredentials::from_file(&dest_path).unwrap();
-        assert_eq!(creds.client_id, "test.apps.googleusercontent.com");
-        assert_eq!(creds.client_secret, "test-secret");
+        let loaded = AuthConfig::load_from(&auth_path).unwrap();
+        let google = loaded.google.unwrap();
+        assert_eq!(google.client_id, "test.apps.googleusercontent.com");
+        assert_eq!(google.client_secret, "test-secret");
+    }
+
+    #[test]
+    fn save_skips_when_source_is_auth_yaml() {
+        // This just verifies the no-op path doesn't panic
+        save_credentials_to_auth_yaml("id", "secret", &CredentialSource::AuthYaml);
     }
 }

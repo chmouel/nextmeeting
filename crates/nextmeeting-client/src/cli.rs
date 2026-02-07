@@ -30,46 +30,11 @@ pub struct Cli {
     #[arg(long, group = "output_format")]
     pub json: bool,
 
-    // --- Display options ---
-    /// Maximum title length (truncated with ellipsis)
-    #[arg(long)]
-    pub max_title_length: Option<usize>,
-
-    /// Text to show when there are no meetings
-    #[arg(long, default_value = "No meeting")]
-    pub no_meeting_text: String,
-
-    // --- Filter flags ---
-    /// Only show meetings for today
-    #[arg(long)]
-    pub today_only: bool,
-
-    /// Maximum number of meetings to display
-    #[arg(long)]
-    pub limit: Option<usize>,
-
-    /// Skip all-day meetings
-    #[arg(long)]
-    pub skip_all_day_meeting: bool,
-
-    /// Only include meetings matching this title pattern (can be repeated)
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub include_title: Vec<String>,
-
-    /// Exclude meetings matching this title pattern (can be repeated)
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub exclude_title: Vec<String>,
-
-    // --- Notification flags ---
-    /// Minutes before meetings to send notifications (can be repeated)
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub notify_min_before_events: Vec<u32>,
-
+    // --- Action flags ---
     /// Snooze notifications for N minutes
     #[arg(long)]
     pub snooze: Option<u32>,
 
-    // --- Action flags ---
     /// Open the meeting URL in the default browser
     #[arg(long)]
     pub open_meet_url: bool,
@@ -83,17 +48,9 @@ pub struct Cli {
     pub open_calendar_day: bool,
 
     // --- Connection flags ---
-    /// Google Workspace domain
-    #[arg(long)]
-    pub google_domain: Option<String>,
-
-    /// Path to the server socket
+    /// Path to the server socket (overrides config)
     #[arg(long, env = "NEXTMEETING_SOCKET")]
     pub socket_path: Option<PathBuf>,
-
-    /// Connection timeout in seconds
-    #[arg(long, default_value = "5")]
-    pub timeout: u64,
 
     #[command(subcommand)]
     pub command: Option<Command>,

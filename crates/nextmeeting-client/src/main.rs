@@ -1,6 +1,5 @@
 //! nextmeeting CLI entry point.
 
-use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -9,7 +8,7 @@ use tracing::{Level, debug, info};
 use tracing_subscriber::EnvFilter;
 
 use nextmeeting_client::cli::{AuthProvider, Cli, Command, ConfigAction};
-use nextmeeting_client::config::ClientConfig;
+use nextmeeting_client::config::{AuthConfig, ClientConfig};
 use nextmeeting_client::error::{ClientError, ClientResult};
 use nextmeeting_client::socket::SocketClient;
 
@@ -20,8 +19,22 @@ use nextmeeting_protocol::{MeetingsFilter, Request, Response};
 async fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    // Initialize tracing
-    let filter = if cli.debug {
+    // Load configuration (needed early for debug flag)
+    let config = if let Some(ref path) = cli.config {
+        match ClientConfig::load_from(path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: {}", e);
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        ClientConfig::load().unwrap_or_default()
+    };
+
+    // Initialize tracing: CLI --debug overrides config debug
+    let debug_enabled = cli.debug || config.debug;
+    let filter = if debug_enabled {
         EnvFilter::new(Level::DEBUG.to_string())
     } else {
         EnvFilter::try_from_default_env()
@@ -33,8 +46,11 @@ async fn main() -> ExitCode {
         .with_target(false)
         .init();
 
+    // Load auth config (auth.yaml)
+    let auth = AuthConfig::load().unwrap_or_default();
+
     // Run the command
-    match run(cli).await {
+    match run(cli, config, auth).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {}", e);
@@ -43,14 +59,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(cli: Cli) -> ClientResult<()> {
-    // Load configuration
-    let config = if let Some(ref path) = cli.config {
-        ClientConfig::load_from(path).map_err(ClientError::Config)?
-    } else {
-        ClientConfig::load().unwrap_or_default()
-    };
-
+async fn run(cli: Cli, config: ClientConfig, auth: AuthConfig) -> ClientResult<()> {
     // Handle subcommands
     match cli.command {
         Some(Command::Auth { provider }) => match provider {
@@ -69,6 +78,7 @@ async fn run(cli: Cli) -> ClientResult<()> {
                     domain,
                     force,
                     &config,
+                    &auth,
                 )
                 .await
             }
@@ -82,7 +92,9 @@ async fn run(cli: Cli) -> ClientResult<()> {
             let client = make_client(&cli, &config);
             run_status(&client).await
         }
-        Some(Command::Server) => nextmeeting_client::commands::server::run(&cli, &config).await,
+        Some(Command::Server) => {
+            nextmeeting_client::commands::server::run(&cli, &config, &auth).await
+        }
         None => {
             // Default behavior: connect to server, fetch meetings, render output
             run_default(&cli, &config).await
@@ -100,7 +112,7 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     }
 
     // Fetch meetings from the server
-    let meetings = fetch_meetings(cli, &client).await?;
+    let meetings = fetch_meetings(cli, config, &client).await?;
 
     // Handle action flags (open/copy) before rendering
     if cli.open_meet_url {
@@ -112,7 +124,7 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     }
 
     if cli.open_calendar_day {
-        let domain = cli.google_domain.as_deref().or_else(|| {
+        let domain = {
             #[cfg(feature = "google")]
             {
                 config.google.as_ref().and_then(|g| g.domain.as_deref())
@@ -121,20 +133,24 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
             {
                 None
             }
-        });
+        };
         return nextmeeting_client::actions::open_calendar_day(&meetings, domain);
     }
 
     // Render output
-    render_output(cli, &meetings);
+    render_output(cli, config, &meetings);
 
     Ok(())
 }
 
 /// Fetches meetings from the server, with auto-spawn fallback.
-async fn fetch_meetings(cli: &Cli, client: &SocketClient) -> ClientResult<Vec<MeetingView>> {
-    // Build filter from CLI flags
-    let filter = build_filter(cli);
+async fn fetch_meetings(
+    cli: &Cli,
+    config: &ClientConfig,
+    client: &SocketClient,
+) -> ClientResult<Vec<MeetingView>> {
+    // Build filter from config
+    let filter = build_filter(config);
     let request = if filter_is_empty(&filter) {
         Request::get_meetings()
     } else {
@@ -146,7 +162,7 @@ async fn fetch_meetings(cli: &Cli, client: &SocketClient) -> ClientResult<Vec<Me
         Ok(resp) => resp,
         Err(ClientError::Connection(_)) => {
             info!("server not running, attempting auto-spawn");
-            auto_spawn_server(client).await?;
+            auto_spawn_server(cli, client).await?;
 
             // Retry after spawn
             client.send(request).await?
@@ -170,28 +186,29 @@ async fn fetch_meetings(cli: &Cli, client: &SocketClient) -> ClientResult<Vec<Me
     }
 }
 
-/// Builds a MeetingsFilter from CLI flags.
-fn build_filter(cli: &Cli) -> MeetingsFilter {
+/// Builds a MeetingsFilter from config settings.
+fn build_filter(config: &ClientConfig) -> MeetingsFilter {
+    let filters = &config.filters;
     let mut filter = MeetingsFilter::new();
 
-    if cli.today_only {
+    if filters.today_only {
         filter = filter.today_only(true);
     }
 
-    if let Some(limit) = cli.limit {
+    if let Some(limit) = filters.limit {
         filter = filter.limit(limit);
     }
 
-    if cli.skip_all_day_meeting {
+    if filters.skip_all_day {
         filter = filter.skip_all_day(true);
     }
 
     // Use the first include/exclude title pattern (protocol supports one)
-    if let Some(pattern) = cli.include_title.first() {
+    if let Some(pattern) = filters.include_titles.first() {
         filter = filter.include_title(pattern.clone());
     }
 
-    if let Some(pattern) = cli.exclude_title.first() {
+    if let Some(pattern) = filters.exclude_titles.first() {
         filter = filter.exclude_title(pattern.clone());
     }
 
@@ -208,19 +225,21 @@ fn filter_is_empty(filter: &MeetingsFilter) -> bool {
 }
 
 /// Renders meetings to stdout based on the output format.
-fn render_output(cli: &Cli, meetings: &[MeetingView]) {
+fn render_output(cli: &Cli, config: &ClientConfig, meetings: &[MeetingView]) {
     let format = cli.output_format();
+    let display = &config.display;
 
     let mut format_options = FormatOptions::default();
-    if let Some(max_len) = cli.max_title_length {
+    if let Some(max_len) = display.max_title_length {
         format_options.max_title_length = Some(max_len);
     }
 
     let formatter = OutputFormatter::new(format_options);
+    let no_meeting_text = &display.no_meeting_text;
 
     match format {
         OutputFormat::Waybar => {
-            let output = formatter.format_waybar(meetings, &cli.no_meeting_text);
+            let output = formatter.format_waybar(meetings, no_meeting_text);
             // serde_json output for waybar
             match serde_json::to_string(&output) {
                 Ok(json) => println!("{}", json),
@@ -228,7 +247,7 @@ fn render_output(cli: &Cli, meetings: &[MeetingView]) {
             }
         }
         OutputFormat::Polybar => {
-            let output = formatter.format_polybar(meetings, &cli.no_meeting_text);
+            let output = formatter.format_polybar(meetings, no_meeting_text);
             println!("{}", output);
         }
         OutputFormat::Json => {
@@ -240,7 +259,7 @@ fn render_output(cli: &Cli, meetings: &[MeetingView]) {
         }
         OutputFormat::Tty => {
             if meetings.is_empty() {
-                println!("{}", cli.no_meeting_text);
+                println!("{}", no_meeting_text);
                 return;
             }
 
@@ -302,7 +321,7 @@ async fn run_status(client: &SocketClient) -> ClientResult<()> {
 }
 
 /// Attempts to auto-spawn the server daemon.
-async fn auto_spawn_server(client: &SocketClient) -> ClientResult<()> {
+async fn auto_spawn_server(cli: &Cli, client: &SocketClient) -> ClientResult<()> {
     use tokio::process::Command as TokioCommand;
 
     let exe = std::env::current_exe()
@@ -312,12 +331,18 @@ async fn auto_spawn_server(client: &SocketClient) -> ClientResult<()> {
 
     // Spawn the server in the background
     let mut cmd = TokioCommand::new(&exe);
-    cmd.arg("server");
 
-    // Pass socket path if custom
-    if let Some(ref path) = resolve_socket_path_from_client(client) {
-        cmd.arg("--socket-path").arg(path);
+    // Pass config file path so the server uses the same configuration
+    if let Some(ref config_path) = cli.config {
+        cmd.arg("--config").arg(config_path);
     }
+
+    // Pass explicit --socket-path if the CLI flag was used (overrides config)
+    if let Some(ref socket_path) = cli.socket_path {
+        cmd.arg("--socket-path").arg(socket_path);
+    }
+
+    cmd.arg("server");
 
     // Detach from the current process group
     cmd.stdin(std::process::Stdio::null())
@@ -365,25 +390,19 @@ async fn auto_spawn_server(client: &SocketClient) -> ClientResult<()> {
 }
 
 /// Creates a SocketClient from CLI and config.
-fn make_client(cli: &Cli, _config: &ClientConfig) -> SocketClient {
+///
+/// CLI `--socket-path` takes priority over config `[server] socket_path`,
+/// which takes priority over the default.
+fn make_client(cli: &Cli, config: &ClientConfig) -> SocketClient {
     let socket_path = cli
         .socket_path
         .clone()
+        .or_else(|| config.server.socket_path.clone())
         .unwrap_or_else(nextmeeting_server::default_socket_path);
 
-    let timeout = Duration::from_secs(cli.timeout);
+    let timeout = Duration::from_secs(config.server.timeout);
 
     SocketClient::new(socket_path, timeout)
-}
-
-/// Helper to get the socket path from the client, if it differs from default.
-fn resolve_socket_path_from_client(client: &SocketClient) -> Option<PathBuf> {
-    let default_path = nextmeeting_server::default_socket_path();
-    if client.socket_path() != default_path {
-        Some(client.socket_path().to_path_buf())
-    } else {
-        None
-    }
 }
 
 /// Formats seconds as a human-readable duration.
