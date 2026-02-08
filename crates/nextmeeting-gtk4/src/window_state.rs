@@ -3,18 +3,10 @@ use std::path::PathBuf;
 use nextmeeting_client::config::ClientConfig;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct WindowStateData {
     #[serde(default)]
     sidebar_collapsed: bool,
-}
-
-impl Default for WindowStateData {
-    fn default() -> Self {
-        Self {
-            sidebar_collapsed: false, // Expanded by default
-        }
-    }
 }
 
 #[derive(Debug)]

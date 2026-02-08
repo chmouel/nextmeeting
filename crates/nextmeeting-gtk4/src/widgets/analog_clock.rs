@@ -128,8 +128,7 @@ fn draw_clock(ctx: &cairo::Context, width: i32, height: i32, is_dark: bool) {
     let second = now.second();
 
     // Calculate hand angles
-    let hour_angle =
-        (hour as f64 + minute as f64 / 60.0) * PI / 6.0 - PI / 2.0;
+    let hour_angle = (hour as f64 + minute as f64 / 60.0) * PI / 6.0 - PI / 2.0;
     let minute_angle = (minute as f64 + second as f64 / 60.0) * PI / 30.0 - PI / 2.0;
 
     // Draw hour hand
@@ -146,7 +145,11 @@ fn draw_clock(ctx: &cairo::Context, width: i32, height: i32, is_dark: bool) {
 
     // Draw minute hand
     let minute_length = radius * 0.75;
-    ctx.set_source_rgb(second_hand_color.0, second_hand_color.1, second_hand_color.2);
+    ctx.set_source_rgb(
+        second_hand_color.0,
+        second_hand_color.1,
+        second_hand_color.2,
+    );
     ctx.set_line_width(2.5);
     ctx.move_to(center_x, center_y);
     ctx.line_to(

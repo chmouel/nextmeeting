@@ -5,13 +5,6 @@ use libadwaita::prelude::*;
 
 use crate::widgets::analog_clock;
 
-// Button label constants - used in both window.rs and application.rs
-pub const LABEL_CREATE_MEET: &str = "Create Meet";
-pub const LABEL_SNOOZE: &str = "Snooze 10m";
-pub const LABEL_CALENDAR: &str = "Calendar";
-pub const LABEL_REFRESH: &str = "Refresh";
-pub const LABEL_CLEAR_DISMISSALS: &str = "Clear Dismissals";
-
 #[derive(Clone)]
 pub struct UiWidgets {
     pub window: adw::ApplicationWindow,
@@ -21,8 +14,6 @@ pub struct UiWidgets {
     pub snooze_button: gtk::Button,
     pub calendar_button: gtk::Button,
     pub clear_dismissals_button: gtk::Button,
-    pub sidebar_toggle_button: gtk::ToggleButton,
-    pub left_sidebar: gtk::Box,
 }
 
 pub fn build(app: &adw::Application) -> UiWidgets {
@@ -40,14 +31,6 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .subtitle("Today")
         .build();
     header.set_title_widget(Some(&window_title));
-
-    // Sidebar toggle button
-    let sidebar_toggle_button = gtk::ToggleButton::builder()
-        .icon_name("sidebar-show-symbolic")
-        .tooltip_text("Toggle Sidebar")
-        .active(true) // Expanded by default
-        .build();
-    header.pack_start(&sidebar_toggle_button);
 
     // ===== LEFT COLUMN =====
     let left_column = gtk::Box::new(gtk::Orientation::Vertical, 16);
@@ -94,66 +77,38 @@ pub fn build(app: &adw::Application) -> UiWidgets {
 
     left_column.append(&scrolled);
 
-    // ===== LEFT SIDEBAR =====
+    // ===== LEFT SIDEBAR (Icons only) =====
     let left_sidebar = gtk::Box::new(gtk::Orientation::Vertical, 12);
     left_sidebar.add_css_class("left-sidebar");
-    left_sidebar.set_width_request(220);
+    left_sidebar.set_width_request(64);
 
-    // Quick Actions label
-    let actions_label = gtk::Label::builder()
-        .label("Quick Actions")
-        .xalign(0.0)
-        .css_classes(["section-label"])
-        .build();
-    left_sidebar.append(&actions_label);
-
-    // Action buttons - stacked vertically
-    let create_content = adw::ButtonContent::builder()
-        .icon_name("video-joined-symbolic")
-        .label(LABEL_CREATE_MEET)
-        .build();
+    // Action buttons - icons only with tooltips
     let create_button = gtk::Button::builder()
-        .child(&create_content)
+        .icon_name("video-joined-symbolic")
         .tooltip_text("Create a new Google Meet video call")
         .css_classes(["sidebar-action"])
         .build();
 
-    let snooze_content = adw::ButtonContent::builder()
-        .icon_name("alarm-symbolic")
-        .label(LABEL_SNOOZE)
-        .build();
     let snooze_button = gtk::Button::builder()
-        .child(&snooze_content)
+        .icon_name("alarm-symbolic")
         .tooltip_text("Hide notifications for 10 minutes")
         .css_classes(["sidebar-action"])
         .build();
 
-    let calendar_content = adw::ButtonContent::builder()
-        .icon_name("x-office-calendar-symbolic")
-        .label(LABEL_CALENDAR)
-        .build();
     let calendar_button = gtk::Button::builder()
-        .child(&calendar_content)
+        .icon_name("x-office-calendar-symbolic")
         .tooltip_text("Open today's calendar")
         .css_classes(["sidebar-action"])
         .build();
 
-    let refresh_content = adw::ButtonContent::builder()
-        .icon_name("view-refresh-symbolic")
-        .label(LABEL_REFRESH)
-        .build();
     let refresh_button = gtk::Button::builder()
-        .child(&refresh_content)
+        .icon_name("view-refresh-symbolic")
         .tooltip_text("Refresh meeting list")
         .css_classes(["sidebar-action"])
         .build();
 
-    let clear_content = adw::ButtonContent::builder()
-        .icon_name("edit-clear-all-symbolic")
-        .label(LABEL_CLEAR_DISMISSALS)
-        .build();
     let clear_dismissals_button = gtk::Button::builder()
-        .child(&clear_content)
+        .icon_name("edit-clear-all-symbolic")
         .tooltip_text("Show previously dismissed meetings")
         .css_classes(["sidebar-action", "sidebar-action-secondary"])
         .build();
@@ -194,7 +149,5 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         snooze_button,
         calendar_button,
         clear_dismissals_button,
-        sidebar_toggle_button,
-        left_sidebar,
     }
 }

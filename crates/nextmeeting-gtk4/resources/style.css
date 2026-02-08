@@ -17,24 +17,11 @@ window.nm-window {
 .left-sidebar {
     background-color: alpha(@card_bg_color, 0.5);
     border-right: 1px solid alpha(@borders, 0.3);
-    padding: 16px;
-    border-radius: 12px 0 0 12px;
-    transition: width 200ms ease, padding 200ms ease;
-}
-
-/* Collapsed sidebar state */
-.left-sidebar-collapsed {
     padding: 16px 8px;
+    border-radius: 12px 0 0 12px;
 }
 
-.left-sidebar-collapsed .section-label {
-    opacity: 0;
-    font-size: 0;
-    margin: 0;
-    padding: 0;
-}
-
-.left-sidebar-collapsed .sidebar-action {
+.left-sidebar .sidebar-action {
     margin: 8px 0;
 }
 

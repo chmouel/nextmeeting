@@ -13,11 +13,7 @@ use tokio::sync::Mutex;
 use crate::config::GtkConfig;
 use crate::tray::{TrayCommand, manager::TrayManager};
 use crate::widgets::meeting_card::MeetingCard;
-use crate::widgets::window::{
-    LABEL_CALENDAR, LABEL_CLEAR_DISMISSALS, LABEL_CREATE_MEET, LABEL_REFRESH, LABEL_SNOOZE,
-    UiWidgets, build as build_window,
-};
-use crate::window_state::WindowState;
+use crate::widgets::window::{UiWidgets, build as build_window};
 
 #[derive(Debug)]
 pub struct AppRuntime {
@@ -25,7 +21,6 @@ pub struct AppRuntime {
     daemon: crate::daemon::client::DaemonClient,
     pub state: crate::daemon::state::MeetingState,
     dismissals: crate::dismissals::DismissedEvents,
-    pub window_state: WindowState,
 }
 
 impl Default for AppRuntime {
@@ -43,7 +38,6 @@ impl AppRuntime {
             daemon,
             state: crate::daemon::state::MeetingState::default(),
             dismissals: crate::dismissals::DismissedEvents::load(),
-            window_state: WindowState::load(),
         }
     }
 
@@ -167,19 +161,6 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
-
-    // Apply initial sidebar state - read synchronously before idle callback to avoid race
-    let initial_collapsed = {
-        let guard = runtime.block_on(app_runtime.lock());
-        guard.window_state.is_sidebar_collapsed()
-    };
-    {
-        let widgets = widgets.clone();
-        glib::idle_add_local_once(move || {
-            apply_sidebar_state(&widgets, initial_collapsed);
-            widgets.sidebar_toggle_button.set_active(!initial_collapsed);
-        });
-    }
 
     let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>();
 
@@ -315,9 +296,8 @@ fn connect_actions(
                     let guard = app_runtime.lock().await;
                     match guard.snooze(10).await {
                         Ok(()) => {
-                            let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                "Snoozed 10 min".to_string(),
-                            ));
+                            let _ =
+                                ui_tx.send(UiEvent::ActionSucceeded("Snoozed 10 min".to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -340,8 +320,8 @@ fn connect_actions(
                     let guard = app_runtime.lock().await;
                     match guard.open_calendar_day() {
                         Ok(()) => {
-                            let _ = ui_tx
-                                .send(UiEvent::ActionSucceeded("Opened calendar".to_string()));
+                            let _ =
+                                ui_tx.send(UiEvent::ActionSucceeded("Opened calendar".to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -378,25 +358,6 @@ fn connect_actions(
             });
         });
     }
-
-    // Sidebar toggle button
-    {
-        let toggle_button = widgets.sidebar_toggle_button.clone();
-        let widgets = widgets.clone();
-        let runtime = runtime.clone();
-        let app_runtime = app_runtime.clone();
-        toggle_button.connect_toggled(move |btn| {
-            let collapsed = !btn.is_active();
-            apply_sidebar_state(&widgets, collapsed);
-
-            // Persist state
-            let app_runtime = app_runtime.clone();
-            runtime.spawn(async move {
-                let mut guard = app_runtime.lock().await;
-                guard.window_state.set_sidebar_collapsed(collapsed);
-            });
-        });
-    }
 }
 
 fn trigger_refresh(
@@ -409,9 +370,7 @@ fn trigger_refresh(
 
         match guard.force_refresh().await {
             Ok(()) => {
-                let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                    "Refreshing…".to_string(),
-                ));
+                let _ = ui_tx.send(UiEvent::ActionSucceeded("Refreshing…".to_string()));
             }
             Err(err) => {
                 let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -486,9 +445,8 @@ fn render_meetings(
                         let guard = app_runtime.lock().await;
                         match guard.open_next_meeting() {
                             Ok(()) => {
-                                let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                    "Opened meeting".to_string(),
-                                ));
+                                let _ = ui_tx
+                                    .send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
                             }
                             Err(err) => {
                                 let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -515,7 +473,7 @@ fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<St
     let now = chrono::Local::now();
     for meeting in meetings {
         let mins_until = meeting.minutes_until_start(now);
-        if mins_until >= 0 && mins_until <= 5 {
+        if (0..=5).contains(&mins_until) {
             return Some(meeting.id.clone());
         }
     }
@@ -525,54 +483,4 @@ fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<St
         .iter()
         .find(|m| m.primary_link.is_some())
         .map(|m| m.id.clone())
-}
-
-fn apply_sidebar_state(widgets: &UiWidgets, collapsed: bool) {
-    if collapsed {
-        widgets.left_sidebar.add_css_class("left-sidebar-collapsed");
-        widgets.left_sidebar.set_width_request(64);
-
-        // Update toggle button icon and tooltip
-        widgets
-            .sidebar_toggle_button
-            .set_icon_name("sidebar-show-symbolic");
-        widgets
-            .sidebar_toggle_button
-            .set_tooltip_text(Some("Show Sidebar"));
-
-        // Hide button labels
-        set_button_label(&widgets.create_button, "");
-        set_button_label(&widgets.snooze_button, "");
-        set_button_label(&widgets.calendar_button, "");
-        set_button_label(&widgets.refresh_button, "");
-        set_button_label(&widgets.clear_dismissals_button, "");
-    } else {
-        widgets
-            .left_sidebar
-            .remove_css_class("left-sidebar-collapsed");
-        widgets.left_sidebar.set_width_request(220);
-
-        // Update toggle button icon and tooltip
-        widgets
-            .sidebar_toggle_button
-            .set_icon_name("sidebar-hide-symbolic");
-        widgets
-            .sidebar_toggle_button
-            .set_tooltip_text(Some("Hide Sidebar"));
-
-        // Restore button labels
-        set_button_label(&widgets.create_button, LABEL_CREATE_MEET);
-        set_button_label(&widgets.snooze_button, LABEL_SNOOZE);
-        set_button_label(&widgets.calendar_button, LABEL_CALENDAR);
-        set_button_label(&widgets.refresh_button, LABEL_REFRESH);
-        set_button_label(&widgets.clear_dismissals_button, LABEL_CLEAR_DISMISSALS);
-    }
-}
-
-fn set_button_label(button: &gtk::Button, label: &str) {
-    if let Some(child) = button.child() {
-        if let Some(btn_content) = child.downcast_ref::<adw::ButtonContent>() {
-            btn_content.set_label(label);
-        }
-    }
 }
