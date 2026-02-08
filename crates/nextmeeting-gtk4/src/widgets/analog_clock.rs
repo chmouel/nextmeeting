@@ -20,6 +20,7 @@ pub fn build() -> gtk::DrawingArea {
         .height_request(CLOCK_SIZE)
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
+        .tooltip_text("Current time")
         .build();
     clock.add_css_class("analog-clock");
 

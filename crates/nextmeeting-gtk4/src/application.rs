@@ -193,20 +193,6 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
             while let Ok(event) = ui_rx.try_recv() {
                 match event {
                     UiEvent::MeetingsLoaded(meetings) => {
-                        // Update connection status
-                        widgets_for_events
-                            .connection_status_label
-                            .set_label(&format!("{} meeting(s)", meetings.len()));
-                        widgets_for_events
-                            .connection_dot
-                            .remove_css_class("connection-dot-pending");
-                        widgets_for_events
-                            .connection_dot
-                            .remove_css_class("connection-dot-error");
-                        widgets_for_events
-                            .connection_dot
-                            .add_css_class("connection-dot-connected");
-
                         render_meetings(
                             &widgets_for_events,
                             &meetings,
@@ -215,22 +201,11 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                             ui_tx_for_events.clone(),
                         );
                     }
-                    UiEvent::ActionFailed(err) => {
-                        widgets_for_events
-                            .connection_status_label
-                            .set_label(&format!("Error: {}", truncate_error(&err)));
-                        widgets_for_events
-                            .connection_dot
-                            .remove_css_class("connection-dot-pending");
-                        widgets_for_events
-                            .connection_dot
-                            .remove_css_class("connection-dot-connected");
-                        widgets_for_events
-                            .connection_dot
-                            .add_css_class("connection-dot-error");
+                    UiEvent::ActionFailed(_err) => {
+                        // Error handling - could add toast notification here
                     }
-                    UiEvent::ActionSucceeded(msg) => {
-                        widgets_for_events.connection_status_label.set_label(&msg);
+                    UiEvent::ActionSucceeded(_msg) => {
+                        // Success handling - could add toast notification here
                     }
                 }
             }
@@ -550,14 +525,6 @@ fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<St
         .iter()
         .find(|m| m.primary_link.is_some())
         .map(|m| m.id.clone())
-}
-
-fn truncate_error(err: &str) -> String {
-    if err.len() > 30 {
-        format!("{}…", &err[..30])
-    } else {
-        err.to_string()
-    }
 }
 
 fn apply_sidebar_state(widgets: &UiWidgets, collapsed: bool) {

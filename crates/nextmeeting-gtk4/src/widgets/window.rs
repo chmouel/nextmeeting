@@ -16,8 +16,6 @@ pub const LABEL_CLEAR_DISMISSALS: &str = "Clear Dismissals";
 pub struct UiWidgets {
     pub window: adw::ApplicationWindow,
     pub meeting_cards_container: gtk::Box,
-    pub connection_status_label: gtk::Label,
-    pub connection_dot: gtk::Box,
     pub create_button: gtk::Button,
     pub refresh_button: gtk::Button,
     pub snooze_button: gtk::Button,
@@ -116,6 +114,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     let create_button = gtk::Button::builder()
         .child(&create_content)
+        .tooltip_text("Create a new Google Meet video call")
         .css_classes(["sidebar-action"])
         .build();
 
@@ -125,6 +124,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     let snooze_button = gtk::Button::builder()
         .child(&snooze_content)
+        .tooltip_text("Hide notifications for 10 minutes")
         .css_classes(["sidebar-action"])
         .build();
 
@@ -134,6 +134,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     let calendar_button = gtk::Button::builder()
         .child(&calendar_content)
+        .tooltip_text("Open today's calendar")
         .css_classes(["sidebar-action"])
         .build();
 
@@ -143,6 +144,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     let refresh_button = gtk::Button::builder()
         .child(&refresh_content)
+        .tooltip_text("Refresh meeting list")
         .css_classes(["sidebar-action"])
         .build();
 
@@ -152,6 +154,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     let clear_dismissals_button = gtk::Button::builder()
         .child(&clear_content)
+        .tooltip_text("Show previously dismissed meetings")
         .css_classes(["sidebar-action", "sidebar-action-secondary"])
         .build();
 
@@ -160,34 +163,6 @@ pub fn build(app: &adw::Application) -> UiWidgets {
     left_sidebar.append(&calendar_button);
     left_sidebar.append(&refresh_button);
     left_sidebar.append(&clear_dismissals_button);
-
-    // Spacer to push connection status to bottom
-    let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    spacer.set_vexpand(true);
-    left_sidebar.append(&spacer);
-
-    // Connection status at bottom
-    let connection_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    connection_box.add_css_class("connection-status");
-    connection_box.set_halign(gtk::Align::Start);
-
-    let connection_icon = gtk::Image::from_icon_name("x-office-calendar-symbolic");
-    connection_icon.set_pixel_size(16);
-    connection_icon.add_css_class("connection-icon");
-    connection_box.append(&connection_icon);
-
-    let connection_status_label = gtk::Label::builder()
-        .label("Connecting…")
-        .css_classes(["connection-label"])
-        .build();
-    connection_box.append(&connection_status_label);
-
-    let connection_dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    connection_dot.add_css_class("connection-dot");
-    connection_dot.add_css_class("connection-dot-pending");
-    connection_box.append(&connection_dot);
-
-    left_sidebar.append(&connection_box);
 
     // ===== MAIN CONTAINER =====
     let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 20);
@@ -214,8 +189,6 @@ pub fn build(app: &adw::Application) -> UiWidgets {
     UiWidgets {
         window,
         meeting_cards_container,
-        connection_status_label,
-        connection_dot,
         create_button,
         refresh_button,
         snooze_button,

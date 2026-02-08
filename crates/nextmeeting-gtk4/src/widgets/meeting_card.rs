@@ -66,9 +66,10 @@ impl MeetingCard {
         center_box.set_hexpand(true);
         center_box.set_valign(gtk::Align::Center);
 
-        // Title
+        // Title - show full title as tooltip when truncated
         let title_label = gtk::Label::builder()
-            .label(&truncate(&meeting.title, 60))
+            .label(truncate(&meeting.title, 60))
+            .tooltip_text(&meeting.title)
             .xalign(0.0)
             .wrap(true)
             .wrap_mode(gtk::pango::WrapMode::WordChar)
@@ -118,6 +119,7 @@ impl MeetingCard {
                 .build();
             let btn = gtk::Button::builder()
                 .child(&btn_content)
+                .tooltip_text("Open video meeting link")
                 .css_classes(["suggested-action", "meeting-card-join"])
                 .valign(gtk::Align::Center)
                 .build();
