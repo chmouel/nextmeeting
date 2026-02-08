@@ -512,9 +512,9 @@ pub fn make_connection_handler_with_mutator_and_notify(
     event_mutator: EventMutator,
     notify_engine: Arc<NotifyEngine>,
 ) -> impl Fn(Connection) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
-       + Send
-       + Sync
-       + 'static {
++ Send
++ Sync
++ 'static {
     move |conn| {
         let handler = RequestHandler::with_event_mutator_and_notify(
             state.clone(),

@@ -212,21 +212,19 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                         );
                     }
                     UiEvent::ActionFailed(err) => {
-                        let toast = adw::Toast::builder()
-                            .title(&err)
-                            .timeout(3)
-                            .build();
+                        let toast = adw::Toast::builder().title(&err).timeout(3).build();
                         widgets_for_events.toast_overlay.add_toast(toast);
                     }
                     UiEvent::ActionSucceeded(msg) => {
-                        let toast = adw::Toast::builder()
-                            .title(&msg)
-                            .timeout(2)
-                            .build();
+                        let toast = adw::Toast::builder().title(&msg).timeout(2).build();
                         widgets_for_events.toast_overlay.add_toast(toast);
                     }
                     UiEvent::SnoozeStateChanged(snoozed_until) => {
-                        update_snooze_button(&widgets_for_events.snooze_button, snoozed_until, snooze_minutes);
+                        update_snooze_button(
+                            &widgets_for_events.snooze_button,
+                            snoozed_until,
+                            snooze_minutes,
+                        );
                     }
                 }
             }
@@ -378,9 +376,8 @@ fn connect_actions(
                     match guard.snooze(minutes).await {
                         Ok(()) => {
                             if is_active {
-                                let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                    "Snooze cleared".to_string(),
-                                ));
+                                let _ = ui_tx
+                                    .send(UiEvent::ActionSucceeded("Snooze cleared".to_string()));
                                 let _ = ui_tx.send(UiEvent::SnoozeStateChanged(None));
                             } else {
                                 let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
@@ -601,8 +598,8 @@ fn render_meetings(
                         Ok(()) => {
                             let meetings = guard.state.meetings().to_vec();
                             let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                            let _ = ui_tx
-                                .send(UiEvent::ActionSucceeded("Event declined".to_string()));
+                            let _ =
+                                ui_tx.send(UiEvent::ActionSucceeded("Event declined".to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -712,12 +709,19 @@ fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<St
         .map(|m| m.id.clone())
 }
 
-fn update_snooze_button(button: &gtk::Button, snoozed_until: Option<DateTime<Utc>>, snooze_minutes: u32) {
+fn update_snooze_button(
+    button: &gtk::Button,
+    snoozed_until: Option<DateTime<Utc>>,
+    snooze_minutes: u32,
+) {
     let now = Utc::now();
     match snoozed_until {
         Some(until) if until > now => {
             button.add_css_class("snoozed");
-            button.set_tooltip_text(Some(&format!("Snoozed until {}", format_snooze_time(until))));
+            button.set_tooltip_text(Some(&format!(
+                "Snoozed until {}",
+                format_snooze_time(until)
+            )));
         }
         _ => {
             button.remove_css_class("snoozed");

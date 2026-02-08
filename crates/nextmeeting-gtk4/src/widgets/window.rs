@@ -92,7 +92,10 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
 
     let snooze_button = gtk::Button::builder()
         .icon_name("alarm-symbolic")
-        .tooltip_text(&format!("Hide notifications for {} minutes", snooze_minutes))
+        .tooltip_text(&format!(
+            "Hide notifications for {} minutes",
+            snooze_minutes
+        ))
         .css_classes(["sidebar-action"])
         .build();
 
