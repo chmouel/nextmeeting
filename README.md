@@ -22,6 +22,22 @@ NextMeeting is built with Rust. Install the CLI with Cargo:
 cargo install --path crates/nextmeeting-client
 ```
 
+### Linux desktop prerequisites
+
+The Tauri desktop build depends on WebKitGTK 4.1 and JavaScriptCoreGTK 4.1.
+On Arch Linux, install:
+
+```sh
+sudo pacman -S --needed webkit2gtk-4.1
+```
+
+If `pkg-config` still cannot find `webkit2gtk-4.1.pc` or
+`javascriptcoregtk-4.1.pc`, set:
+
+```sh
+export PKG_CONFIG_PATH=/usr/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+```
+
 ## Quick Start
 
 1. Connect your calendar:
