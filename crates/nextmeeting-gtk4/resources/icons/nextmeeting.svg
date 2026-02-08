@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="nextmeeting">
+  <rect x="8" y="8" width="112" height="112" rx="20" fill="#1f6feb"/>
+  <rect x="24" y="36" width="80" height="56" rx="12" fill="#ffffff"/>
+  <rect x="36" y="48" width="56" height="8" rx="4" fill="#1f6feb"/>
+  <rect x="36" y="64" width="40" height="8" rx="4" fill="#1f6feb"/>
+</svg>

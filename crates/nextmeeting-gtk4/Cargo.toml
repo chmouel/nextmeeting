@@ -1,0 +1,29 @@
+[package]
+name = "nextmeeting-gtk4"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native GTK4/libadwaita frontend for nextmeeting"
+
+[[bin]]
+name = "nextmeeting-gtk"
+path = "src/main.rs"
+
+[dependencies]
+nextmeeting-client = { path = "../nextmeeting-client" }
+nextmeeting-core = { path = "../nextmeeting-core" }
+nextmeeting-protocol = { path = "../nextmeeting-protocol" }
+nextmeeting-server = { path = "../nextmeeting-server" }
+
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+gtk4 = { version = "0.10.2", features = ["v4_20"] }
+libadwaita = { version = "0.8.0", features = ["v1_6", "gtk_v4_20"] }
+ksni = { version = "0.3.3", default-features = false, features = ["tokio"] }
+
+[build-dependencies]
+glib-build-tools = "0.21.0"

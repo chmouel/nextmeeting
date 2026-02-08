@@ -1,0 +1,102 @@
+window.nm-window {
+  background-image: linear-gradient(160deg, rgba(6, 33, 54, 0.2), rgba(11, 86, 64, 0.08));
+}
+
+.root-shell {
+  border-radius: 20px;
+}
+
+.status-pill {
+  background: rgba(9, 82, 120, 0.14);
+  color: #094f74;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 700;
+}
+
+.hero-frame {
+  border-radius: 16px;
+  border: 1px solid rgba(20, 99, 133, 0.28);
+  background: linear-gradient(140deg, rgba(6, 48, 85, 0.2), rgba(11, 102, 78, 0.12));
+}
+
+.hero-card {
+  border-radius: 14px;
+}
+
+.hero-kicker {
+  color: #0b5f7a;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.hero-title {
+  font-size: 1.2rem;
+  font-weight: 850;
+}
+
+.hero-meta {
+  color: #4f6878;
+}
+
+.service-badge {
+  background: rgba(8, 112, 85, 0.22);
+  color: #0a6b55;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-weight: 700;
+}
+
+.section-label {
+  font-size: 0.76rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #425866;
+  font-weight: 800;
+}
+
+.pill-button {
+  border-radius: 999px;
+}
+
+.meeting-scroller {
+  border-radius: 14px;
+}
+
+.meeting-list {
+  background: transparent;
+}
+
+.meeting-row {
+  border-radius: 12px;
+  background: rgba(10, 74, 108, 0.1);
+  border: 1px solid rgba(19, 99, 133, 0.2);
+}
+
+.meeting-title {
+  font-weight: 740;
+}
+
+.meeting-time {
+  color: #4d6170;
+}
+
+.meeting-live {
+  color: #0b7a4f;
+  font-weight: 720;
+}
+
+.meeting-service {
+  color: #36596c;
+}
+
+.dismiss-button {
+  color: #6d3f47;
+  border-radius: 999px;
+}
+
+.meeting-empty-label {
+  color: #5a6a78;
+}

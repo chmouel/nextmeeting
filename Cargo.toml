@@ -6,6 +6,7 @@ members = [
     "crates/nextmeeting-providers",
     "crates/nextmeeting-server",
     "crates/nextmeeting-client",
+    "crates/nextmeeting-gtk4",
 ]
 
 [workspace.package]

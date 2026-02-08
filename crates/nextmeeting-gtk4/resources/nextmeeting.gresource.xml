@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/com/chmouel/nextmeeting">
+    <file>style.css</file>
+    <file>icons/nextmeeting.svg</file>
+    <file>icons/nextmeeting-symbolic.svg</file>
+  </gresource>
+</gresources>

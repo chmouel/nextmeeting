@@ -18,38 +18,67 @@ Migrate from Tauri/macOS support to a native Linux GTK4/libadwaita UI.
 
 ## Current State
 
-### Completed in this run (PR1 implemented)
+### Completed (PR1)
 
-- Deleted `crates/nextmeeting-tauri/`.
-- Removed `crates/nextmeeting-tauri` from workspace members in `Cargo.toml`.
-- Removed stale `.gitignore` entry for deleted Tauri node modules.
-- Removed menubar config API from `crates/nextmeeting-client/src/config.rs`:
-  - `ClientConfig.menubar`
-  - `MenuBarSettings`
-  - `MenuBarTitleFormat`
-- Removed macOS-specific XDG path overrides in `crates/nextmeeting-client/src/config.rs`.
-- Removed `[menubar]` section from `config.example.toml`.
-- Updated docs to Linux-only state:
-  - `README.md`
-  - `DESIGN.md`
+- Tauri crate removed and committed.
+- Linux-only documentation/config baseline in place.
 
-### Blocker hit for PR2
+### Completed in this run (PR2 GTK MVP)
 
-The environment cannot resolve/download crates from crates.io (offline DNS failure).  
-Required crates for GTK implementation are not present in local cache:
-- `gtk4`
-- `libadwaita`
-- `ksni`
-- `glib-build-tools`
-- `gtk-blueprint`
+- Added new workspace crate: `crates/nextmeeting-gtk4`.
+- Added binary target: `nextmeeting-gtk`.
+- Added working GTK module layout:
+  - `application.rs`
+  - `config.rs`
+  - `daemon/{mod.rs,client.rs,state.rs}`
+  - `tray/{mod.rs,manager.rs,sni.rs}`
+  - `widgets/{mod.rs,window.rs,meeting_card.rs,meeting_row.rs,timeline.rs,status_indicator.rs}`
+  - `actions/{mod.rs,handlers.rs}`
+  - `dismissals.rs`
+  - `utils.rs`
+- Added resources and blueprint placeholders:
+  - `resources/nextmeeting.gresource.xml`
+  - `resources/style.css`
+  - `resources/icons/nextmeeting.svg`
+  - `resources/icons/nextmeeting-symbolic.svg`
+  - `blueprints/*.blp` placeholders
+- Implemented working GTK MVP:
+  - libadwaita application window
+  - meeting list rendering from daemon state
+  - daemon requests now honour `ClientConfig.filters` (same request filter model as CLI)
+  - actions: join/create/refresh/snooze/open calendar day
+  - event dismiss and clear dismissals
+  - ksni tray with toggle/refresh/quit commands
+  - async bridge using tokio runtime
+  - refreshed visual design after user feedback:
+    - tighter popup dimensions (`460x560`)
+    - hero panel and status pill styling
+    - section labels and pill-style action buttons
+    - meeting row card styling and improved typography
+    - reduced oversized blank list panel by setting list scroller minimum/natural sizing
 
-Because of this, PR2/PR3 code implementation is blocked in this run.
+### Remaining for parity
+
+- Timeline widget implementation.
+- Preferences dialog and additional advanced actions.
+- Blueprint-compiled UI migration from code-built widgets.
+- Explicit AppIndicator fallback for tray on environments without SNI host.
+- Replace placeholder widget stubs:
+  - `widgets/meeting_card.rs`
+  - `widgets/meeting_row.rs`
+  - `widgets/timeline.rs`
+  - `widgets/status_indicator.rs`
 
 ## Verification Notes (from this run)
 
-- `cargo check --all` passed before removal work.
-- `cargo clippy --all --all-features` passed before removal work (with Tauri warnings).
-- `cargo test --all` in this environment fails in server socket tests with `PermissionDenied` due sandboxed Unix socket restrictions.
+- `cargo build --all`: passed.
+- `cargo clippy --all --all-features --fix --allow-dirty`: passed.
+- `cargo test --all`: passed.
+- GTK tests now include filter mapping coverage in `daemon/client.rs`:
+  - `build_filter_maps_skip_all_day_and_exclusions`
+- Note: existing warning remains in unrelated code:
+  - `crates/nextmeeting-providers/src/caldav/mod.rs`
+  - `unused import: auth::DigestAuth`
 
 Re-run full verification after PR1 changes on a normal host/CI:
 
@@ -61,31 +90,31 @@ cargo test --all
 
 ## Next Run: Exact Steps
 
-1. Ensure network access for cargo (or provide vendored dependencies).
-2. Add new workspace crate `crates/nextmeeting-gtk4`.
-3. Add dependencies:
-   - `gtk4`
-   - `libadwaita`
-   - `glib`
-   - `gio`
-   - `ksni`
-   - build deps `glib-build-tools`, `gtk-blueprint`
-4. Implement PR2 MVP:
-   - app/window bootstrap
-   - tray icon toggle
-   - daemon meetings load
-   - join/create/refresh
-   - dismissals persistence
-5. Run:
+1. Implement timeline visualisation in `widgets/timeline.rs`, then mount it in `widgets/window.rs` below hero/actions.
+2. Move from code-built UI to Blueprint:
+   - replace placeholders in `blueprints/*.blp` with real layouts
+   - compile blueprint into GResource during build
+   - load templates in widget classes instead of constructing all controls in Rust
+3. Implement preferences dialogue:
+   - create GTK preferences window/dialog
+   - expose create-link defaults, socket path override, and UI toggles
+4. Implement AppIndicator fallback in tray manager:
+   - keep `ksni` as primary
+   - on tray host failure, route to fallback backend
+5. Expand action surface:
+   - undismiss single event
+   - clear dismissals confirmation flow
+   - keyboard shortcuts for refresh/join/quit
+6. Add targeted tests where possible:
+   - dismissal persistence path handling
+   - daemon client response mapping edge cases
+7. Run:
    - `cargo build --all`
-   - `cargo clippy --all --all-features --fix`
+   - `cargo clippy --all --all-features --fix --allow-dirty`
    - targeted manual smoke checks (tray toggle, meeting data, actions).
-6. Implement PR3 parity:
-   - timeline
-   - snooze/calendar day/preferences
-   - polish and tests.
 
 ## Open Risk
 
-- Cargo.lock will change significantly once GTK dependencies are added.
-- Final manual verification must be done in a desktop Linux session with a StatusNotifier host.
+- Tray behaviour still depends on a running StatusNotifier host in the desktop session.
+- Final UX validation must be done in an interactive Linux desktop session.
+- Blueprint migration still pending, so UI is not yet designer-editable outside Rust.
