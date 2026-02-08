@@ -8,6 +8,7 @@ expression: output
         urgency: Upcoming,
         meeting: MeetingView {
             id: "evt-15",
+            provider_name: "unknown",
             title: "Team Standup",
             start_local: 2025-02-05T11:15:00+01:00,
             end_local: 2025-02-05T11:45:00+01:00,
@@ -37,6 +38,7 @@ expression: output
         urgency: Upcoming,
         meeting: MeetingView {
             id: "evt-60",
+            provider_name: "unknown",
             title: "1:1 with Manager",
             start_local: 2025-02-05T12:00:00+01:00,
             end_local: 2025-02-05T12:30:00+01:00,
@@ -66,6 +68,7 @@ expression: output
         urgency: Upcoming,
         meeting: MeetingView {
             id: "evt-120",
+            provider_name: "unknown",
             title: "Design Review",
             start_local: 2025-02-05T13:00:00+01:00,
             end_local: 2025-02-05T13:30:00+01:00,

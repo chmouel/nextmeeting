@@ -8,6 +8,7 @@ expression: output
         urgency: Upcoming,
         meeting: MeetingView {
             id: "evt-150",
+            provider_name: "unknown",
             title: "Later Today",
             start_local: 2025-02-05T13:30:00+01:00,
             end_local: 2025-02-05T14:00:00+01:00,

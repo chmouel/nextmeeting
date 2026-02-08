@@ -61,6 +61,10 @@ cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
 
 The daemon is started automatically when required.
 
+GTK lifecycle behaviour:
+- The app runs as a single instance; launching `nextmeeting-gtk` again presents the existing window.
+- Closing the titlebar window hides it to tray; use tray `Quit` to exit the app.
+
 In the GTK agenda list, use the row action menu to:
 - Dismiss an event locally (hide only)
 - Decline an event in the calendar provider

@@ -8,6 +8,7 @@ expression: output
         urgency: AllDay,
         meeting: MeetingView {
             id: "evt-allday",
+            provider_name: "unknown",
             title: "Company Holiday",
             start_local: 2025-02-05T01:00:00+01:00,
             end_local: 2025-02-06T01:00:00+01:00,

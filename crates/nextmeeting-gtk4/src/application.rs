@@ -140,6 +140,10 @@ impl GtkApp {
         let app_runtime = self.app_runtime.clone();
 
         app.connect_activate(move |app| {
+            if let Some(window) = app.windows().into_iter().next() {
+                window.present();
+                return;
+            }
             build_ui(app, runtime.clone(), app_runtime.clone());
         });
 
@@ -149,6 +153,7 @@ impl GtkApp {
 
 fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mutex<AppRuntime>>) {
     let widgets = Rc::new(build_window(app));
+    widgets.window.set_hide_on_close(true);
 
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("../resources/style.css"));
