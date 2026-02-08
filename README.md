@@ -12,13 +12,13 @@ status bars.
 - **Multiple providers** -- Google Calendar (OAuth) and CalDAV
 - **Status bar integration** -- Waybar JSON, plain TTY, or raw JSON output
 - **Desktop GUI (preview)** -- Tauri-based desktop panel inspired by MeetingBar
-- **Background daemon** -- Persistent server with event caching, automatic polling, and exponential backoff
+- **Background daemon** -- Persistent background service with automatic refresh
 - **Auto-spawn** -- The client starts the server automatically if it isn't running
-- **Desktop notifications** -- Configurable alerts before meetings with SHA-256 deduplication and snooze
-- **Meeting link detection** -- Extracts meeting links from Zoom, Google Meet, Teams, Webex, Jitsi, and many other services (including SafeLinks unwrapping)
+- **Desktop notifications** -- Configurable alerts before meetings, with snooze
+- **Meeting link detection** -- Extracts links for Zoom, Google Meet, Teams, Webex, Jitsi, and other services
 - **Actions** -- Open meeting URLs, copy to clipboard, open calendar day view
-- **Hot reload** -- Server reloads configuration on SIGHUP
-- **Terminal hyperlinks** -- OSC8 clickable links in terminal output
+- **Configuration reload** -- Reload settings after configuration updates
+- **Terminal hyperlinks** -- Clickable meeting links in compatible terminals
 
 ## Installation
 
@@ -60,48 +60,9 @@ cargo run -p nextmeeting-tauri --bin nextmeeting-gui -- --menubar
 
 You may also set `NEXTMEETING_GUI_MODE=menubar` (or `desktop`).
 
-The GUI attempts to load live meetings via the existing nextmeeting socket
-protocol. If the daemon is unavailable, it gracefully falls back to mock data
-for preview and interface development.
-
 The wired desktop actions currently are **Join next meeting**, **Create
 meeting**, **Quick Actions** (open calendar day, refresh, snooze controls, and
 clearing dismissed events), and **Preferences**.
-
-### Front-end tests (GUI UI logic)
-
-The GUI JavaScript logic has a dedicated unit-test harness using Vitest and
-jsdom under `crates/nextmeeting-tauri/ui`.
-
-Run from source:
-
-```sh
-cd crates/nextmeeting-tauri/ui
-npm install
-npm run test
-```
-
-Rust checks and JavaScript UI tests are complementary: Rust tests validate the
-backend and integration boundaries, whilst Vitest covers `app.js` behaviour
-directly.
-
-Desktop integration details:
-
-- Desktop mode uses normal window stacking (not always-on-top)
-- Menubar mode keeps a popover-style window and hides on focus loss
-- Native application menus are provided on macOS and Linux
-- Standard shortcuts are supported in the GUI:
-  - `Cmd/Ctrl+R` refresh calendars
-  - `Cmd/Ctrl+,` open preferences
-  - `Cmd/Ctrl+Q` quit
-  - `Esc` hide the current popover window
-- Window geometry is restored between launches
-- Meeting time ranges in the GUI follow your locale time format
-- The primary join button now includes the target meeting title for clarity
-- The hero card includes expandable meeting details for the active next/live event
-- Meeting cards include expandable details (location, duration, attendees,
-  response status, calendar, and description)
-- Individual events can be dismissed from the details panel without declining
 
 ## Quick Start
 
@@ -337,13 +298,8 @@ Style with CSS classes `ongoing`, `soon`, `upcoming`, and `allday`:
 
 ## Server
 
-The daemon runs in the background and caches calendar events. It communicates
-with the client over a Unix socket at `$XDG_RUNTIME_DIR/nextmeeting.sock`.
-
-- **Auto-spawn**: The client starts the server automatically when needed
-- **Polling**: Events are synced every 5 minutes with jitter and exponential backoff
-- **Signals**: Send `SIGHUP` to reload config, `SIGTERM` to shut down gracefully
-- **PID file**: Written to `$XDG_RUNTIME_DIR/nextmeeting.pid`
+The daemon runs in the background and keeps event data current for client
+queries.
 
 To run the server manually:
 
@@ -361,6 +317,10 @@ nextmeeting server
 | `GOOGLE_CLIENT_SECRET`    | OAuth client secret                  |
 | `GOOGLE_CREDENTIALS_FILE` | Path to Google credentials JSON      |
 | `RUST_LOG`                | Logging level (e.g. `debug`, `info`) |
+
+## Architecture Notes
+
+For architecture, runtime internals, and engineering notes, see `DESIGN.md`.
 
 ## License
 

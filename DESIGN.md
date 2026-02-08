@@ -1,6 +1,7 @@
-# nextmeeting Review
+# nextmeeting Design
 
-This document summarises the current architecture, implemented commands, and feature set of this repository as of February 8, 2026.
+This document defines the architecture, runtime behaviour, and engineering
+conventions for this repository.
 
 ## 1. High-Level Architecture
 
@@ -245,6 +246,17 @@ Credential resolution supports:
 - Live data via daemon protocol with fallback to mock mode.
 - Actions wired to existing client/server behaviours.
 - Dedicated JavaScript unit-test harness (Vitest + jsdom) for `app-core.js` behaviour.
+- Desktop mode uses normal window stacking (not always-on-top).
+- Menubar mode maintains a popover-style window and hides on focus loss.
+- Native application menus are available on macOS and Linux.
+- Supported shortcuts include:
+  - `Cmd/Ctrl+R` refresh calendars.
+  - `Cmd/Ctrl+,` open preferences.
+  - `Cmd/Ctrl+Q` quit.
+  - `Esc` hide the active popover window.
+- Window geometry is restored between launches.
+- Time ranges follow locale-aware time format.
+- Meeting detail cards support expansion and per-event dismissal state.
 
 ## 7. Test Strategy (Current)
 
@@ -267,7 +279,22 @@ Credential resolution supports:
 - `SIGHUP` reload signal plumbing exists; full dynamic provider/config rebuild flow is not yet surfaced as a complete runtime reload path in server orchestration.
 - Some README flag examples describe options that are now configuration-driven rather than direct CLI flags.
 
-## 10. Practical Command Examples
+## 10. Repository Conventions
+
+### 10.1 Documentation Style
+
+- Use consistent British spelling.
+- Keep a professional butler tone: clear, helpful, dignified, and not pompous.
+- Avoid overly casual Americanisms.
+- Maintain technical precision whilst preserving readability.
+
+### 10.2 Quality Gates Before Finishing
+
+- Run `cargo clippy --all --all-features --fix`.
+- Add tests for new or changed functionality.
+- Keep coverage expectations high.
+
+## 11. Practical Command Examples
 
 Run default output:
 

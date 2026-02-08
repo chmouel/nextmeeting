@@ -17,6 +17,7 @@ See README.md for project overview and goals, if needed.
 
 - For any user-facing changes (features, options, keybindings, etc.), ensure you update:
   - `README.md`
+- Repository architecture notes, implementation internals, and project conventions are maintained in `DESIGN.md`.
 - Documentation and help string style guidelines:
   - Consistent British spelling.
   - Professional butler style: clear, helpful, dignified but not pompous
