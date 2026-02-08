@@ -8,6 +8,7 @@ use crate::widgets::analog_clock;
 #[derive(Clone)]
 pub struct UiWidgets {
     pub window: adw::ApplicationWindow,
+    pub toast_overlay: adw::ToastOverlay,
     pub meeting_cards_container: gtk::Box,
     pub create_button: gtk::Button,
     pub refresh_button: gtk::Button,
@@ -139,10 +140,15 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     toolbar.add_top_bar(&header);
     toolbar.set_content(Some(&clamp));
 
-    window.set_content(Some(&toolbar));
+    // Wrap in toast overlay for notifications
+    let toast_overlay = adw::ToastOverlay::new();
+    toast_overlay.set_child(Some(&toolbar));
+
+    window.set_content(Some(&toast_overlay));
 
     UiWidgets {
         window,
+        toast_overlay,
         meeting_cards_container,
         create_button,
         refresh_button,

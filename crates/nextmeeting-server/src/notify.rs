@@ -340,6 +340,12 @@ impl NotifyEngine {
     /// Checks if it's time to send the morning agenda notification.
     /// Sends a summary of today's meetings once per day at the configured time.
     pub async fn check_morning_agenda(&self, meetings: &[MeetingView]) {
+        // Skip if notifications are snoozed
+        if self.state.read().await.is_snoozed() {
+            debug!("Notifications snoozed, skipping morning agenda");
+            return;
+        }
+
         let agenda_time = match &self.config.morning_agenda_time {
             Some(t) => t,
             None => return,

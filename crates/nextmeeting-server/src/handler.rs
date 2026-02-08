@@ -17,6 +17,7 @@ use nextmeeting_protocol::{
 };
 
 use crate::error::{ServerError, ServerResult};
+use crate::notify::NotifyEngine;
 use crate::scheduler::SchedulerHandle;
 use crate::socket::Connection;
 
@@ -304,6 +305,7 @@ pub type EventMutator = Arc<dyn Fn(EventMutationRequest) -> EventMutationFuture 
 pub struct RequestHandler {
     state: SharedState,
     event_mutator: Option<EventMutator>,
+    notify_engine: Option<Arc<NotifyEngine>>,
 }
 
 impl RequestHandler {
@@ -312,6 +314,7 @@ impl RequestHandler {
         Self {
             state,
             event_mutator: None,
+            notify_engine: None,
         }
     }
 
@@ -320,6 +323,20 @@ impl RequestHandler {
         Self {
             state,
             event_mutator: Some(event_mutator),
+            notify_engine: None,
+        }
+    }
+
+    /// Creates a new request handler with an event mutator and notify engine.
+    pub fn with_event_mutator_and_notify(
+        state: SharedState,
+        event_mutator: EventMutator,
+        notify_engine: Arc<NotifyEngine>,
+    ) -> Self {
+        Self {
+            state,
+            event_mutator: Some(event_mutator),
+            notify_engine: Some(notify_engine),
         }
     }
 
@@ -344,7 +361,19 @@ impl RequestHandler {
             Request::Snooze { minutes } => {
                 debug!(minutes = *minutes, "Handling Snooze request");
                 let mut state = self.state.write().await;
-                state.snooze(*minutes);
+                if *minutes == 0 {
+                    state.clear_snooze();
+                    // Also clear snooze on the notify engine if present
+                    if let Some(ref engine) = self.notify_engine {
+                        engine.clear_snooze().await;
+                    }
+                } else {
+                    state.snooze(*minutes);
+                    // Also snooze the notify engine if present
+                    if let Some(ref engine) = self.notify_engine {
+                        engine.snooze(*minutes).await;
+                    }
+                }
                 Response::Ok
             }
             Request::MutateEvent {
@@ -467,6 +496,31 @@ pub fn make_connection_handler_with_mutator(
 + 'static {
     move |conn| {
         let handler = RequestHandler::with_event_mutator(state.clone(), event_mutator.clone());
+        Box::pin(async move {
+            if let Err(e) = handler.handle_connection(conn).await
+                && !matches!(e, ServerError::Shutdown)
+            {
+                warn!(error = %e, "Connection handler error");
+            }
+        })
+    }
+}
+
+/// Creates a connection handler with event mutation and notification engine support.
+pub fn make_connection_handler_with_mutator_and_notify(
+    state: SharedState,
+    event_mutator: EventMutator,
+    notify_engine: Arc<NotifyEngine>,
+) -> impl Fn(Connection) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+       + Send
+       + Sync
+       + 'static {
+    move |conn| {
+        let handler = RequestHandler::with_event_mutator_and_notify(
+            state.clone(),
+            event_mutator.clone(),
+            notify_engine.clone(),
+        );
         Box::pin(async move {
             if let Err(e) = handler.handle_connection(conn).await
                 && !matches!(e, ServerError::Shutdown)

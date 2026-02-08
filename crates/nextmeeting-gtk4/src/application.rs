@@ -211,11 +211,19 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                             ui_tx_for_events.clone(),
                         );
                     }
-                    UiEvent::ActionFailed(_err) => {
-                        // Error handling - could add toast notification here
+                    UiEvent::ActionFailed(err) => {
+                        let toast = adw::Toast::builder()
+                            .title(&err)
+                            .timeout(3)
+                            .build();
+                        widgets_for_events.toast_overlay.add_toast(toast);
                     }
-                    UiEvent::ActionSucceeded(_msg) => {
-                        // Success handling - could add toast notification here
+                    UiEvent::ActionSucceeded(msg) => {
+                        let toast = adw::Toast::builder()
+                            .title(&msg)
+                            .timeout(2)
+                            .build();
+                        widgets_for_events.toast_overlay.add_toast(toast);
                     }
                     UiEvent::SnoozeStateChanged(snoozed_until) => {
                         update_snooze_button(&widgets_for_events.snooze_button, snoozed_until, snooze_minutes);

@@ -23,7 +23,7 @@ use nextmeeting_providers::{
 use nextmeeting_server::{
     EventMutationRequest, EventMutator, NotifyConfig, NotifyEngine, PidFile, Scheduler,
     SchedulerConfig, ServerConfig, SharedState, SignalHandler, SocketServer, default_pid_path,
-    make_connection_handler_with_mutator, new_shared_state,
+    make_connection_handler_with_mutator_and_notify, new_shared_state,
 };
 
 use crate::cli::Cli;
@@ -148,7 +148,11 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         })
     });
 
-    let handler = make_connection_handler_with_mutator(state.clone(), event_mutator);
+    let handler = make_connection_handler_with_mutator_and_notify(
+        state.clone(),
+        event_mutator,
+        notify_engine.clone(),
+    );
     let shutdown = signal_handler.shutdown();
 
     // Run until shutdown signal
