@@ -132,13 +132,9 @@ fn resolve_target_account(
     let has_cli_creds =
         cli_client_id.is_some() || cli_client_secret.is_some() || cli_credentials_file.is_some();
 
-    // Priority 1: CLI credentials (require --account name)
+    // Priority 1: CLI credentials (default to "default" if --account not specified)
     if has_cli_creds {
-        let account_name = cli_account.ok_or_else(|| {
-            crate::error::ClientError::Config(
-                "--account is required when providing credentials via CLI flags".to_string(),
-            )
-        })?;
+        let account_name = cli_account.unwrap_or("default");
 
         let (id, secret) =
             resolve_cli_credentials(cli_client_id, cli_client_secret, cli_credentials_file)?;
@@ -419,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_cli_credentials_require_account_name() {
+    fn resolve_cli_credentials_defaults_to_default_account() {
         let config = ClientConfig::default();
         let result = resolve_target_account(
             None, // no --account
@@ -429,8 +425,38 @@ mod tests {
             None,
             &config,
         );
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("--account"));
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert_eq!(resolved.account_name, "default");
+        assert_eq!(
+            resolved.final_client_id,
+            "cli-id.apps.googleusercontent.com"
+        );
+        assert_eq!(resolved.final_client_secret, "cli-secret");
+        assert_eq!(resolved.source, CredentialSource::Cli);
+    }
+
+    #[test]
+    fn resolve_cli_credentials_defaults_to_default_even_with_existing_accounts() {
+        // Even when other accounts exist, CLI credentials without --account should use "default"
+        let config = config_with_accounts(vec![test_account("work"), test_account("personal")]);
+        let result = resolve_target_account(
+            None, // no --account
+            Some("new-id.apps.googleusercontent.com".to_string()),
+            Some("new-secret".to_string()),
+            None,
+            None,
+            &config,
+        );
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert_eq!(resolved.account_name, "default");
+        assert_eq!(
+            resolved.final_client_id,
+            "new-id.apps.googleusercontent.com"
+        );
+        assert_eq!(resolved.final_client_secret, "new-secret");
+        assert_eq!(resolved.source, CredentialSource::Cli);
     }
 
     #[test]
