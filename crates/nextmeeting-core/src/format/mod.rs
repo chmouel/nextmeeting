@@ -322,7 +322,7 @@ impl OutputFormatter {
             .map(|m| self.format_tooltip_line(m, now))
             .collect();
 
-        let tooltip = tooltip_lines.join("\n");
+        let tooltip = bulletize(&tooltip_lines);
 
         let mut output = WaybarOutput::new(text, tooltip);
         output.class = class;
@@ -406,10 +406,45 @@ impl OutputFormatter {
         if let Some(ref template) = self.options.tooltip_format {
             self.format_with_template(meeting, now, template, false)
         } else {
-            let time_str = self.format_absolute_time(meeting);
+            let time_str = self.format_tooltip_time(meeting, now);
             let raw_title = self.privacy_title(&meeting.title);
             let title = self.truncate_title(&raw_title);
-            format!("{} - {}", time_str, title)
+            let escaped_title = html_escape(&title);
+            format!("{} - {}", time_str, escaped_title)
+        }
+    }
+
+    /// Formats time for tooltip display with date context for non-today meetings.
+    fn format_tooltip_time(&self, meeting: &MeetingView, now: DateTime<Local>) -> String {
+        let date = meeting.start_local;
+
+        if meeting.is_all_day {
+            if date.date_naive() == now.date_naive() {
+                return "All day".to_string();
+            } else if date.date_naive() == now.date_naive() + chrono::Duration::days(1) {
+                return "Tomorrow (all day)".to_string();
+            } else {
+                return date.format("%a %d (all day)").to_string();
+            }
+        }
+
+        let time_str = self.format_absolute_time(meeting);
+
+        if date.date_naive() == now.date_naive() {
+            // Same day: just show time
+            time_str
+        } else {
+            // Different day: use date prefix
+            let delta = date - now;
+            let days = delta.num_minutes().div_euclid(24 * 60);
+
+            let date_prefix = if days == 0 {
+                "Tomorrow".to_string()
+            } else {
+                date.format("%a %d").to_string()
+            };
+
+            format!("{} at {}", date_prefix, time_str)
         }
     }
 
@@ -743,9 +778,12 @@ pub fn html_escape(s: &str) -> String {
 
 /// Creates bullet points from a list of items.
 pub fn bulletize(items: &[String]) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
     items
         .iter()
-        .map(|item| format!("  - {}", item))
+        .map(|item| format!("• {}", item))
         .collect::<Vec<_>>()
         .join("\n")
 }

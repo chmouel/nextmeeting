@@ -4,6 +4,6 @@ expression: output
 ---
 {
   "text": "In 15 minutes - Busy",
-  "tooltip": "11:15 - Busy",
+  "tooltip": "• 11:15 - Busy",
   "class": "upcoming"
 }

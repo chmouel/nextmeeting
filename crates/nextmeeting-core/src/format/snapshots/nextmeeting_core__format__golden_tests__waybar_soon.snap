@@ -1,10 +1,9 @@
 ---
 source: crates/nextmeeting-core/src/format/golden_tests.rs
-assertion_line: 260
 expression: output
 ---
 {
   "text": "In 3 minutes - Urgent Call",
-  "tooltip": "11:03 - Urgent Call",
+  "tooltip": "• 11:03 - Urgent Call",
   "class": "soon"
 }
