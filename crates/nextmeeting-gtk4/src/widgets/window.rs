@@ -145,7 +145,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     let refresh_button = gtk::Button::builder()
         .child(&refresh_content)
-        .css_classes(["suggested-action", "pill-button", "action-button"])
+        .css_classes(["pill-button", "action-button"])
         .build();
 
     let snooze_content = adw::ButtonContent::builder()
@@ -181,14 +181,19 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .css_classes(["section-label"])
         .build();
 
-    let actions_primary = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    actions_primary.append(&create_button);
-    actions_primary.append(&refresh_button);
-
-    let actions_secondary = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    actions_secondary.append(&snooze_button);
-    actions_secondary.append(&calendar_button);
-    actions_secondary.append(&clear_dismissals_button);
+    let actions_box = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(false)
+        .row_spacing(8)
+        .column_spacing(8)
+        .max_children_per_line(5)
+        .min_children_per_line(2)
+        .build();
+    actions_box.insert(&create_button, -1);
+    actions_box.insert(&refresh_button, -1);
+    actions_box.insert(&snooze_button, -1);
+    actions_box.insert(&calendar_button, -1);
+    actions_box.insert(&clear_dismissals_button, -1);
 
     let listbox = gtk::ListBox::new();
     listbox.set_selection_mode(gtk::SelectionMode::None);
@@ -219,8 +224,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
     root.append(&status_label);
     root.append(&hero_frame);
     root.append(&actions_label);
-    root.append(&actions_primary);
-    root.append(&actions_secondary);
+    root.append(&actions_box);
     root.append(&agenda_label);
     root.append(&scrolled);
 
