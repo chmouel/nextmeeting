@@ -54,6 +54,10 @@ impl DismissedEvents {
             self.save();
         }
     }
+
+    pub fn dismissed_ids(&self) -> &HashSet<String> {
+        &self.event_ids
+    }
 }
 
 #[cfg(test)]

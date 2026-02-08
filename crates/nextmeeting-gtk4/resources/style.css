@@ -84,6 +84,14 @@ window.nm-window {
     box-shadow: 0 0 0 2px alpha(@success_color, 0.3);
 }
 
+.meeting-card-dismissed {
+    opacity: 0.6;
+}
+
+.meeting-card-dismissed .meeting-card-title {
+    text-decoration: line-through;
+}
+
 .meeting-card-icon {
     opacity: 0.8;
 }
@@ -143,6 +151,10 @@ window.nm-window {
 
 .sidebar-action.snoozed {
     background-color: alpha(@warning_color, 0.3);
+}
+
+.sidebar-action.showing-dismissed {
+    background-color: alpha(@accent_bg_color, 0.3);
 }
 
 .sidebar-action-secondary {

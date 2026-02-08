@@ -30,6 +30,7 @@ pub struct AppRuntime {
     pub state: crate::daemon::state::MeetingState,
     dismissals: crate::dismissals::DismissedEvents,
     snooze_minutes: u32,
+    show_dismissed: bool,
 }
 
 impl Default for AppRuntime {
@@ -49,6 +50,7 @@ impl AppRuntime {
             state: crate::daemon::state::MeetingState::default(),
             dismissals: crate::dismissals::DismissedEvents::load(),
             snooze_minutes,
+            show_dismissed: false,
         }
     }
 
@@ -58,10 +60,14 @@ impl AppRuntime {
 
     pub async fn refresh(&mut self) -> Result<usize, String> {
         let meetings = self.daemon.get_meetings().await?;
-        let visible: Vec<_> = meetings
-            .into_iter()
-            .filter(|meeting| !self.dismissals.is_dismissed(&meeting.id))
-            .collect();
+        let visible: Vec<_> = if self.show_dismissed {
+            meetings
+        } else {
+            meetings
+                .into_iter()
+                .filter(|meeting| !self.dismissals.is_dismissed(&meeting.id))
+                .collect()
+        };
         let count = visible.len();
         self.state.set_meetings(visible);
         Ok(count)
@@ -107,6 +113,23 @@ impl AppRuntime {
         self.dismissals.clear();
     }
 
+    pub fn toggle_show_dismissed(&mut self) -> bool {
+        self.show_dismissed = !self.show_dismissed;
+        self.show_dismissed
+    }
+
+    pub fn show_dismissed(&self) -> bool {
+        self.show_dismissed
+    }
+
+    pub fn undismiss_event(&mut self, event_id: &str) {
+        self.dismissals.undismiss(event_id);
+    }
+
+    pub fn dismissed_ids(&self) -> &std::collections::HashSet<String> {
+        self.dismissals.dismissed_ids()
+    }
+
     pub fn open_next_meeting(&self) -> Result<(), String> {
         nextmeeting_client::actions::open_meeting_url(self.state.meetings())
             .map_err(|e| e.to_string())
@@ -131,12 +154,19 @@ pub struct GtkApp {
     app_runtime: Arc<Mutex<AppRuntime>>,
 }
 
+use std::collections::HashSet;
+
 #[derive(Debug)]
 enum UiEvent {
-    MeetingsLoaded(Vec<nextmeeting_core::MeetingView>),
+    MeetingsLoaded {
+        meetings: Vec<nextmeeting_core::MeetingView>,
+        show_dismissed: bool,
+        dismissed_ids: HashSet<String>,
+    },
     ActionFailed(String),
     ActionSucceeded(String),
     SnoozeStateChanged(Option<DateTime<Utc>>),
+    ShowDismissedChanged(bool),
 }
 
 impl GtkApp {
@@ -202,10 +232,16 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         glib::source::timeout_add_local(Duration::from_millis(120), move || {
             while let Ok(event) = ui_rx.try_recv() {
                 match event {
-                    UiEvent::MeetingsLoaded(meetings) => {
+                    UiEvent::MeetingsLoaded {
+                        meetings,
+                        show_dismissed,
+                        dismissed_ids,
+                    } => {
                         render_meetings(
                             &widgets_for_events,
                             &meetings,
+                            show_dismissed,
+                            &dismissed_ids,
                             runtime_for_events.clone(),
                             app_runtime_for_events.clone(),
                             ui_tx_for_events.clone(),
@@ -224,6 +260,12 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                             &widgets_for_events.snooze_button,
                             snoozed_until,
                             snooze_minutes,
+                        );
+                    }
+                    UiEvent::ShowDismissedChanged(showing) => {
+                        update_show_dismissed_button(
+                            &widgets_for_events.clear_dismissals_button,
+                            showing,
                         );
                     }
                 }
@@ -432,13 +474,24 @@ fn connect_actions(
                 let ui_tx = ui_tx.clone();
                 async move {
                     let mut guard = app_runtime.lock().await;
-                    guard.clear_dismissals();
+                    let showing = guard.toggle_show_dismissed();
+                    let _ = ui_tx.send(UiEvent::ShowDismissedChanged(showing));
                     match guard.refresh().await {
                         Ok(_) => {
                             let meetings = guard.state.meetings().to_vec();
-                            let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                            let _ = ui_tx
-                                .send(UiEvent::ActionSucceeded("Dismissals cleared".to_string()));
+                            let show_dismissed = guard.show_dismissed();
+                            let dismissed_ids = guard.dismissed_ids().clone();
+                            let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                                meetings,
+                                show_dismissed,
+                                dismissed_ids,
+                            });
+                            let msg = if showing {
+                                "Showing dismissed meetings"
+                            } else {
+                                "Hiding dismissed meetings"
+                            };
+                            let _ = ui_tx.send(UiEvent::ActionSucceeded(msg.to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -470,7 +523,13 @@ fn trigger_refresh(
         match guard.refresh().await {
             Ok(_) => {
                 let meetings = guard.state.meetings().to_vec();
-                let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                let show_dismissed = guard.show_dismissed();
+                let dismissed_ids = guard.dismissed_ids().clone();
+                let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                    meetings,
+                    show_dismissed,
+                    dismissed_ids,
+                });
             }
             Err(err) => {
                 guard.state.set_disconnected();
@@ -483,6 +542,8 @@ fn trigger_refresh(
 fn render_meetings(
     widgets: &UiWidgets,
     meetings: &[nextmeeting_core::MeetingView],
+    _show_dismissed: bool,
+    dismissed_ids: &HashSet<String>,
     runtime: Arc<Runtime>,
     app_runtime: Arc<Mutex<AppRuntime>>,
     ui_tx: mpsc::Sender<UiEvent>,
@@ -521,7 +582,8 @@ fn render_meetings(
     for (index, meeting) in meetings.iter().enumerate() {
         let show_join = current_meeting_id.as_ref() == Some(&meeting.id);
         let always_show_actions = index == 0;
-        let card = MeetingCard::new(meeting, show_join, always_show_actions);
+        let is_dismissed = dismissed_ids.contains(&meeting.id);
+        let card = MeetingCard::new(meeting, show_join, always_show_actions, is_dismissed);
 
         // Connect join button if present
         if let Some(ref join_btn) = card.join_button {
@@ -548,7 +610,7 @@ fn render_meetings(
             });
         }
 
-        // Connect dismiss button
+        // Connect dismiss button (toggles between dismiss and undismiss)
         {
             let runtime = runtime.clone();
             let app_runtime = app_runtime.clone();
@@ -561,10 +623,29 @@ fn render_meetings(
                 let event_id = event_id.clone();
                 runtime.spawn(async move {
                     let mut guard = app_runtime.lock().await;
-                    guard.dismiss_event(&event_id);
-                    let meetings = guard.state.meetings().to_vec();
-                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                    let _ = ui_tx.send(UiEvent::ActionSucceeded("Event dismissed".to_string()));
+                    let was_dismissed = guard.dismissed_ids().contains(&event_id);
+                    if was_dismissed {
+                        guard.undismiss_event(&event_id);
+                    } else {
+                        guard.dismiss_event(&event_id);
+                    }
+                    // Refresh to get the updated meeting list
+                    if guard.refresh().await.is_ok() {
+                        let meetings = guard.state.meetings().to_vec();
+                        let show_dismissed = guard.show_dismissed();
+                        let dismissed_ids = guard.dismissed_ids().clone();
+                        let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                            meetings,
+                            show_dismissed,
+                            dismissed_ids,
+                        });
+                    }
+                    let msg = if was_dismissed {
+                        "Event restored"
+                    } else {
+                        "Event dismissed"
+                    };
+                    let _ = ui_tx.send(UiEvent::ActionSucceeded(msg.to_string()));
                 });
             });
         }
@@ -597,7 +678,13 @@ fn render_meetings(
                     {
                         Ok(()) => {
                             let meetings = guard.state.meetings().to_vec();
-                            let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                            let show_dismissed = guard.show_dismissed();
+                            let dismissed_ids = guard.dismissed_ids().clone();
+                            let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                                meetings,
+                                show_dismissed,
+                                dismissed_ids,
+                            });
                             let _ =
                                 ui_tx.send(UiEvent::ActionSucceeded("Event declined".to_string()));
                         }
@@ -664,7 +751,13 @@ fn render_meetings(
                             {
                                 Ok(()) => {
                                     let meetings = guard.state.meetings().to_vec();
-                                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                                    let show_dismissed = guard.show_dismissed();
+                                    let dismissed_ids = guard.dismissed_ids().clone();
+                                    let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                                        meetings,
+                                        show_dismissed,
+                                        dismissed_ids,
+                                    });
                                     let _ = ui_tx.send(UiEvent::ActionSucceeded(
                                         "Event deleted".to_string(),
                                     ));
@@ -730,5 +823,15 @@ fn update_snooze_button(
                 snooze_minutes
             )));
         }
+    }
+}
+
+fn update_show_dismissed_button(button: &gtk::Button, showing: bool) {
+    if showing {
+        button.add_css_class("showing-dismissed");
+        button.set_tooltip_text(Some("Hide dismissed meetings"));
+    } else {
+        button.remove_css_class("showing-dismissed");
+        button.set_tooltip_text(Some("Show dismissed meetings"));
     }
 }

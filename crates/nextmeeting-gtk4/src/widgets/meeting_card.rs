@@ -24,7 +24,13 @@ impl MeetingCard {
     /// * `meeting` - The meeting to display
     /// * `show_join_button` - Whether to show the JOIN NOW button (for current/ongoing meetings)
     /// * `always_show_actions` - Whether to always show action buttons (vs only on hover)
-    pub fn new(meeting: &MeetingView, show_join_button: bool, always_show_actions: bool) -> Self {
+    /// * `is_dismissed` - Whether the meeting is dismissed (shown with muted styling when viewing dismissed)
+    pub fn new(
+        meeting: &MeetingView,
+        show_join_button: bool,
+        always_show_actions: bool,
+        is_dismissed: bool,
+    ) -> Self {
         let is_video = meeting
             .primary_link
             .as_ref()
@@ -40,6 +46,9 @@ impl MeetingCard {
         }
         if meeting.is_ongoing {
             frame.add_css_class("meeting-card-ongoing");
+        }
+        if is_dismissed {
+            frame.add_css_class("meeting-card-dismissed");
         }
 
         // Main horizontal box
@@ -142,9 +151,14 @@ impl MeetingCard {
         };
 
         // Action buttons (dismiss, decline, delete) - shown on hover
+        let (dismiss_icon, dismiss_tooltip) = if is_dismissed {
+            ("view-restore-symbolic", "Restore this event")
+        } else {
+            ("window-close-symbolic", "Dismiss this event (hide locally)")
+        };
         let dismiss_button = gtk::Button::builder()
-            .icon_name("window-close-symbolic")
-            .tooltip_text("Dismiss this event (hide locally)")
+            .icon_name(dismiss_icon)
+            .tooltip_text(dismiss_tooltip)
             .css_classes(["flat", "circular", "meeting-card-action"])
             .valign(gtk::Align::Center)
             .build();
