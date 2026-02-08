@@ -105,7 +105,9 @@ Key modules:
 ### 3.6 `nextmeeting-tauri`
 
 - `src/main.rs`: dashboard data, socket-backed commands (`refresh`, `snooze`, join/open/create), desktop vs menubar launch modes.
-- `ui/app.js`: rendering timeline/meeting cards/actions; periodic refresh.
+- `ui/app.js`: thin runtime bootstrap that initialises the dashboard app.
+- `ui/app-core.js`: UI logic and rendering for timeline/meeting cards/actions with exported helpers for testability.
+- `ui/tests/app-core.test.js`: front-end unit tests for date handling, timeline clipping, detail-item rendering, and desktop-command fallback messaging.
 
 ## 4. Command Surface (Current CLI)
 
@@ -242,21 +244,30 @@ Credential resolution supports:
 - Desktop and menubar modes.
 - Live data via daemon protocol with fallback to mock mode.
 - Actions wired to existing client/server behaviours.
+- Dedicated JavaScript unit-test harness (Vitest + jsdom) for `app-core.js` behaviour.
 
-## 7. Notable Implementation Characteristics
+## 7. Test Strategy (Current)
+
+- Rust unit tests cover protocol, server, providers, and Tauri command/logic paths.
+- GUI JavaScript behaviour is validated with Vitest/jsdom tests in `crates/nextmeeting-tauri/ui/tests`.
+- Rust and JavaScript checks are complementary:
+  - Rust validates command wiring, server integration, and platform-facing logic.
+  - Vitest validates DOM rendering and front-end behaviour deterministically.
+
+## 8. Notable Implementation Characteristics
 
 - Scheduler defaults: 5-minute sync interval, 10% jitter, cooldown + capped exponential backoff.
 - Protocol messages are versioned via envelope and have strict size caps.
 - Socket startup handles stale socket cleanup and concurrent connection limits.
 - A PID file prevents duplicate server instances.
 
-## 8. Current Boundaries and Gaps
+## 9. Current Boundaries and Gaps
 
 - The `nextmeeting-server` cache module exists and is tested, but active meeting serving currently relies on in-memory `ServerState` rather than direct `EventCache` integration.
 - `SIGHUP` reload signal plumbing exists; full dynamic provider/config rebuild flow is not yet surfaced as a complete runtime reload path in server orchestration.
 - Some README flag examples describe options that are now configuration-driven rather than direct CLI flags.
 
-## 9. Practical Command Examples
+## 10. Practical Command Examples
 
 Run default output:
 

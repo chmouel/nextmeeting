@@ -68,6 +68,23 @@ The wired desktop actions currently are **Join next meeting**, **Create
 meeting**, **Quick Actions** (open calendar day, refresh, snooze controls, and
 clearing dismissed events), and **Preferences**.
 
+### Front-end tests (GUI UI logic)
+
+The GUI JavaScript logic has a dedicated unit-test harness using Vitest and
+jsdom under `crates/nextmeeting-tauri/ui`.
+
+Run from source:
+
+```sh
+cd crates/nextmeeting-tauri/ui
+npm install
+npm run test
+```
+
+Rust checks and JavaScript UI tests are complementary: Rust tests validate the
+backend and integration boundaries, whilst Vitest covers `app.js` behaviour
+directly.
+
 Desktop integration details:
 
 - Desktop mode uses normal window stacking (not always-on-top)
