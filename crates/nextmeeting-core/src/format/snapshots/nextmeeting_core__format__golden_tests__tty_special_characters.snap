@@ -19,6 +19,8 @@ expression: output
             calendar_id: "primary",
             user_response_status: Unknown,
             other_attendee_count: 0,
+            location: None,
+            description: None,
         },
     },
 ]

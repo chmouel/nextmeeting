@@ -65,7 +65,8 @@ protocol. If the daemon is unavailable, it gracefully falls back to mock data
 for preview and interface development.
 
 The wired desktop actions currently are **Join next meeting**, **Create
-meeting**, **Quick Actions** (open calendar day), and **Preferences**.
+meeting**, **Quick Actions** (open calendar day, refresh, snooze controls, and
+clearing dismissed events), and **Preferences**.
 
 Desktop integration details:
 
@@ -79,6 +80,11 @@ Desktop integration details:
   - `Esc` hide the current popover window
 - Window geometry is restored between launches
 - Meeting time ranges in the GUI follow your locale time format
+- The primary join button now includes the target meeting title for clarity
+- The hero card includes expandable meeting details for the active next/live event
+- Meeting cards include expandable details (location, duration, attendees,
+  response status, calendar, and description)
+- Individual events can be dismissed from the details panel without declining
 
 ## Quick Start
 
@@ -240,6 +246,12 @@ calendar_ids = ["primary"]
 # [server]
 # socket_path = "/tmp/nextmeeting.sock"  # Path to server socket
 # timeout = 5                            # Connection timeout in seconds
+
+# [menubar]
+# title_format = "full"                  # "full", "dot", or "hidden"
+# title_max_length = 40                  # Max title length (ellipsis truncation)
+# show_time = true                       # Show "(in Xm)" or "(Xm left)" suffix
+# event_threshold_minutes = 30           # Optional: only show near-term events
 ```
 
 ### Secret references

@@ -1,16 +1,21 @@
+mod dismissals;
+
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{Local, TimeDelta};
+use chrono::{DateTime, Local, TimeDelta};
 use serde::Serialize;
 use tauri::Manager;
 
 use nextmeeting_client::cli::{Cli, Command};
-use nextmeeting_client::config::ClientConfig;
+use nextmeeting_client::config::{ClientConfig, MenuBarSettings, MenuBarTitleFormat};
 use nextmeeting_client::error::ClientError;
 use nextmeeting_client::socket::SocketClient;
-use nextmeeting_core::MeetingView;
+use nextmeeting_core::{MeetingView, ResponseStatus};
 use nextmeeting_protocol::{Request, Response};
+
+use dismissals::DismissedEvents;
 
 const MENU_ID_REFRESH: &str = "menu-refresh";
 const MENU_ID_PREFERENCES: &str = "menu-preferences";
@@ -47,7 +52,15 @@ struct UiMeeting {
     status: MeetingStatus,
     join_url: Option<String>,
     relative_time: String,
+    location: Option<String>,
+    description: Option<String>,
+    calendar_id: String,
+    attendee_count: usize,
+    response_status: String,
+    duration_minutes: i64,
 }
+
+type UiMeetingWithBounds<'a> = (&'a UiMeeting, Option<(DateTime<Local>, DateTime<Local>)>);
 
 #[derive(Debug, Clone)]
 struct DashboardConfig {
@@ -82,13 +95,30 @@ struct LaunchOptions {
 #[tauri::command]
 async fn get_dashboard_data(
     dashboard_config: tauri::State<'_, DashboardConfig>,
+    dismissed: tauri::State<'_, Arc<Mutex<DismissedEvents>>>,
 ) -> Result<DashboardData, String> {
-    if dashboard_config.mock {
-        return Ok(build_dashboard("mock", mock_meetings()));
-    }
+    let meetings = if dashboard_config.mock {
+        let mut meetings = mock_meetings();
+        if let Ok(d) = dismissed.lock() {
+            meetings.retain(|meeting| !d.is_dismissed(&meeting.id));
+        }
+        meetings
+    } else {
+        let config = ClientConfig::load().unwrap_or_default();
+        let now = Local::now();
+        let mut meetings = fetch_live_meeting_views(&config).await?;
+        if let Ok(d) = dismissed.lock() {
+            meetings.retain(|meeting| !d.is_dismissed(&meeting.id));
+        }
+        meetings
+            .into_iter()
+            .take(8)
+            .map(|meeting| map_meeting(meeting, now))
+            .collect()
+    };
 
-    let meetings = fetch_live_meetings_ui().await?;
-    Ok(build_dashboard("live", meetings))
+    let source = if dashboard_config.mock { "mock" } else { "live" };
+    Ok(build_dashboard(source, meetings))
 }
 
 fn build_dashboard(source: &str, meetings: Vec<UiMeeting>) -> DashboardData {
@@ -191,18 +221,6 @@ fn build_socket_client(config: &ClientConfig) -> SocketClient {
     SocketClient::new(socket_path, timeout)
 }
 
-async fn fetch_live_meetings_ui() -> Result<Vec<UiMeeting>, String> {
-    let config = ClientConfig::load().unwrap_or_default();
-    let meetings = fetch_live_meeting_views(&config).await?;
-    let now = Local::now();
-
-    Ok(meetings
-        .into_iter()
-        .take(8)
-        .map(|meeting| map_meeting(meeting, now))
-        .collect())
-}
-
 async fn fetch_live_meeting_views(config: &ClientConfig) -> Result<Vec<MeetingView>, String> {
     let client = build_socket_client(config);
     let request = Request::get_meetings();
@@ -288,6 +306,16 @@ async fn auto_spawn_server(client: &SocketClient, config: &ClientConfig) -> Resu
     Err("server failed to start within timeout".to_string())
 }
 
+fn response_status_key(status: ResponseStatus) -> &'static str {
+    match status {
+        ResponseStatus::Accepted => "accepted",
+        ResponseStatus::Declined => "declined",
+        ResponseStatus::Tentative => "tentative",
+        ResponseStatus::NeedsAction => "needs_action",
+        ResponseStatus::Unknown => "unknown",
+    }
+}
+
 fn format_relative_time(
     start: chrono::DateTime<Local>,
     end: chrono::DateTime<Local>,
@@ -349,6 +377,17 @@ fn map_meeting(meeting: MeetingView, now: chrono::DateTime<Local>) -> UiMeeting 
         meeting.is_ongoing,
     );
 
+    let duration_minutes = meeting.duration_minutes();
+    let response_status = response_status_key(meeting.user_response_status).to_string();
+    let description = meeting.description.map(|d| {
+        if d.chars().count() > 500 {
+            let truncated: String = d.chars().take(497).collect();
+            format!("{truncated}...")
+        } else {
+            d
+        }
+    });
+
     UiMeeting {
         id: meeting.id,
         title: meeting.title,
@@ -361,6 +400,12 @@ fn map_meeting(meeting: MeetingView, now: chrono::DateTime<Local>) -> UiMeeting 
         status,
         join_url,
         relative_time,
+        location: meeting.location,
+        description,
+        calendar_id: meeting.calendar_id,
+        attendee_count: meeting.other_attendee_count,
+        response_status,
+        duration_minutes,
     }
 }
 
@@ -402,6 +447,12 @@ fn mock_meetings() -> Vec<UiMeeting> {
             status: MeetingStatus::Soon,
             join_url: Some("https://meet.google.com/aaa-bbbb-ccc".to_string()),
             relative_time: "starts in 30 min".to_string(),
+            location: Some("Conference Room A".to_string()),
+            description: Some("Daily sync to discuss progress and blockers.".to_string()),
+            calendar_id: "work@example.com".to_string(),
+            attendee_count: 5,
+            response_status: "accepted".to_string(),
+            duration_minutes: 25,
         },
         UiMeeting {
             id: "mock-design".to_string(),
@@ -415,6 +466,12 @@ fn mock_meetings() -> Vec<UiMeeting> {
             status: MeetingStatus::Upcoming,
             join_url: Some("https://zoom.us/j/123456789".to_string()),
             relative_time: "starts in 2 hrs".to_string(),
+            location: None,
+            description: Some("Review new mockups for the dashboard redesign.".to_string()),
+            calendar_id: "design@example.com".to_string(),
+            attendee_count: 3,
+            response_status: "tentative".to_string(),
+            duration_minutes: 45,
         },
     ]
 }
@@ -442,32 +499,154 @@ where
     LaunchOptions { mock, mode }
 }
 
-fn menubar_title_from_meetings(meetings: &[MeetingView]) -> Option<String> {
-    let title = meetings
-        .iter()
-        .find(|meeting| meeting.is_ongoing)
-        .or_else(|| meetings.iter().min_by_key(|meeting| meeting.start_local))
-        .map(|meeting| meeting.title.trim())
-        .unwrap_or_default();
-
-    if title.is_empty() {
-        None
+fn truncate_title(title: &str, max_len: Option<usize>) -> String {
+    let max = max_len.unwrap_or(40);
+    if max == 0 {
+        return title.to_string();
+    }
+    let chars: Vec<char> = title.chars().collect();
+    if chars.len() <= max {
+        title.to_string()
     } else {
-        Some(title.to_string())
+        let truncated: String = chars[..max.saturating_sub(1)].iter().collect();
+        format!("{truncated}\u{2026}")
     }
 }
 
-fn menubar_title_from_ui_meetings(meetings: &[UiMeeting]) -> Option<String> {
-    let title = meetings
-        .first()
-        .map(|meeting| meeting.title.trim())
-        .unwrap_or_default();
+fn menubar_title_from_meetings(
+    meetings: &[MeetingView],
+    settings: &MenuBarSettings,
+) -> Option<String> {
+    let now = Local::now();
 
+    let candidates: Vec<&MeetingView> = meetings
+        .iter()
+        .filter(|meeting| match settings.event_threshold_minutes {
+            Some(threshold) => meeting.is_ongoing || meeting.minutes_until_start(now) <= threshold as i64,
+            None => true,
+        })
+        .collect();
+    let meeting = candidates
+        .iter()
+        .copied()
+        .find(|meeting| meeting.is_ongoing)
+        .or_else(|| candidates.iter().copied().min_by_key(|meeting| meeting.start_local));
+    let Some(meeting) = meeting else {
+        return if settings.event_threshold_minutes.is_some() {
+            Some("\u{25CF}".to_string())
+        } else {
+            None
+        };
+    };
+    let title = meeting.title.trim();
     if title.is_empty() {
-        None
-    } else {
-        Some(title.to_string())
+        return None;
     }
+
+    let result = match settings.title_format {
+        MenuBarTitleFormat::Full => truncate_title(title, settings.title_max_length),
+        MenuBarTitleFormat::Dot => "\u{25CF}".to_string(),
+        MenuBarTitleFormat::Hidden => return None,
+    };
+
+    if !settings.show_time || !matches!(settings.title_format, MenuBarTitleFormat::Full) {
+        return Some(result);
+    }
+
+    let suffix = if meeting.is_ongoing {
+        let remaining = meeting.minutes_until_end(now).max(0);
+        format!(" ({remaining}m left)")
+    } else {
+        let until = meeting.minutes_until_start(now).max(0);
+        format!(" (in {until}m)")
+    };
+    Some(format!("{result}{suffix}"))
+}
+
+fn parse_ui_meeting_bounds(meeting: &UiMeeting) -> Option<(DateTime<Local>, DateTime<Local>)> {
+    let start = DateTime::parse_from_rfc3339(&meeting.start_at)
+        .ok()?
+        .with_timezone(&Local);
+    let mut end = DateTime::parse_from_rfc3339(&meeting.end_at)
+        .ok()?
+        .with_timezone(&Local);
+    if end <= start {
+        end += TimeDelta::days(1);
+    }
+    Some((start, end))
+}
+
+fn menubar_title_from_ui_meetings(
+    meetings: &[UiMeeting],
+    settings: &MenuBarSettings,
+) -> Option<String> {
+    let now = Local::now();
+    let candidates: Vec<UiMeetingWithBounds<'_>> = meetings
+        .iter()
+        .filter_map(|meeting| {
+            let bounds = parse_ui_meeting_bounds(meeting);
+            let is_ongoing = meeting.status == MeetingStatus::Ongoing;
+            let within_threshold = match settings.event_threshold_minutes {
+                Some(threshold) => bounds
+                    .as_ref()
+                    .map(|(start, _)| (*start - now).num_minutes() <= threshold as i64)
+                    .unwrap_or(false),
+                None => true,
+            };
+
+            if settings.event_threshold_minutes.is_some() && !is_ongoing && !within_threshold {
+                return None;
+            }
+
+            Some((meeting, bounds))
+        })
+        .collect();
+    let meeting = candidates
+        .iter()
+        .find(|(meeting, _)| meeting.status == MeetingStatus::Ongoing)
+        .or_else(|| {
+            candidates
+                .iter()
+                .filter(|(_, bounds)| bounds.is_some())
+                .min_by_key(|(_, bounds)| bounds.map(|(start, _)| start))
+        })
+        .or_else(|| candidates.first())
+        .copied();
+    let Some((meeting, bounds)) = meeting else {
+        return if settings.event_threshold_minutes.is_some() {
+            Some("\u{25CF}".to_string())
+        } else {
+            None
+        };
+    };
+    let title = meeting.title.trim();
+    if title.is_empty() {
+        return None;
+    }
+
+    let result = match settings.title_format {
+        MenuBarTitleFormat::Full => Some(truncate_title(title, settings.title_max_length)),
+        MenuBarTitleFormat::Dot => Some("\u{25CF}".to_string()),
+        MenuBarTitleFormat::Hidden => None,
+    };
+    let result = result?;
+
+    if !settings.show_time || !matches!(settings.title_format, MenuBarTitleFormat::Full) {
+        return Some(result);
+    }
+
+    let suffix = if meeting.status == MeetingStatus::Ongoing {
+        let remaining = bounds
+            .map(|(_, end)| (end - now).num_minutes().max(0))
+            .unwrap_or(0);
+        format!(" ({remaining}m left)")
+    } else {
+        let until = bounds
+            .map(|(start, _)| (start - now).num_minutes().max(0))
+            .unwrap_or(0);
+        format!(" (in {until}m)")
+    };
+    Some(format!("{result}{suffix}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -481,18 +660,33 @@ fn menubar_template_icon() -> tauri::image::Image<'static> {
 
 #[cfg(target_os = "macos")]
 async fn refresh_menubar_title(app: &tauri::AppHandle) {
+    let config = app
+        .try_state::<ClientConfig>()
+        .map(|c| c.inner().clone())
+        .unwrap_or_default();
+    let menubar_settings = &config.menubar;
+
     let title = match app.try_state::<DashboardConfig>() {
-        Some(config) if config.mock => menubar_title_from_ui_meetings(&mock_meetings()),
-        _ => {
-            let config = app
-                .try_state::<ClientConfig>()
-                .map(|c| c.inner().clone())
-                .unwrap_or_default();
-            match fetch_live_meeting_views(&config).await {
-                Ok(meetings) => menubar_title_from_meetings(&meetings),
-                Err(_) => None,
+        Some(dc) if dc.mock => {
+            let mut meetings = mock_meetings();
+            if let Some(dismissed) = app.try_state::<Arc<Mutex<DismissedEvents>>>()
+                && let Ok(d) = dismissed.lock()
+            {
+                meetings.retain(|meeting| !d.is_dismissed(&meeting.id));
             }
+            menubar_title_from_ui_meetings(&meetings, menubar_settings)
         }
+        _ => match fetch_live_meeting_views(&config).await {
+            Ok(mut meetings) => {
+                if let Some(dismissed) = app.try_state::<Arc<Mutex<DismissedEvents>>>()
+                    && let Ok(d) = dismissed.lock()
+                {
+                    meetings.retain(|meeting| !d.is_dismissed(&meeting.id));
+                }
+                menubar_title_from_meetings(&meetings, menubar_settings)
+            }
+            Err(_) => None,
+        },
     };
 
     if let Some(tray) = app.tray_by_id("nextmeeting-tray") {
@@ -708,6 +902,41 @@ fn configure_builder(
 }
 
 #[tauri::command]
+fn dismiss_event(
+    event_id: String,
+    dismissed: tauri::State<'_, Arc<Mutex<DismissedEvents>>>,
+) -> Result<(), String> {
+    dismissed
+        .lock()
+        .map_err(|e| e.to_string())?
+        .dismiss(event_id);
+    Ok(())
+}
+
+#[tauri::command]
+fn undismiss_event(
+    event_id: String,
+    dismissed: tauri::State<'_, Arc<Mutex<DismissedEvents>>>,
+) -> Result<(), String> {
+    dismissed
+        .lock()
+        .map_err(|e| e.to_string())?
+        .undismiss(&event_id);
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_dismissals(
+    dismissed: tauri::State<'_, Arc<Mutex<DismissedEvents>>>,
+) -> Result<(), String> {
+    dismissed
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clear();
+    Ok(())
+}
+
+#[tauri::command]
 fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
@@ -717,11 +946,13 @@ fn main() {
     let env_mode = std::env::var("NEXTMEETING_GUI_MODE").ok();
     let launch = parse_launch_options(std::env::args(), env_mode.as_deref());
     let config = ClientConfig::load().unwrap_or_default();
+    let dismissed = Arc::new(Mutex::new(DismissedEvents::load()));
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(DashboardConfig { mock: launch.mock })
         .manage(config)
+        .manage(dismissed)
         .invoke_handler(tauri::generate_handler![
             get_dashboard_data,
             join_next_meeting,
@@ -731,6 +962,9 @@ fn main() {
             open_preferences,
             refresh_meetings,
             snooze_notifications,
+            dismiss_event,
+            undismiss_event,
+            clear_dismissals,
             quit_app
         ]);
 
@@ -818,6 +1052,7 @@ mod tests {
     #[test]
     fn menubar_title_prefers_ongoing_meeting() {
         let now = Local::now();
+        let settings = MenuBarSettings { show_time: false, ..Default::default() };
         let meetings = vec![
             MeetingView {
                 id: "upcoming".to_string(),
@@ -832,6 +1067,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: nextmeeting_core::ResponseStatus::Accepted,
                 other_attendee_count: 1,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "ongoing".to_string(),
@@ -846,22 +1083,29 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: nextmeeting_core::ResponseStatus::Accepted,
                 other_attendee_count: 1,
+                location: None,
+                description: None,
             },
         ];
 
         assert_eq!(
-            menubar_title_from_meetings(&meetings),
+            menubar_title_from_meetings(&meetings, &settings),
             Some("Live now".to_string())
         );
     }
 
     #[test]
     fn menubar_title_is_none_without_meetings() {
-        assert_eq!(menubar_title_from_meetings(&[]), None);
+        let settings = MenuBarSettings::default();
+        assert_eq!(menubar_title_from_meetings(&[], &settings), None);
     }
 
     #[test]
     fn menubar_title_from_ui_meetings_uses_first_title() {
+        let settings = MenuBarSettings {
+            show_time: false,
+            ..Default::default()
+        };
         let meetings = vec![UiMeeting {
             id: "mock-1".to_string(),
             title: "Engineering stand-up".to_string(),
@@ -874,11 +1118,136 @@ mod tests {
             status: MeetingStatus::Soon,
             join_url: None,
             relative_time: "starts in 30 min".to_string(),
+            location: None,
+            description: None,
+            calendar_id: "primary".to_string(),
+            attendee_count: 0,
+            response_status: "unknown".to_string(),
+            duration_minutes: 25,
         }];
 
         assert_eq!(
-            menubar_title_from_ui_meetings(&meetings),
+            menubar_title_from_ui_meetings(&meetings, &settings),
             Some("Engineering stand-up".to_string())
+        );
+    }
+
+    #[test]
+    fn menubar_title_dot_format() {
+        let now = Local::now();
+        let settings = MenuBarSettings {
+            title_format: MenuBarTitleFormat::Dot,
+            show_time: false,
+            ..Default::default()
+        };
+        let meetings = vec![MeetingView {
+            id: "1".to_string(),
+            title: "Standup".to_string(),
+            start_local: now + TimeDelta::minutes(10),
+            end_local: now + TimeDelta::minutes(40),
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: nextmeeting_core::ResponseStatus::Accepted,
+            other_attendee_count: 1,
+            location: None,
+            description: None,
+        }];
+
+        assert_eq!(
+            menubar_title_from_meetings(&meetings, &settings),
+            Some("\u{25CF}".to_string())
+        );
+    }
+
+    #[test]
+    fn menubar_title_hidden_format() {
+        let now = Local::now();
+        let settings = MenuBarSettings {
+            title_format: MenuBarTitleFormat::Hidden,
+            ..Default::default()
+        };
+        let meetings = vec![MeetingView {
+            id: "1".to_string(),
+            title: "Standup".to_string(),
+            start_local: now + TimeDelta::minutes(10),
+            end_local: now + TimeDelta::minutes(40),
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: nextmeeting_core::ResponseStatus::Accepted,
+            other_attendee_count: 1,
+            location: None,
+            description: None,
+        }];
+
+        assert_eq!(menubar_title_from_meetings(&meetings, &settings), None);
+    }
+
+    #[test]
+    fn menubar_title_truncation() {
+        let now = Local::now();
+        let settings = MenuBarSettings {
+            title_max_length: Some(10),
+            show_time: false,
+            ..Default::default()
+        };
+        let meetings = vec![MeetingView {
+            id: "1".to_string(),
+            title: "A very long meeting title here".to_string(),
+            start_local: now + TimeDelta::minutes(10),
+            end_local: now + TimeDelta::minutes(40),
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: nextmeeting_core::ResponseStatus::Accepted,
+            other_attendee_count: 1,
+            location: None,
+            description: None,
+        }];
+
+        let title = menubar_title_from_meetings(&meetings, &settings).unwrap();
+        assert!(title.chars().count() <= 10);
+        assert!(title.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn menubar_title_threshold_filters() {
+        let now = Local::now();
+        let settings = MenuBarSettings {
+            event_threshold_minutes: Some(15),
+            show_time: false,
+            ..Default::default()
+        };
+        let meetings = vec![MeetingView {
+            id: "1".to_string(),
+            title: "Far away".to_string(),
+            start_local: now + TimeDelta::minutes(60),
+            end_local: now + TimeDelta::minutes(90),
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: nextmeeting_core::ResponseStatus::Accepted,
+            other_attendee_count: 1,
+            location: None,
+            description: None,
+        }];
+
+        assert_eq!(
+            menubar_title_from_meetings(&meetings, &settings),
+            Some("\u{25CF}".to_string())
         );
     }
 
@@ -916,5 +1285,14 @@ mod tests {
             false,
         );
         assert_eq!(result, "starts in 3 hrs");
+    }
+
+    #[test]
+    fn response_status_key_uses_snake_case_values() {
+        assert_eq!(response_status_key(ResponseStatus::Accepted), "accepted");
+        assert_eq!(response_status_key(ResponseStatus::Declined), "declined");
+        assert_eq!(response_status_key(ResponseStatus::Tentative), "tentative");
+        assert_eq!(response_status_key(ResponseStatus::NeedsAction), "needs_action");
+        assert_eq!(response_status_key(ResponseStatus::Unknown), "unknown");
     }
 }

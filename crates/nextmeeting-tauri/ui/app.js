@@ -8,6 +8,9 @@ const heroMetaNode = document.querySelector("#heroMeta");
 const statusLineNode = document.querySelector("#statusLine");
 const joinNowButtonNode = document.querySelector("#joinNowButton");
 const createMeetingButtonNode = document.querySelector("#createMeetingButton");
+const heroMeetingDetailsNode = document.querySelector("#heroMeetingDetails");
+const heroMeetingDetailsSummaryNode = document.querySelector("#heroMeetingDetailsSummary");
+const heroMeetingDetailsContentNode = document.querySelector("#heroMeetingDetailsContent");
 const panelNode = document.querySelector(".panel");
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -67,6 +70,81 @@ function formatMeetingRange(meeting) {
 function formatMeetingDay(meeting) {
   const start = meetingStartDate(meeting);
   return dayFormatter.format(start);
+}
+
+function truncateLabel(value, maxLength = 34) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1)}\u2026`;
+}
+
+function joinButtonLabel(meeting, prefix = "Join") {
+  const title = truncateLabel(meeting?.title, 34);
+  if (!title) {
+    return `${prefix} meeting`;
+  }
+  return `${prefix}: ${title}`;
+}
+
+function buildMeetingDetailItems(meeting) {
+  const items = [];
+
+  if (meeting.location) {
+    items.push({ label: "Location", value: meeting.location });
+  }
+
+  if (meeting.durationMinutes) {
+    const hrs = Math.floor(meeting.durationMinutes / 60);
+    const mins = meeting.durationMinutes % 60;
+    const parts = [];
+    if (hrs > 0) parts.push(`${hrs}h`);
+    if (mins > 0) parts.push(`${mins}m`);
+    items.push({ label: "Duration", value: parts.join(" ") || "0m" });
+  }
+
+  if (meeting.attendeeCount > 0) {
+    const label = meeting.attendeeCount === 1 ? "1 attendee" : `${meeting.attendeeCount} attendees`;
+    items.push({ label: "Attendees", value: label });
+  }
+
+  if (meeting.responseStatus && meeting.responseStatus !== "unknown") {
+    items.push({
+      label: "Your status",
+      value: meeting.responseStatus,
+      className: `response-${meeting.responseStatus}`,
+    });
+  }
+
+  if (meeting.calendarId) {
+    items.push({ label: "Calendar", value: meeting.calendarId });
+  }
+
+  if (meeting.description) {
+    items.push({ label: "Description", value: meeting.description });
+  }
+
+  return items;
+}
+
+function appendMeetingDetailRows(container, items) {
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = "detail-item";
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "detail-label";
+    labelSpan.textContent = item.label;
+
+    const valueSpan = document.createElement("span");
+    valueSpan.className = item.className ? `detail-value ${item.className}` : "detail-value";
+    valueSpan.textContent = item.value;
+
+    row.appendChild(labelSpan);
+    row.appendChild(valueSpan);
+    container.appendChild(row);
+  }
 }
 
 function buildTimelineMeetings(meetings, rangeStart, rangeEnd) {
@@ -147,6 +225,86 @@ function renderTimeline(meetings = []) {
   timelineNode.appendChild(meetingsContainer);
 }
 
+function createMeetingDetails(meeting) {
+  const details = document.createElement("details");
+  details.className = "meeting-details";
+
+  const summary = document.createElement("summary");
+  summary.className = "meeting-details-toggle";
+  summary.textContent = "Details";
+  details.appendChild(summary);
+
+  const content = document.createElement("div");
+  content.className = "meeting-details-content";
+  const items = buildMeetingDetailItems(meeting);
+  appendMeetingDetailRows(content, items);
+
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "btn-dismiss";
+  dismissBtn.type = "button";
+  dismissBtn.textContent = "Dismiss event";
+  dismissBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    await dismissEvent(meeting.id);
+  });
+  content.appendChild(dismissBtn);
+
+  details.appendChild(content);
+  return details;
+}
+
+function clearHeroDetails() {
+  heroMeetingDetailsNode.hidden = true;
+  heroMeetingDetailsNode.open = false;
+  heroMeetingDetailsSummaryNode.removeAttribute("aria-label");
+  heroMeetingDetailsContentNode.textContent = "";
+}
+
+function renderHeroDetails(meeting) {
+  if (!meeting) {
+    clearHeroDetails();
+    return;
+  }
+
+  const items = buildMeetingDetailItems(meeting);
+  if (!items.length) {
+    clearHeroDetails();
+    return;
+  }
+
+  heroMeetingDetailsContentNode.textContent = "";
+  appendMeetingDetailRows(heroMeetingDetailsContentNode, items);
+  heroMeetingDetailsSummaryNode.setAttribute(
+    "aria-label",
+    `Meeting details for ${meeting.title || "meeting"}`,
+  );
+  heroMeetingDetailsNode.hidden = false;
+}
+
+async function dismissEvent(eventId) {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return;
+  try {
+    await invoke("dismiss_event", { eventId });
+    await refreshDashboard();
+    setStatus("Event dismissed");
+  } catch (err) {
+    setStatus(`Failed to dismiss: ${String(err)}`);
+  }
+}
+
+async function clearAllDismissals() {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return;
+  try {
+    await invoke("clear_dismissals");
+    await refreshDashboard();
+    setStatus("Cleared all dismissed events");
+  } catch (err) {
+    setStatus(`Failed to clear: ${String(err)}`);
+  }
+}
+
 function renderMeetings(meetings) {
   meetingListNode.innerHTML = "";
 
@@ -155,11 +313,14 @@ function renderMeetings(meetings) {
   }
 
   for (const meeting of meetings.slice(0, 4)) {
-    const container = meeting.joinUrl ? document.createElement("button") : document.createElement("article");
-    container.className = meeting.joinUrl ? "meeting meeting-clickable" : "meeting";
+    const card = document.createElement("article");
+    card.className = "meeting";
+
+    const header = meeting.joinUrl ? document.createElement("button") : document.createElement("div");
+    header.className = meeting.joinUrl ? "meeting-header meeting-clickable" : "meeting-header";
     if (meeting.joinUrl) {
-      container.type = "button";
-      container.setAttribute("aria-label", `Join ${meeting.title}`);
+      header.type = "button";
+      header.setAttribute("aria-label", `Join ${meeting.title}`);
     }
 
     const dayP = document.createElement("p");
@@ -190,13 +351,13 @@ function renderMeetings(meetings) {
     statusSpan.textContent = meeting.status;
     serviceDiv.appendChild(statusSpan);
 
-    container.appendChild(dayP);
-    container.appendChild(titleH3);
-    container.appendChild(timeP);
-    container.appendChild(serviceDiv);
+    header.appendChild(dayP);
+    header.appendChild(titleH3);
+    header.appendChild(timeP);
+    header.appendChild(serviceDiv);
 
     if (meeting.joinUrl) {
-      container.addEventListener("click", async () => {
+      header.addEventListener("click", async () => {
         const invoke = window.__TAURI__?.core?.invoke;
         if (invoke) {
           try {
@@ -209,7 +370,9 @@ function renderMeetings(meetings) {
       });
     }
 
-    meetingListNode.appendChild(container);
+    card.appendChild(header);
+    card.appendChild(createMeetingDetails(meeting));
+    meetingListNode.appendChild(card);
   }
 }
 
@@ -217,6 +380,7 @@ function renderUtilityActions() {
   const utilityActions = [
     { label: "Refresh calendars", command: "refresh_meetings", status: "Refreshing calendar data..." },
     { label: "Open calendar day", command: "open_calendar_day", status: "Opening your calendar..." },
+    { label: "Clear dismissed events", action: clearAllDismissals },
     { label: "Snooze 15 min", command: "snooze_notifications", args: { minutes: 15 }, status: "Snoozed for 15 minutes" },
     { label: "Snooze 30 min", command: "snooze_notifications", args: { minutes: 30 }, status: "Snoozed for 30 minutes" },
     { label: "Snooze 1 hour", command: "snooze_notifications", args: { minutes: 60 }, status: "Snoozed for 1 hour" },
@@ -232,6 +396,10 @@ function renderUtilityActions() {
     button.textContent = action.label;
 
     button.addEventListener("click", async () => {
+      if (action.action) {
+        await action.action();
+        return;
+      }
       if (action.command === "quit") {
         await quitApp();
         return;
@@ -246,18 +414,24 @@ function renderUtilityActions() {
 function renderHero(meetings) {
   const ongoing = meetings.find((meeting) => meeting.status === "ongoing");
   const nextMeeting = meetings[0];
+  const heroMeeting = ongoing || nextMeeting;
+  renderHeroDetails(heroMeeting);
 
   if (ongoing) {
     heroTitleNode.textContent = `Live now: ${ongoing.title}`;
     const meta = `${formatMeetingRange(ongoing)} on ${ongoing.service}`;
     heroMetaNode.textContent = ongoing.relativeTime ? `${meta} \u00b7 ${ongoing.relativeTime}` : meta;
-    joinNowButtonNode.textContent = "Join live meeting";
+    joinNowButtonNode.textContent = joinButtonLabel(ongoing, "Join live");
+    joinNowButtonNode.title = ongoing.title || "";
+    joinNowButtonNode.setAttribute("aria-label", `Join live meeting: ${ongoing.title || "meeting"}`);
     joinNowButtonNode.style.display = "";
     return;
   }
 
   if (nextMeeting) {
-    joinNowButtonNode.textContent = "Join next meeting";
+    joinNowButtonNode.textContent = joinButtonLabel(nextMeeting, "Join next");
+    joinNowButtonNode.title = nextMeeting.title || "";
+    joinNowButtonNode.setAttribute("aria-label", `Join next meeting: ${nextMeeting.title || "meeting"}`);
     joinNowButtonNode.style.display = "";
     heroTitleNode.textContent = `Next: ${nextMeeting.title}`;
     const meta = `${formatMeetingRange(nextMeeting)} on ${nextMeeting.service}`;
@@ -266,8 +440,11 @@ function renderHero(meetings) {
   }
 
   joinNowButtonNode.style.display = "none";
+  joinNowButtonNode.title = "";
+  joinNowButtonNode.removeAttribute("aria-label");
   heroTitleNode.textContent = "";
   heroMetaNode.textContent = "";
+  clearHeroDetails();
 }
 
 function updateTitleFromMeetings(meetings) {
@@ -416,6 +593,7 @@ function applyDashboard(dashboard) {
     heroTitleNode.textContent = "No meeting right now";
     heroMetaNode.textContent = "You are free for the moment.";
     joinNowButtonNode.style.display = "none";
+    clearHeroDetails();
   }
 }
 

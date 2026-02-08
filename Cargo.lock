@@ -2499,6 +2499,7 @@ dependencies = [
  "nextmeeting-server",
  "open",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-window-state",

@@ -476,6 +476,8 @@ mod tests {
             calendar_id: "primary".to_string(),
             user_response_status: nextmeeting_core::ResponseStatus::Unknown,
             other_attendee_count: 0,
+            location: None,
+            description: None,
         }
     }
 

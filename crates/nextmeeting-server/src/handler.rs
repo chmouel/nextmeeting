@@ -446,6 +446,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -460,6 +462,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "3".to_string(),
@@ -474,6 +478,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
         ];
 
@@ -570,6 +576,8 @@ mod tests {
                 calendar_id: "work@example.com".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -584,6 +592,8 @@ mod tests {
                 calendar_id: "personal@example.com".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
         ];
 
@@ -620,6 +630,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -634,6 +646,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
         ];
 
@@ -662,6 +676,8 @@ mod tests {
             calendar_id: "primary".to_string(),
             user_response_status: ResponseStatus::Unknown,
             other_attendee_count: 0,
+            location: None,
+            description: None,
         }];
 
         let mut state = ServerState::new();
@@ -692,6 +708,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -706,6 +724,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
             MeetingView {
                 id: "3".to_string(),
@@ -720,6 +740,8 @@ mod tests {
                 calendar_id: "primary".to_string(),
                 user_response_status: ResponseStatus::Unknown,
                 other_attendee_count: 0,
+                location: None,
+                description: None,
             },
         ];
 

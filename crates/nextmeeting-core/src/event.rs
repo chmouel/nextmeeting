@@ -431,6 +431,10 @@ pub struct MeetingView {
     pub user_response_status: ResponseStatus,
     /// Number of non-self attendees.
     pub other_attendee_count: usize,
+    /// The event location, if available.
+    pub location: Option<String>,
+    /// The event description, if available.
+    pub description: Option<String>,
 }
 
 impl MeetingView {
@@ -454,6 +458,8 @@ impl MeetingView {
             calendar_id: event.calendar_id.clone(),
             user_response_status: event.user_response_status,
             other_attendee_count: event.other_attendee_count,
+            location: event.raw_location.clone(),
+            description: event.raw_description.clone(),
         }
     }
 
