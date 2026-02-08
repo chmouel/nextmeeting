@@ -86,6 +86,16 @@ window.nm-window {
     box-shadow: 0 0 0 2px alpha(@success_color, 0.3);
 }
 
+.meeting-card-soon {
+    box-shadow: 0 0 0 2px alpha(@warning_color, 0.4);
+    animation: pulse-soon 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-soon {
+    0%, 100% { box-shadow: 0 0 0 2px alpha(@warning_color, 0.4); }
+    50% { box-shadow: 0 0 0 3px alpha(@warning_color, 0.6); }
+}
+
 .meeting-card-dismissed {
     opacity: 0.6;
 }
@@ -126,6 +136,15 @@ window.nm-window {
     border-radius: 999px;
     font-weight: 700;
     padding: 6px 16px;
+}
+
+.meeting-card-join-soon {
+    animation: pulse-join 1s ease-in-out infinite;
+}
+
+@keyframes pulse-join {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
 
 /* ===== Meeting card action buttons (shown on hover) ===== */

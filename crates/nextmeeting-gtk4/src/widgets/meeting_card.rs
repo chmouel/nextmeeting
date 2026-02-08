@@ -25,11 +25,13 @@ impl MeetingCard {
     /// * `show_join_button` - Whether to show the JOIN NOW button (for current/ongoing meetings)
     /// * `always_show_actions` - Whether to always show action buttons (vs only on hover)
     /// * `is_dismissed` - Whether the meeting is dismissed (shown with muted styling when viewing dismissed)
+    /// * `is_soon` - Whether the meeting starts within 5 minutes (shown with warning styling)
     pub fn new(
         meeting: &MeetingView,
         show_join_button: bool,
         always_show_actions: bool,
         is_dismissed: bool,
+        is_soon: bool,
     ) -> Self {
         let is_video = meeting
             .primary_link
@@ -46,6 +48,8 @@ impl MeetingCard {
         }
         if meeting.is_ongoing {
             frame.add_css_class("meeting-card-ongoing");
+        } else if is_soon && !is_dismissed {
+            frame.add_css_class("meeting-card-soon");
         }
         if is_dismissed {
             frame.add_css_class("meeting-card-dismissed");
@@ -144,6 +148,9 @@ impl MeetingCard {
                 .css_classes(["suggested-action", "meeting-card-join"])
                 .valign(gtk::Align::Center)
                 .build();
+            if is_soon {
+                btn.add_css_class("meeting-card-join-soon");
+            }
             hbox.append(&btn);
             Some(btn)
         } else {

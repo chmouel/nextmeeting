@@ -579,11 +579,17 @@ fn render_meetings(
     // Find the first current/ongoing meeting for the JOIN NOW button
     let current_meeting_id = find_current_meeting(meetings);
 
+    const SOON_THRESHOLD_MINUTES: i64 = 5;
+    let now = Local::now();
+
     for (index, meeting) in meetings.iter().enumerate() {
         let show_join = current_meeting_id.as_ref() == Some(&meeting.id);
         let always_show_actions = index == 0;
         let is_dismissed = dismissed_ids.contains(&meeting.id);
-        let card = MeetingCard::new(meeting, show_join, always_show_actions, is_dismissed);
+        let minutes_until = meeting.minutes_until_start(now);
+        let is_soon =
+            !meeting.is_ongoing && !meeting.is_all_day && minutes_until > 0 && minutes_until <= SOON_THRESHOLD_MINUTES;
+        let card = MeetingCard::new(meeting, show_join, always_show_actions, is_dismissed, is_soon);
 
         // Connect join button if present
         if let Some(ref join_btn) = card.join_button {
