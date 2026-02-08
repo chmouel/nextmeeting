@@ -3,7 +3,7 @@ source: crates/nextmeeting-core/src/format/golden_tests.rs
 expression: output
 ---
 {
-  "text": "<span background=\"#ff0000\" foreground=\"#ffffff\">In 3 minutes - Urgent Call</span>",
+  "text": "In <span background=\"#ff0000\" color=\"#ffffff\">3</span> minutes - Urgent Call",
   "tooltip": "11:03 - Urgent Call",
   "class": "soon"
 }

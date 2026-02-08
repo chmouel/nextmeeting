@@ -62,7 +62,7 @@ expression: output
         },
     },
     FormattedMeeting {
-        text: "In 2 hours - Design Review",
+        text: "13:00 - Design Review",
         urgency: Upcoming,
         meeting: MeetingView {
             id: "evt-120",

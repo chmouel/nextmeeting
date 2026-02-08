@@ -4,7 +4,7 @@ expression: output
 ---
 [
     FormattedMeeting {
-        text: "In 2 hours and 30 minutes - Later Today",
+        text: "13:30 - Later Today",
         urgency: Upcoming,
         meeting: MeetingView {
             id: "evt-150",

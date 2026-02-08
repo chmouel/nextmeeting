@@ -23,10 +23,12 @@
 
 use std::borrow::Cow;
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Timelike};
 use serde::{Deserialize, Serialize};
 
 use crate::event::MeetingView;
+
+const DEFAULT_UNTIL_OFFSET_MINUTES: i64 = 60;
 
 /// The output format for meeting display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -264,7 +266,7 @@ impl OutputFormatter {
     ) -> Vec<FormattedMeeting> {
         meetings
             .iter()
-            .map(|m| self.format_single_meeting(m, now, self.options.hyperlinks))
+            .map(|m| self.format_single_meeting(m, now, self.options.hyperlinks, false))
             .collect()
     }
 
@@ -297,17 +299,9 @@ impl OutputFormatter {
         let next_meeting = self.get_next_meeting_for_display(meetings);
 
         let (text, class) = if let Some(meeting) = next_meeting {
-            let formatted = self.format_single_meeting(meeting, now, false);
+            let formatted = self.format_single_meeting(meeting, now, false, true);
             let urgency = formatted.urgency;
-
-            // Apply Pango color markup for "soon" meetings in Waybar
-            let display_text = if urgency == UrgencyClass::Soon {
-                self.apply_waybar_colors(&formatted.text)
-            } else {
-                formatted.text.clone()
-            };
-
-            (display_text, Some(urgency.as_str().to_string()))
+            (formatted.text.clone(), Some(urgency.as_str().to_string()))
         } else {
             // Only all-day meetings
             let first = &meetings[0];
@@ -335,13 +329,13 @@ impl OutputFormatter {
         output
     }
 
-    /// Wraps text in Pango `<span>` with configured notification colors.
-    fn apply_waybar_colors(&self, text: &str) -> String {
+    /// Wraps minute text in Pango `<span>` with configured notification colors.
+    fn format_waybar_minute_badge(&self, minutes: i64) -> String {
         let has_bg = self.options.notify_min_color.is_some();
         let has_fg = self.options.notify_min_color_foreground.is_some();
 
         if !has_bg && !has_fg {
-            return text.to_string();
+            return minutes.to_string();
         }
 
         let mut attrs = String::new();
@@ -349,10 +343,10 @@ impl OutputFormatter {
             attrs.push_str(&format!(" background=\"{}\"", html_escape(bg)));
         }
         if let Some(ref fg) = self.options.notify_min_color_foreground {
-            attrs.push_str(&format!(" foreground=\"{}\"", html_escape(fg)));
+            attrs.push_str(&format!(" color=\"{}\"", html_escape(fg)));
         }
 
-        format!("<span{}>{}</span>", attrs, html_escape(text))
+        format!("<span{}>{}</span>", attrs, minutes)
     }
 
     /// Formats meetings as JSON output.
@@ -388,13 +382,14 @@ impl OutputFormatter {
         meeting: &MeetingView,
         now: DateTime<Local>,
         hyperlink: bool,
+        waybar_markup: bool,
     ) -> FormattedMeeting {
         let urgency = self.compute_urgency(meeting, now);
 
         let text = if let Some(ref template) = self.options.custom_format {
-            self.format_with_template(meeting, now, template)
+            self.format_with_template(meeting, now, template, waybar_markup)
         } else {
-            let time_str = self.format_time(meeting, now);
+            let time_str = self.format_time(meeting, now, waybar_markup);
             let title = self.format_title(meeting, hyperlink);
             format!("{} - {}", time_str, title)
         };
@@ -409,7 +404,7 @@ impl OutputFormatter {
     /// Formats a meeting line for the tooltip.
     fn format_tooltip_line(&self, meeting: &MeetingView, now: DateTime<Local>) -> String {
         if let Some(ref template) = self.options.tooltip_format {
-            self.format_with_template(meeting, now, template)
+            self.format_with_template(meeting, now, template, false)
         } else {
             let time_str = self.format_absolute_time(meeting);
             let raw_title = self.privacy_title(&meeting.title);
@@ -424,6 +419,7 @@ impl OutputFormatter {
         meeting: &MeetingView,
         now: DateTime<Local>,
         template: &str,
+        waybar_markup: bool,
     ) -> String {
         let title = self.privacy_title(&meeting.title);
         let meet_url = meeting
@@ -433,7 +429,7 @@ impl OutputFormatter {
             .unwrap_or("");
         let calendar_url = meeting.calendar_url.as_deref().unwrap_or("");
         let minutes_until = meeting.minutes_until_start(now);
-        let when = self.format_time(meeting, now);
+        let when = self.format_time(meeting, now, waybar_markup);
 
         template
             .replace("{title}", &title)
@@ -477,7 +473,12 @@ impl OutputFormatter {
     }
 
     /// Formats the time display for a meeting.
-    fn format_time(&self, meeting: &MeetingView, now: DateTime<Local>) -> String {
+    fn format_time(
+        &self,
+        meeting: &MeetingView,
+        now: DateTime<Local>,
+        waybar_markup: bool,
+    ) -> String {
         if meeting.is_all_day {
             return "All day".to_string();
         }
@@ -488,17 +489,7 @@ impl OutputFormatter {
         }
 
         if self.options.show_relative_time {
-            let minutes_until = meeting.minutes_until_start(now);
-
-            // If until_offset_minutes is set and the meeting is farther away than
-            // that threshold, use absolute time instead of the countdown.
-            if let Some(offset) = self.options.until_offset_minutes
-                && minutes_until > offset
-            {
-                return self.format_absolute_time(meeting);
-            }
-
-            self.format_time_until(minutes_until)
+            self.format_time_until(meeting.start_local, now, waybar_markup)
         } else {
             self.format_absolute_time(meeting)
         }
@@ -523,29 +514,100 @@ impl OutputFormatter {
         }
     }
 
-    /// Formats "time until" display (e.g., "In 15 minutes").
-    fn format_time_until(&self, minutes: i64) -> String {
-        if minutes <= 0 {
+    /// Formats "time until" display.
+    fn format_time_until(
+        &self,
+        date: DateTime<Local>,
+        now: DateTime<Local>,
+        waybar_markup: bool,
+    ) -> String {
+        let delta = date - now;
+        let total_minutes = delta.num_minutes();
+        let days = total_minutes.div_euclid(24 * 60);
+        let hours = total_minutes.rem_euclid(24 * 60).div_euclid(60);
+        let minutes = total_minutes.rem_euclid(60);
+
+        if date.date_naive() != now.date_naive() {
+            let mut s = if days == 0 {
+                "Tomorrow".to_string()
+            } else {
+                date.format("%a %d").to_string()
+            };
+
+            match self.options.time_format {
+                TimeFormat::H12 => {
+                    let sep = &self.options.hour_separator;
+                    s.push_str(&format!(" at {}", date.format(&format!("%I{}%M %p", sep))));
+                }
+                TimeFormat::H24 => {
+                    let sep = &self.options.hour_separator;
+                    s.push_str(&format!(
+                        " at {:02}{}{:02}",
+                        date.hour(),
+                        sep,
+                        date.minute()
+                    ));
+                }
+            }
+            return s;
+        }
+
+        let until_offset = self
+            .options
+            .until_offset_minutes
+            .unwrap_or(DEFAULT_UNTIL_OFFSET_MINUTES);
+        if total_minutes > until_offset {
+            return self.format_absolute_time_from_date(date);
+        }
+
+        if total_minutes <= 0 {
             return "Now".to_string();
         }
 
-        if minutes < 60 {
-            return format!("In {} minutes", minutes);
+        if waybar_markup
+            && minutes <= self.options.soon_threshold_minutes
+            && self.options.notify_min_color.is_some()
+        {
+            if minutes == 0 {
+                return "Now 🏃".to_string();
+            }
+            let badge = self.format_waybar_minute_badge(minutes);
+            return format!("In {} minutes", badge);
         }
 
-        let hours = minutes / 60;
-        let mins = minutes % 60;
+        let mut parts = Vec::new();
+        if days > 0 {
+            parts.push(format!("{} day{}", days, if days != 1 { "s" } else { "" }));
+        }
+        if hours > 0 {
+            parts.push(format!(
+                "{} hour{}",
+                hours,
+                if hours != 1 { "s" } else { "" }
+            ));
+        }
+        if minutes > 0 || parts.is_empty() {
+            parts.push(format!(
+                "{} minute{}",
+                minutes,
+                if minutes != 1 { "s" } else { "" }
+            ));
+        }
 
-        if mins == 0 {
-            if hours == 1 {
-                "In 1 hour".to_string()
-            } else {
-                format!("In {} hours", hours)
-            }
-        } else if hours == 1 {
-            format!("In 1 hour and {} minutes", mins)
+        if parts.len() == 1 {
+            format!("In {}", parts[0])
         } else {
-            format!("In {} hours and {} minutes", hours, mins)
+            let last = parts.pop().expect("parts contains at least two entries");
+            format!("In {} and {}", parts.join(", "), last)
+        }
+    }
+
+    /// Formats an absolute date/time string using configured time format and separator.
+    fn format_absolute_time_from_date(&self, date: DateTime<Local>) -> String {
+        let sep = &self.options.hour_separator;
+        match self.options.time_format {
+            TimeFormat::H24 => date.format(&format!("%H{}%M", sep)).to_string(),
+            TimeFormat::H12 => date.format(&format!("%I{}%M %p", sep)).to_string(),
         }
     }
 
@@ -621,7 +683,7 @@ impl OutputFormatter {
     /// Converts a MeetingView to JsonMeeting.
     fn to_json_meeting(&self, meeting: &MeetingView, now: DateTime<Local>) -> JsonMeeting {
         let urgency = self.compute_urgency(meeting, now);
-        let time_display = self.format_time(meeting, now);
+        let time_display = self.format_time(meeting, now, false);
         let minutes_until = meeting.minutes_until_start(now);
         let raw_title = self.privacy_title(&meeting.title);
         let title = self.truncate_title(&raw_title).into_owned();
@@ -826,26 +888,61 @@ mod tests {
         #[test]
         fn format_time_until_now() {
             let formatter = OutputFormatter::with_defaults();
-            assert_eq!(formatter.format_time_until(0), "Now");
-            assert_eq!(formatter.format_time_until(-5), "Now");
+            let now = local_from_utc(utc(2025, 2, 5, 10, 0, 0));
+            assert_eq!(formatter.format_time_until(now, now, false), "Now");
+            assert_eq!(
+                formatter.format_time_until(now - chrono::Duration::minutes(5), now, false),
+                "Now"
+            );
         }
 
         #[test]
         fn format_time_until_minutes() {
             let formatter = OutputFormatter::with_defaults();
-            assert_eq!(formatter.format_time_until(15), "In 15 minutes");
-            assert_eq!(formatter.format_time_until(1), "In 1 minutes");
+            let now = local_from_utc(utc(2025, 2, 5, 10, 0, 0));
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::minutes(15), now, false),
+                "In 15 minutes"
+            );
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::minutes(1), now, false),
+                "In 1 minute"
+            );
         }
 
         #[test]
         fn format_time_until_hours() {
-            let formatter = OutputFormatter::with_defaults();
-            assert_eq!(formatter.format_time_until(60), "In 1 hour");
-            assert_eq!(formatter.format_time_until(120), "In 2 hours");
-            assert_eq!(formatter.format_time_until(90), "In 1 hour and 30 minutes");
+            let mut opts = FormatOptions::default();
+            opts.until_offset_minutes = Some(999);
+            let formatter = OutputFormatter::new(opts);
+            let now = local_from_utc(utc(2025, 2, 5, 10, 0, 0));
             assert_eq!(
-                formatter.format_time_until(150),
+                formatter.format_time_until(now + chrono::Duration::minutes(60), now, false),
+                "In 1 hour"
+            );
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::minutes(120), now, false),
+                "In 2 hours"
+            );
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::minutes(90), now, false),
+                "In 1 hour and 30 minutes"
+            );
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::minutes(150), now, false),
                 "In 2 hours and 30 minutes"
+            );
+        }
+
+        #[test]
+        fn format_time_until_tomorrow() {
+            let formatter = OutputFormatter::with_defaults();
+            let now = Local.with_ymd_and_hms(2025, 2, 5, 23, 0, 0).unwrap();
+            let meeting = now + chrono::Duration::hours(2);
+
+            assert_eq!(
+                formatter.format_time_until(meeting, now, false),
+                "Tomorrow at 01:00"
             );
         }
 
