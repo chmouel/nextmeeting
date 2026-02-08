@@ -12,6 +12,10 @@ use nextmeeting_client::socket::SocketClient;
 use nextmeeting_core::MeetingView;
 use nextmeeting_protocol::{Request, Response};
 
+const MENU_ID_REFRESH: &str = "menu-refresh";
+const MENU_ID_PREFERENCES: &str = "menu-preferences";
+const MENU_ID_QUIT: &str = "menu-quit";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum MeetingStatus {
@@ -34,6 +38,8 @@ struct DashboardData {
 struct UiMeeting {
     id: String,
     title: String,
+    start_at: String,
+    end_at: String,
     start_time: String,
     end_time: String,
     day_label: String,
@@ -346,6 +352,8 @@ fn map_meeting(meeting: MeetingView, now: chrono::DateTime<Local>) -> UiMeeting 
     UiMeeting {
         id: meeting.id,
         title: meeting.title,
+        start_at: meeting.start_local.to_rfc3339(),
+        end_at: meeting.end_local.to_rfc3339(),
         start_time: meeting.start_local.format("%H:%M").to_string(),
         end_time: meeting.end_local.format("%H:%M").to_string(),
         day_label: meeting.start_local.format("%a, %-d %b").to_string(),
@@ -385,6 +393,8 @@ fn mock_meetings() -> Vec<UiMeeting> {
         UiMeeting {
             id: "mock-standup".to_string(),
             title: "Engineering stand-up".to_string(),
+            start_at: first_start.to_rfc3339(),
+            end_at: first_end.to_rfc3339(),
             start_time: first_start.format("%H:%M").to_string(),
             end_time: first_end.format("%H:%M").to_string(),
             day_label: first_start.format("%a, %-d %b").to_string(),
@@ -396,6 +406,8 @@ fn mock_meetings() -> Vec<UiMeeting> {
         UiMeeting {
             id: "mock-design".to_string(),
             title: "Product design sync".to_string(),
+            start_at: second_start.to_rfc3339(),
+            end_at: second_end.to_rfc3339(),
             start_time: second_start.format("%H:%M").to_string(),
             end_time: second_end.format("%H:%M").to_string(),
             day_label: second_start.format("%a, %-d %b").to_string(),
@@ -539,6 +551,9 @@ fn setup_menubar_mode(app: &mut tauri::App<tauri::Wry>) -> tauri::Result<()> {
     }
 
     hide_main_window(app.handle())?;
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_always_on_top(true);
+    }
 
     let show_item = tauri::menu::MenuItem::with_id(app, "toggle-window", "Toggle window", true, None::<&str>)?;
     let quit_item = tauri::menu::MenuItem::with_id(app, "quit-app", "Quit", true, None::<&str>)?;
@@ -585,17 +600,95 @@ fn setup_menubar_mode(app: &mut tauri::App<tauri::Wry>) -> tauri::Result<()> {
     Ok(())
 }
 
+fn setup_app_menu(app: &mut tauri::App<tauri::Wry>) -> tauri::Result<()> {
+    let preferences_item = tauri::menu::MenuItem::with_id(
+        app,
+        MENU_ID_PREFERENCES,
+        "Preferences",
+        true,
+        Some("CmdOrCtrl+,"),
+    )?;
+    let refresh_item = tauri::menu::MenuItem::with_id(
+        app,
+        MENU_ID_REFRESH,
+        "Refresh",
+        true,
+        Some("CmdOrCtrl+R"),
+    )?;
+    let quit_item = tauri::menu::MenuItem::with_id(
+        app,
+        MENU_ID_QUIT,
+        "Quit nextmeeting",
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?;
+
+    #[cfg(target_os = "macos")]
+    let menu = {
+        let app_submenu = tauri::menu::Submenu::with_items(
+            app,
+            "nextmeeting",
+            true,
+            &[&preferences_item, &refresh_item, &quit_item],
+        )?;
+        tauri::menu::Menu::with_items(app, &[&app_submenu])?
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let menu = {
+        let file_submenu = tauri::menu::Submenu::with_items(
+            app,
+            "File",
+            true,
+            &[&preferences_item, &refresh_item, &quit_item],
+        )?;
+        tauri::menu::Menu::with_items(app, &[&file_submenu])?
+    };
+
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+fn handle_menu_event(app: &tauri::AppHandle, menu_id: &str) {
+    match menu_id {
+        MENU_ID_PREFERENCES => {
+            tauri::async_runtime::spawn(async {
+                let _ = open_preferences().await;
+            });
+        }
+        MENU_ID_REFRESH => {
+            if let Some(config) = app.try_state::<ClientConfig>().map(|state| state.inner().clone())
+            {
+                tauri::async_runtime::spawn(async move {
+                    let client = build_socket_client(&config);
+                    let request = Request::refresh(true);
+                    let _ = client.send(request).await;
+                });
+            }
+        }
+        MENU_ID_QUIT => app.exit(0),
+        _ => {}
+    }
+}
+
 fn configure_builder(
     builder: tauri::Builder<tauri::Wry>,
     launch_mode: LaunchMode,
 ) -> tauri::Builder<tauri::Wry> {
     match launch_mode {
-        LaunchMode::Desktop => builder,
+        LaunchMode::Desktop => builder
+            .setup(|app| {
+                setup_app_menu(app)?;
+                Ok(())
+            })
+            .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref())),
         LaunchMode::Menubar => builder
             .setup(|app| {
+                setup_app_menu(app)?;
                 setup_menubar_mode(app)?;
                 Ok(())
             })
+            .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref()))
             .on_window_event(|window, event| {
                 if window.label() != "main" {
                     return;
@@ -626,6 +719,7 @@ fn main() {
     let config = ClientConfig::load().unwrap_or_default();
 
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(DashboardConfig { mock: launch.mock })
         .manage(config)
         .invoke_handler(tauri::generate_handler![
@@ -771,6 +865,8 @@ mod tests {
         let meetings = vec![UiMeeting {
             id: "mock-1".to_string(),
             title: "Engineering stand-up".to_string(),
+            start_at: Local::now().to_rfc3339(),
+            end_at: (Local::now() + TimeDelta::minutes(25)).to_rfc3339(),
             start_time: "22:30".to_string(),
             end_time: "22:55".to_string(),
             day_label: "Sat, 7 Feb".to_string(),

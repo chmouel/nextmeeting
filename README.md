@@ -67,6 +67,19 @@ for preview and interface development.
 The wired desktop actions currently are **Join next meeting**, **Create
 meeting**, **Quick Actions** (open calendar day), and **Preferences**.
 
+Desktop integration details:
+
+- Desktop mode uses normal window stacking (not always-on-top)
+- Menubar mode keeps a popover-style window and hides on focus loss
+- Native application menus are provided on macOS and Linux
+- Standard shortcuts are supported in the GUI:
+  - `Cmd/Ctrl+R` refresh calendars
+  - `Cmd/Ctrl+,` open preferences
+  - `Cmd/Ctrl+Q` quit
+  - `Esc` hide the current popover window
+- Window geometry is restored between launches
+- Meeting time ranges in the GUI follow your locale time format
+
 ## Quick Start
 
 1. **Authenticate with Google Calendar:**

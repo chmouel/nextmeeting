@@ -11,6 +11,16 @@ const createMeetingButtonNode = document.querySelector("#createMeetingButton");
 const panelNode = document.querySelector(".panel");
 
 const REFRESH_INTERVAL_MS = 60_000;
+const isMac = navigator.platform.toUpperCase().includes("MAC");
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+const dayFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -25,6 +35,40 @@ function parseClockOnDate(baseDate, hhmm) {
   return date;
 }
 
+function parseMeetingDate(value, fallbackBaseDate, fallbackTime) {
+  if (value) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return parseClockOnDate(fallbackBaseDate, fallbackTime);
+}
+
+function meetingStartDate(meeting, baseDate = new Date()) {
+  return parseMeetingDate(meeting.startAt, baseDate, meeting.startTime);
+}
+
+function meetingEndDate(meeting, baseDate = new Date()) {
+  const start = meetingStartDate(meeting, baseDate);
+  const end = parseMeetingDate(meeting.endAt, baseDate, meeting.endTime);
+  if (end <= start) {
+    end.setDate(end.getDate() + 1);
+  }
+  return end;
+}
+
+function formatMeetingRange(meeting) {
+  const start = meetingStartDate(meeting);
+  const end = meetingEndDate(meeting, start);
+  return `${timeFormatter.format(start)} - ${timeFormatter.format(end)}`;
+}
+
+function formatMeetingDay(meeting) {
+  const start = meetingStartDate(meeting);
+  return dayFormatter.format(start);
+}
+
 function buildTimelineMeetings(meetings, rangeStart, rangeEnd) {
   const startMs = rangeStart.getTime();
   const endMs = rangeEnd.getTime();
@@ -32,11 +76,8 @@ function buildTimelineMeetings(meetings, rangeStart, rangeEnd) {
 
   return meetings
     .map((meeting) => {
-      const meetingStart = parseClockOnDate(rangeStart, meeting.startTime);
-      let meetingEnd = parseClockOnDate(rangeStart, meeting.endTime);
-      if (meetingEnd <= meetingStart) {
-        meetingEnd.setDate(meetingEnd.getDate() + 1);
-      }
+      const meetingStart = meetingStartDate(meeting, rangeStart);
+      const meetingEnd = meetingEndDate(meeting, meetingStart);
 
       const clippedStart = Math.max(meetingStart.getTime(), startMs);
       const clippedEnd = Math.min(meetingEnd.getTime(), endMs);
@@ -114,12 +155,16 @@ function renderMeetings(meetings) {
   }
 
   for (const meeting of meetings.slice(0, 4)) {
-    const article = document.createElement("article");
-    article.className = meeting.joinUrl ? "meeting meeting-clickable" : "meeting";
+    const container = meeting.joinUrl ? document.createElement("button") : document.createElement("article");
+    container.className = meeting.joinUrl ? "meeting meeting-clickable" : "meeting";
+    if (meeting.joinUrl) {
+      container.type = "button";
+      container.setAttribute("aria-label", `Join ${meeting.title}`);
+    }
 
     const dayP = document.createElement("p");
     dayP.className = "meeting-day";
-    dayP.textContent = meeting.dayLabel;
+    dayP.textContent = formatMeetingDay(meeting);
 
     const titleH3 = document.createElement("h3");
     titleH3.className = "meeting-title";
@@ -127,7 +172,7 @@ function renderMeetings(meetings) {
 
     const timeP = document.createElement("p");
     timeP.className = "meeting-time";
-    timeP.textContent = `${meeting.startTime} - ${meeting.endTime}`;
+    timeP.textContent = formatMeetingRange(meeting);
 
     if (meeting.relativeTime) {
       const relSpan = document.createElement("span");
@@ -145,13 +190,13 @@ function renderMeetings(meetings) {
     statusSpan.textContent = meeting.status;
     serviceDiv.appendChild(statusSpan);
 
-    article.appendChild(dayP);
-    article.appendChild(titleH3);
-    article.appendChild(timeP);
-    article.appendChild(serviceDiv);
+    container.appendChild(dayP);
+    container.appendChild(titleH3);
+    container.appendChild(timeP);
+    container.appendChild(serviceDiv);
 
     if (meeting.joinUrl) {
-      article.addEventListener("click", async () => {
+      container.addEventListener("click", async () => {
         const invoke = window.__TAURI__?.core?.invoke;
         if (invoke) {
           try {
@@ -164,7 +209,7 @@ function renderMeetings(meetings) {
       });
     }
 
-    meetingListNode.appendChild(article);
+    meetingListNode.appendChild(container);
   }
 }
 
@@ -204,7 +249,7 @@ function renderHero(meetings) {
 
   if (ongoing) {
     heroTitleNode.textContent = `Live now: ${ongoing.title}`;
-    const meta = `${ongoing.startTime} - ${ongoing.endTime} on ${ongoing.service}`;
+    const meta = `${formatMeetingRange(ongoing)} on ${ongoing.service}`;
     heroMetaNode.textContent = ongoing.relativeTime ? `${meta} \u00b7 ${ongoing.relativeTime}` : meta;
     joinNowButtonNode.textContent = "Join live meeting";
     joinNowButtonNode.style.display = "";
@@ -215,7 +260,7 @@ function renderHero(meetings) {
     joinNowButtonNode.textContent = "Join next meeting";
     joinNowButtonNode.style.display = "";
     heroTitleNode.textContent = `Next: ${nextMeeting.title}`;
-    const meta = `${nextMeeting.startTime} - ${nextMeeting.endTime} on ${nextMeeting.service}`;
+    const meta = `${formatMeetingRange(nextMeeting)} on ${nextMeeting.service}`;
     heroMetaNode.textContent = nextMeeting.relativeTime ? `${meta} \u00b7 ${nextMeeting.relativeTime}` : meta;
     return;
   }
@@ -231,7 +276,8 @@ function updateTitleFromMeetings(meetings) {
     return;
   }
 
-  todayTitleNode.textContent = `${meetings[0].dayLabel} agenda`;
+  const start = meetingStartDate(meetings[0]);
+  todayTitleNode.textContent = `${dayFormatter.format(start)} agenda`;
 }
 
 function fallbackData() {
@@ -306,6 +352,45 @@ async function quitApp() {
   await appWindow().close();
 }
 
+async function hideCurrentWindow() {
+  const appWindow = window.__TAURI__?.window?.getCurrentWindow;
+  if (!appWindow) {
+    return;
+  }
+  await appWindow().hide();
+}
+
+function bindKeyboardShortcuts() {
+  document.addEventListener("keydown", async (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      await hideCurrentWindow();
+      return;
+    }
+
+    const hasCommandModifier = isMac ? event.metaKey : event.ctrlKey;
+    if (!hasCommandModifier || event.altKey) {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+    if (key === "q") {
+      event.preventDefault();
+      await quitApp();
+    } else if (key === "r") {
+      event.preventDefault();
+      await runCommand("refresh_meetings", "Refreshing calendar data...");
+    } else if (key === ",") {
+      event.preventDefault();
+      await runCommand("open_preferences", "Opening preferences...");
+    }
+  });
+}
+
 async function loadDashboard() {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) {
@@ -352,6 +437,7 @@ function bindPrimaryActions() {
 
 async function main() {
   bindPrimaryActions();
+  bindKeyboardShortcuts();
   renderUtilityActions();
 
   showLoading();
