@@ -1,18 +1,19 @@
 use std::rc::Rc;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::*;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 use crate::config::GtkConfig;
-use crate::tray::{manager::TrayManager, TrayCommand};
+use crate::tray::{TrayCommand, manager::TrayManager};
 use crate::utils::{format_time_range, truncate};
-use crate::widgets::window::{build as build_window, UiWidgets};
+use crate::widgets::window::{UiWidgets, build as build_window};
 
 #[derive(Debug)]
 pub struct AppRuntime {
@@ -69,7 +70,8 @@ impl AppRuntime {
     }
 
     pub fn open_next_meeting(&self) -> Result<(), String> {
-        nextmeeting_client::actions::open_meeting_url(self.state.meetings()).map_err(|e| e.to_string())
+        nextmeeting_client::actions::open_meeting_url(self.state.meetings())
+            .map_err(|e| e.to_string())
     }
 
     pub fn create_meeting(&self, service: &str, custom_url: Option<&str>) -> Result<(), String> {
@@ -152,9 +154,17 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
             while let Ok(event) = ui_rx.try_recv() {
                 match event {
                     UiEvent::MeetingsLoaded(meetings) => {
+                        // Update status with connected class
                         widgets_for_events
                             .status_label
                             .set_label(&format!("Connected • {} meeting(s)", meetings.len()));
+                        widgets_for_events
+                            .status_label
+                            .remove_css_class("status-error");
+                        widgets_for_events
+                            .status_label
+                            .add_css_class("status-connected");
+
                         widgets_for_events
                             .join_button
                             .set_sensitive(meetings.iter().any(|m| m.primary_link.is_some()));
@@ -169,7 +179,15 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                         );
                     }
                     UiEvent::ActionFailed(err) => {
-                        widgets_for_events.status_label.set_label(&format!("Error • {err}"));
+                        widgets_for_events
+                            .status_label
+                            .set_label(&format!("Error • {err}"));
+                        widgets_for_events
+                            .status_label
+                            .remove_css_class("status-connected");
+                        widgets_for_events
+                            .status_label
+                            .add_css_class("status-error");
                     }
                     UiEvent::ActionSucceeded(msg) => {
                         widgets_for_events.status_label.set_label(&msg);
@@ -181,7 +199,12 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         });
     }
 
-    connect_actions(&widgets, runtime.clone(), app_runtime.clone(), ui_tx.clone());
+    connect_actions(
+        &widgets,
+        runtime.clone(),
+        app_runtime.clone(),
+        ui_tx.clone(),
+    );
 
     let (tray_tx, tray_rx) = mpsc::channel::<TrayCommand>();
     let tray_manager = TrayManager::new(runtime.clone(), tray_tx);
@@ -327,9 +350,8 @@ fn connect_actions(
                     let guard = app_runtime.lock().await;
                     match guard.open_calendar_day() {
                         Ok(()) => {
-                            let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                "Opened calendar day".to_string(),
-                            ));
+                            let _ = ui_tx
+                                .send(UiEvent::ActionSucceeded("Opened calendar day".to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -355,9 +377,8 @@ fn connect_actions(
                         Ok(_) => {
                             let meetings = guard.state.meetings().to_vec();
                             let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                            let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                "Dismissals cleared".to_string(),
-                            ));
+                            let _ = ui_tx
+                                .send(UiEvent::ActionSucceeded("Dismissals cleared".to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -401,6 +422,19 @@ fn trigger_refresh(
     });
 }
 
+/// Get the CSS class for a service badge based on link kind
+fn get_service_badge_class(link: Option<&nextmeeting_core::EventLink>) -> Option<&'static str> {
+    use nextmeeting_core::LinkKind;
+    link.map(|l| match l.kind {
+        LinkKind::Zoom | LinkKind::ZoomGov | LinkKind::ZoomNative => "badge-zoom",
+        LinkKind::GoogleMeet | LinkKind::MeetStream | LinkKind::Hangouts => "badge-meet",
+        LinkKind::Teams => "badge-teams",
+        LinkKind::Webex => "badge-webex",
+        _ => "",
+    })
+    .filter(|s| !s.is_empty())
+}
+
 fn update_hero(widgets: &UiWidgets, meetings: &[nextmeeting_core::MeetingView]) {
     if let Some(meeting) = meetings.first() {
         let service = meeting
@@ -409,22 +443,64 @@ fn update_hero(widgets: &UiWidgets, meetings: &[nextmeeting_core::MeetingView]) 
             .map(|link| link.kind.display_name().to_string())
             .unwrap_or_else(|| "No link".to_string());
 
+        // Update kicker based on meeting state
+        if meeting.is_ongoing {
+            widgets.hero_kicker_label.set_label("Happening now");
+            widgets.hero_kicker_label.add_css_class("live-indicator");
+        } else {
+            widgets.hero_kicker_label.set_label("Up next");
+            widgets.hero_kicker_label.remove_css_class("live-indicator");
+        }
+
         let timing = if meeting.is_ongoing {
+            widgets.hero_meta_label.add_css_class("hero-ongoing");
             format!(
-                "Happening now • {}",
+                "Ongoing • {}",
                 format_time_range(meeting.start_local, meeting.end_local)
             )
         } else {
-            format_time_range(meeting.start_local, meeting.end_local)
+            widgets.hero_meta_label.remove_css_class("hero-ongoing");
+            // Calculate minutes until start
+            let now = chrono::Local::now();
+            let mins_until = meeting.minutes_until_start(now);
+            if mins_until > 0 && mins_until <= 60 {
+                format!(
+                    "Starts in {} min • {}",
+                    mins_until,
+                    format_time_range(meeting.start_local, meeting.end_local)
+                )
+            } else {
+                format_time_range(meeting.start_local, meeting.end_local)
+            }
         };
 
-        widgets.hero_title_label.set_label(&truncate(&meeting.title, 90));
+        widgets
+            .hero_title_label
+            .set_label(&truncate(&meeting.title, 90));
         widgets.hero_meta_label.set_label(&timing);
         widgets.hero_service_label.set_label(&service);
+
+        // Update service badge styling
+        widgets.hero_service_label.remove_css_class("badge-zoom");
+        widgets.hero_service_label.remove_css_class("badge-meet");
+        widgets.hero_service_label.remove_css_class("badge-teams");
+        widgets.hero_service_label.remove_css_class("badge-webex");
+        if let Some(badge_class) = get_service_badge_class(meeting.primary_link.as_ref()) {
+            widgets.hero_service_label.add_css_class(badge_class);
+        }
     } else {
+        widgets.hero_kicker_label.set_label("Up next");
+        widgets.hero_kicker_label.remove_css_class("live-indicator");
         widgets.hero_title_label.set_label("No upcoming meetings");
-        widgets.hero_meta_label.set_label("Try Refresh to pull the latest events");
+        widgets
+            .hero_meta_label
+            .set_label("Try Refresh to pull the latest events");
+        widgets.hero_meta_label.remove_css_class("hero-ongoing");
         widgets.hero_service_label.set_label("No link");
+        widgets.hero_service_label.remove_css_class("badge-zoom");
+        widgets.hero_service_label.remove_css_class("badge-meet");
+        widgets.hero_service_label.remove_css_class("badge-teams");
+        widgets.hero_service_label.remove_css_class("badge-webex");
     }
 }
 
@@ -442,43 +518,37 @@ fn render_meetings(
     if meetings.is_empty() {
         let row = gtk::ListBoxRow::new();
         row.add_css_class("meeting-empty-row");
+
+        // Empty state with icon
+        let empty_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        empty_box.set_halign(gtk::Align::Center);
+        empty_box.set_valign(gtk::Align::Center);
+        empty_box.set_margin_top(24);
+        empty_box.set_margin_bottom(24);
+
+        let icon = gtk::Image::from_icon_name("x-office-calendar-symbolic");
+        icon.set_pixel_size(48);
+        icon.add_css_class("empty-state-icon");
+
         let label = gtk::Label::builder()
             .label("No visible meetings")
             .css_classes(["meeting-empty-label"])
-            .xalign(0.0)
-            .margin_top(8)
-            .margin_bottom(8)
-            .margin_start(8)
-            .margin_end(8)
             .build();
-        row.set_child(Some(&label));
+
+        empty_box.append(&icon);
+        empty_box.append(&label);
+        row.set_child(Some(&empty_box));
         widgets.listbox.append(&row);
         return;
     }
 
     for meeting in meetings {
-        let row = gtk::ListBoxRow::new();
-        row.add_css_class("meeting-row-container");
-
-        let outer = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        outer.add_css_class("meeting-row");
-        outer.set_margin_top(8);
-        outer.set_margin_bottom(8);
-        outer.set_margin_start(8);
-        outer.set_margin_end(8);
-
-        let top = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        let text = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        text.set_hexpand(true);
-
-        let title = gtk::Label::builder()
-            .label(truncate(&meeting.title, 64))
-            .xalign(0.0)
-            .css_classes(["meeting-title"])
+        let row = adw::ActionRow::builder()
+            .title(truncate(&meeting.title, 64))
+            .css_classes(["meeting-action-row"])
             .build();
-        title.set_wrap(false);
-        title.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
+        // Build subtitle with time and service
         let time_line = if meeting.is_ongoing {
             format!(
                 "Happening now • {}",
@@ -488,34 +558,30 @@ fn render_meetings(
             format_time_range(meeting.start_local, meeting.end_local)
         };
 
-        let when = gtk::Label::builder()
-            .label(time_line)
-            .xalign(0.0)
-            .css_classes(["meeting-time"])
-            .build();
-        if meeting.is_ongoing {
-            when.add_css_class("meeting-live");
-        }
-
         let service = meeting
             .primary_link
             .as_ref()
             .map(|link| link.kind.display_name().to_string())
-            .unwrap_or_else(|| "No link".to_string());
+            .unwrap_or_default();
 
-        let service_label = gtk::Label::builder()
-            .label(service)
-            .xalign(0.0)
-            .css_classes(["meeting-service"])
-            .build();
+        let subtitle = if service.is_empty() {
+            time_line
+        } else {
+            format!("{} • {}", time_line, service)
+        };
+        row.set_subtitle(&subtitle);
 
-        text.append(&title);
-        text.append(&when);
-        text.append(&service_label);
+        // Add live styling
+        if meeting.is_ongoing {
+            row.add_css_class("live");
+        }
 
+        // Circular dismiss button with icon
         let dismiss = gtk::Button::builder()
-            .label("Hide")
-            .css_classes(["flat", "dismiss-button"])
+            .icon_name("window-close-symbolic")
+            .css_classes(["flat", "circular", "dismiss-button"])
+            .valign(gtk::Align::Center)
+            .tooltip_text("Dismiss this meeting")
             .build();
         let event_id = meeting.id.clone();
 
@@ -541,11 +607,7 @@ fn render_meetings(
             });
         }
 
-        top.append(&text);
-        top.append(&dismiss);
-        outer.append(&top);
-
-        row.set_child(Some(&outer));
+        row.add_suffix(&dismiss);
         widgets.listbox.append(&row);
     }
 }

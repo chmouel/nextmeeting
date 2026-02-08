@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
 
-use ksni::{menu, MenuItem};
+use ksni::{MenuItem, menu};
 
 use super::TrayCommand;
 

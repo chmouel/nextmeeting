@@ -1,10 +1,10 @@
-use std::sync::{mpsc::Sender, Arc};
+use std::sync::{Arc, mpsc::Sender};
 
 use ksni::TrayMethods;
 use tokio::runtime::Runtime;
 use tracing::warn;
 
-use super::{sni::NextMeetingTray, TrayCommand};
+use super::{TrayCommand, sni::NextMeetingTray};
 
 #[derive(Debug)]
 pub struct TrayManager {
