@@ -31,10 +31,6 @@ conventions for this repository.
   - IPC request/response schema.
   - Framing: 4-byte big-endian length + JSON envelope.
   - Protocol constants (`PROTOCOL_VERSION = "1"`, max message size 1MB).
-- `nextmeeting-tauri` (`nextmeeting-gui` binary):
-  - Desktop panel/menu-bar preview application.
-  - Reuses socket protocol and client actions.
-  - Falls back to mock data when daemon is unavailable.
 
 ## 2. Runtime Data Flow
 
@@ -103,13 +99,6 @@ Key modules:
 - `framing.rs`: serialization with length-prefix framing.
 - `error.rs`: protocol error model.
 
-### 3.6 `nextmeeting-tauri`
-
-- `src/main.rs`: dashboard data, socket-backed commands (`refresh`, `snooze`, join/open/create), desktop vs menubar launch modes.
-- `ui/app.js`: thin runtime bootstrap that initialises the dashboard app.
-- `ui/app-core.js`: UI logic and rendering for timeline/meeting cards/actions with exported helpers for testability.
-- `ui/tests/app-core.test.js`: front-end unit tests for date handling, timeline clipping, detail-item rendering, and desktop-command fallback messaging.
-
 ## 4. Command Surface (Current CLI)
 
 Binary:
@@ -143,15 +132,6 @@ Subcommands:
 - `nextmeeting config path`
 - `nextmeeting status`
 - `nextmeeting server`
-
-`auth google` notable flags:
-
-- `--account, -a`
-- `--client-id`
-- `--client-secret`
-- `--credentials-file`
-- `--domain`
-- `--force, -f`
 
 Environment variables:
 
@@ -240,31 +220,10 @@ Credential resolution supports:
 - Snooze via command/protocol.
 - Optional morning agenda notification time.
 
-### GUI (Tauri Preview)
-
-- Desktop and menubar modes.
-- Live data via daemon protocol with fallback to mock mode.
-- Actions wired to existing client/server behaviours.
-- Dedicated JavaScript unit-test harness (Vitest + jsdom) for `app-core.js` behaviour.
-- Desktop mode uses normal window stacking (not always-on-top).
-- Menubar mode maintains a popover-style window and hides on focus loss.
-- Native application menus are available on macOS and Linux.
-- Supported shortcuts include:
-  - `Cmd/Ctrl+R` refresh calendars.
-  - `Cmd/Ctrl+,` open preferences.
-  - `Cmd/Ctrl+Q` quit.
-  - `Esc` hide the active popover window.
-- Window geometry is restored between launches.
-- Time ranges follow locale-aware time format.
-- Meeting detail cards support expansion and per-event dismissal state.
-
 ## 7. Test Strategy (Current)
 
-- Rust unit tests cover protocol, server, providers, and Tauri command/logic paths.
-- GUI JavaScript behaviour is validated with Vitest/jsdom tests in `crates/nextmeeting-tauri/ui/tests`.
-- Rust and JavaScript checks are complementary:
-  - Rust validates command wiring, server integration, and platform-facing logic.
-  - Vitest validates DOM rendering and front-end behaviour deterministically.
+- Rust unit tests cover protocol, server, providers, and client command/logic paths.
+- Formatter behaviour is validated with golden snapshot tests in `nextmeeting-core`.
 
 ## 8. Notable Implementation Characteristics
 
@@ -275,9 +234,9 @@ Credential resolution supports:
 
 ## 9. Current Boundaries and Gaps
 
+- Native desktop GUI migration is in progress (GTK4/libadwaita target) and not yet present in this workspace state.
 - The `nextmeeting-server` cache module exists and is tested, but active meeting serving currently relies on in-memory `ServerState` rather than direct `EventCache` integration.
 - `SIGHUP` reload signal plumbing exists; full dynamic provider/config rebuild flow is not yet surfaced as a complete runtime reload path in server orchestration.
-- Some README flag examples describe options that are now configuration-driven rather than direct CLI flags.
 
 ## 10. Repository Conventions
 
@@ -293,47 +252,3 @@ Credential resolution supports:
 - Run `cargo clippy --all --all-features --fix`.
 - Add tests for new or changed functionality.
 - Keep coverage expectations high.
-
-## 11. Practical Command Examples
-
-Run default output:
-
-```bash
-nextmeeting
-```
-
-Waybar mode:
-
-```bash
-nextmeeting --waybar
-```
-
-Machine JSON:
-
-```bash
-nextmeeting --json
-```
-
-Force provider refresh:
-
-```bash
-nextmeeting --refresh
-```
-
-Snooze notifications for 30 minutes:
-
-```bash
-nextmeeting --snooze 30
-```
-
-Start daemon in foreground:
-
-```bash
-nextmeeting server
-```
-
-Authenticate Google account:
-
-```bash
-nextmeeting auth google --account work --credentials-file /path/to/credentials.json
-```

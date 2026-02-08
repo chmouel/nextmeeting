@@ -45,10 +45,6 @@ pub struct ClientConfig {
     /// Server/connection settings.
     #[serde(default)]
     pub server: ServerSettings,
-
-    /// Menu bar settings (macOS tray title).
-    #[serde(default)]
-    pub menubar: MenuBarSettings,
 }
 
 /// Display settings for output formatting.
@@ -193,47 +189,6 @@ pub struct NotificationSettings {
     pub min_color_foreground: Option<String>,
 }
 
-/// Menu bar title format.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MenuBarTitleFormat {
-    /// Show full meeting title.
-    #[default]
-    Full,
-    /// Show only a dot indicator.
-    Dot,
-    /// Hide title entirely.
-    Hidden,
-}
-
-/// Menu bar display settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct MenuBarSettings {
-    /// Title format: "full" (default), "dot", or "hidden".
-    pub title_format: MenuBarTitleFormat,
-
-    /// Maximum title length (truncated with ellipsis). Default: 40.
-    pub title_max_length: Option<usize>,
-
-    /// Whether to show time info (countdown or remaining) next to the title.
-    pub show_time: bool,
-
-    /// Only show events within this many minutes. If unset, always show the next event.
-    pub event_threshold_minutes: Option<u32>,
-}
-
-impl Default for MenuBarSettings {
-    fn default() -> Self {
-        Self {
-            title_format: MenuBarTitleFormat::Full,
-            title_max_length: Some(40),
-            show_time: true,
-            event_threshold_minutes: None,
-        }
-    }
-}
-
 /// Server/connection settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -255,29 +210,13 @@ impl Default for ServerSettings {
 }
 
 /// Returns the XDG-style config directory on all platforms.
-/// On macOS, returns `$HOME/.config` instead of `~/Library/Application Support`.
 fn xdg_config_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
-    {
-        dirs::home_dir().map(|h| h.join(".config"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        dirs::config_dir()
-    }
+    dirs::config_dir()
 }
 
 /// Returns the XDG-style data directory on all platforms.
-/// On macOS, returns `$HOME/.local/share` instead of `~/Library/Application Support`.
 fn xdg_data_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
-    {
-        dirs::home_dir().map(|h| h.join(".local").join("share"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        dirs::data_dir()
-    }
+    dirs::data_dir()
 }
 
 impl ClientConfig {

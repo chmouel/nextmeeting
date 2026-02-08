@@ -1,3 +1,2 @@
 target
 .pre-commit
-crates/nextmeeting-tauri/ui/node_modules

@@ -58,13 +58,5 @@ minutes_before = [5, 1] # Minutes before to notify
 socket_path = "/tmp/nextmeeting.sock" # Path to server socket
 timeout = 5                           # Connection timeout in seconds
 
-
-[menubar]
-title_format = "full"        # "full", "dot", or "hidden"
-title_max_length = 40        # Max title length (ellipsis truncation)
-show_time = true             # Show "(in Xm)" or "(Xm left)" suffix
-event_threshold_minutes = 30 # Optional: only show near-term events
-
-
 # debug = false
 # google_domain = "example.com"        # Google Workspace domain (for calendar URLs)
