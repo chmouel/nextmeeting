@@ -4,6 +4,7 @@
 //! to the appropriate logic and produces responses.
 
 use std::sync::Arc;
+use std::{future::Future, pin::Pin};
 
 use chrono::{DateTime, NaiveTime, Utc};
 use tokio::sync::RwLock;
@@ -11,7 +12,8 @@ use tracing::{debug, info, warn};
 
 use nextmeeting_core::{MeetingView, ResponseStatus};
 use nextmeeting_protocol::{
-    ErrorCode, MeetingsFilter, ProviderStatus, Request, Response, StatusInfo,
+    ErrorCode, ErrorResponse, EventMutationAction, MeetingsFilter, ProviderStatus, Request,
+    Response, StatusInfo,
 };
 
 use crate::error::{ServerError, ServerResult};
@@ -279,15 +281,46 @@ pub fn new_shared_state() -> SharedState {
     Arc::new(RwLock::new(ServerState::new()))
 }
 
+/// Event mutation request shape for callback-based mutators.
+#[derive(Debug, Clone)]
+pub struct EventMutationRequest {
+    /// Provider name (e.g. google:work).
+    pub provider_name: String,
+    /// Provider calendar identifier.
+    pub calendar_id: String,
+    /// Provider event identifier.
+    pub event_id: String,
+    /// Mutation action.
+    pub action: EventMutationAction,
+}
+
+/// Future returned by event mutator callbacks.
+pub type EventMutationFuture = Pin<Box<dyn Future<Output = Result<(), ErrorResponse>> + Send>>;
+
+/// Callback used by the server handler to perform event mutations.
+pub type EventMutator = Arc<dyn Fn(EventMutationRequest) -> EventMutationFuture + Send + Sync>;
+
 /// Request handler that processes incoming requests and produces responses.
 pub struct RequestHandler {
     state: SharedState,
+    event_mutator: Option<EventMutator>,
 }
 
 impl RequestHandler {
     /// Creates a new request handler with the given state.
     pub fn new(state: SharedState) -> Self {
-        Self { state }
+        Self {
+            state,
+            event_mutator: None,
+        }
+    }
+
+    /// Creates a new request handler with an event mutator callback.
+    pub fn with_event_mutator(state: SharedState, event_mutator: EventMutator) -> Self {
+        Self {
+            state,
+            event_mutator: Some(event_mutator),
+        }
     }
 
     /// Handles a single request and returns the response.
@@ -313,6 +346,37 @@ impl RequestHandler {
                 let mut state = self.state.write().await;
                 state.snooze(*minutes);
                 Response::Ok
+            }
+            Request::MutateEvent {
+                provider_name,
+                calendar_id,
+                event_id,
+                action,
+            } => {
+                debug!(
+                    provider = %provider_name,
+                    calendar_id = %calendar_id,
+                    event_id = %event_id,
+                    action = ?action,
+                    "Handling MutateEvent request"
+                );
+                if let Some(mutator) = &self.event_mutator {
+                    let req = EventMutationRequest {
+                        provider_name: provider_name.clone(),
+                        calendar_id: calendar_id.clone(),
+                        event_id: event_id.clone(),
+                        action: *action,
+                    };
+                    match mutator(req).await {
+                        Ok(()) => Response::Ok,
+                        Err(error) => Response::from_error(error),
+                    }
+                } else {
+                    Response::error(
+                        ErrorCode::ProviderError,
+                        "event mutation is not configured on this server",
+                    )
+                }
             }
             Request::Refresh { force } => {
                 debug!(force = *force, "Handling Refresh request");
@@ -393,6 +457,26 @@ pub fn make_connection_handler(
     }
 }
 
+/// Creates a connection handler with event mutation support.
+pub fn make_connection_handler_with_mutator(
+    state: SharedState,
+    event_mutator: EventMutator,
+) -> impl Fn(Connection) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
++ Send
++ Sync
++ 'static {
+    move |conn| {
+        let handler = RequestHandler::with_event_mutator(state.clone(), event_mutator.clone());
+        Box::pin(async move {
+            if let Err(e) = handler.handle_connection(conn).await
+                && !matches!(e, ServerError::Shutdown)
+            {
+                warn!(error = %e, "Connection handler error");
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,6 +519,7 @@ mod tests {
         let meetings = vec![
             MeetingView {
                 id: "1".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Daily Standup".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -451,6 +536,7 @@ mod tests {
             },
             MeetingView {
                 id: "2".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "All Day Event".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::days(1),
@@ -467,6 +553,7 @@ mod tests {
             },
             MeetingView {
                 id: "3".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Tomorrow Meeting".to_string(),
                 start_local: tomorrow,
                 end_local: tomorrow + chrono::Duration::hours(1),
@@ -559,12 +646,87 @@ mod tests {
         assert!(state.shutdown_requested());
     }
 
+    #[tokio::test]
+    async fn request_handler_mutate_event_without_mutator() {
+        let state = new_shared_state();
+        let handler = RequestHandler::new(state);
+
+        let response = handler
+            .handle(&Request::mutate_event(
+                "google:work",
+                "primary",
+                "evt-1",
+                EventMutationAction::Decline,
+            ))
+            .await;
+
+        match response {
+            Response::Error { error } => {
+                assert_eq!(error.code, ErrorCode::ProviderError);
+                assert!(error.message.contains("not configured"));
+            }
+            _ => panic!("expected error response"),
+        }
+    }
+
+    #[tokio::test]
+    async fn request_handler_mutate_event_with_mutator_success() {
+        let state = new_shared_state();
+        let mutator: EventMutator = Arc::new(|request: EventMutationRequest| {
+            Box::pin(async move {
+                assert_eq!(request.provider_name, "google:work");
+                assert_eq!(request.calendar_id, "primary");
+                assert_eq!(request.event_id, "evt-1");
+                assert_eq!(request.action, EventMutationAction::Decline);
+                Ok(())
+            })
+        });
+        let handler = RequestHandler::with_event_mutator(state, mutator);
+
+        let response = handler
+            .handle(&Request::mutate_event(
+                "google:work",
+                "primary",
+                "evt-1",
+                EventMutationAction::Decline,
+            ))
+            .await;
+
+        assert_eq!(response, Response::Ok);
+    }
+
+    #[tokio::test]
+    async fn request_handler_mutate_event_with_mutator_error() {
+        let state = new_shared_state();
+        let mutator: EventMutator = Arc::new(|_request: EventMutationRequest| {
+            Box::pin(async move { Err(ErrorResponse::new(ErrorCode::NotFound, "not found")) })
+        });
+        let handler = RequestHandler::with_event_mutator(state, mutator);
+
+        let response = handler
+            .handle(&Request::mutate_event(
+                "google:work",
+                "primary",
+                "evt-1",
+                EventMutationAction::Delete,
+            ))
+            .await;
+
+        match response {
+            Response::Error { error } => {
+                assert_eq!(error.code, ErrorCode::NotFound);
+            }
+            _ => panic!("expected error response"),
+        }
+    }
+
     #[test]
     fn filter_include_calendars() {
         let now = Local::now();
         let meetings = vec![
             MeetingView {
                 id: "1".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Work Meeting".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -581,6 +743,7 @@ mod tests {
             },
             MeetingView {
                 id: "2".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Personal Meeting".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -619,6 +782,7 @@ mod tests {
         let meetings = vec![
             MeetingView {
                 id: "1".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "With Link".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -635,6 +799,7 @@ mod tests {
             },
             MeetingView {
                 id: "2".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "No Link".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -665,6 +830,7 @@ mod tests {
         let now = Local::now();
         let meetings = vec![MeetingView {
             id: "1".to_string(),
+            provider_name: "unknown".to_string(),
             title: "Secret Meeting".to_string(),
             start_local: now,
             end_local: now + chrono::Duration::hours(1),
@@ -697,6 +863,7 @@ mod tests {
         let meetings = vec![
             MeetingView {
                 id: "1".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Daily Standup".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -713,6 +880,7 @@ mod tests {
             },
             MeetingView {
                 id: "2".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Sprint Review".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),
@@ -729,6 +897,7 @@ mod tests {
             },
             MeetingView {
                 id: "3".to_string(),
+                provider_name: "unknown".to_string(),
                 title: "Lunch".to_string(),
                 start_local: now,
                 end_local: now + chrono::Duration::hours(1),

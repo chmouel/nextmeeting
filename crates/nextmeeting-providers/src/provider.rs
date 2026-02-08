@@ -73,6 +73,15 @@ pub struct FetchResult {
     pub not_modified: bool,
 }
 
+/// Action to mutate an existing provider event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventMutationAction {
+    /// Decline an invited event.
+    Decline,
+    /// Delete the event.
+    Delete,
+}
+
 impl FetchResult {
     /// Creates a new fetch result with events.
     pub fn with_events(events: Vec<RawEvent>) -> Self {
@@ -256,6 +265,22 @@ pub trait CalendarProvider: Send + Sync {
     ///
     /// A provider is authenticated if it has valid tokens that haven't expired.
     fn is_authenticated(&self) -> bool;
+
+    /// Mutates a provider event.
+    ///
+    /// The default implementation reports unsupported operation.
+    fn mutate_event(
+        &self,
+        _calendar_id: &str,
+        _event_id: &str,
+        _action: EventMutationAction,
+    ) -> BoxFuture<'_, ProviderResult<()>> {
+        Box::pin(async {
+            Err(ProviderError::calendar(
+                "event mutation is not supported by this provider",
+            ))
+        })
+    }
 
     /// Returns the provider's configuration hint for the scheduler.
     ///

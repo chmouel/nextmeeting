@@ -279,6 +279,7 @@ mod tests {
         let now = Local::now();
         MeetingView {
             id: id.to_string(),
+            provider_name: "unknown".to_string(),
             title: title.to_string(),
             start_local: now,
             end_local: now + chrono::Duration::hours(1),

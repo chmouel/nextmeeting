@@ -11,7 +11,8 @@ use tracing::{debug, info};
 
 use crate::error::{ProviderError, ProviderResult};
 use crate::provider::{
-    BoxFuture, CalendarInfo, CalendarProvider, FetchOptions, FetchResult, ProviderStatus,
+    BoxFuture, CalendarInfo, CalendarProvider, EventMutationAction, FetchOptions, FetchResult,
+    ProviderStatus,
 };
 
 use super::client::GoogleCalendarClient;
@@ -322,6 +323,28 @@ impl CalendarProvider for GoogleProvider {
         } else {
             false
         }
+    }
+
+    fn mutate_event(
+        &self,
+        calendar_id: &str,
+        event_id: &str,
+        action: EventMutationAction,
+    ) -> BoxFuture<'_, ProviderResult<()>> {
+        let calendar_id = calendar_id.to_string();
+        let event_id = event_id.to_string();
+        Box::pin(async move {
+            self.ensure_client().await?;
+            let client = self.api_client.read().await;
+            let client = client
+                .as_ref()
+                .ok_or_else(|| ProviderError::internal("API client not available"))?;
+
+            match action {
+                EventMutationAction::Decline => client.decline_event(&calendar_id, &event_id).await,
+                EventMutationAction::Delete => client.delete_event(&calendar_id, &event_id).await,
+            }
+        })
     }
 
     fn suggested_poll_interval(&self) -> Duration {

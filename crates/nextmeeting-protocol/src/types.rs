@@ -77,6 +77,18 @@ pub enum Request {
         minutes: u32,
     },
 
+    /// Mutate a calendar event in a provider (e.g. decline/delete).
+    MutateEvent {
+        /// Provider name (e.g. "google:work").
+        provider_name: String,
+        /// Calendar identifier in that provider.
+        calendar_id: String,
+        /// Provider event identifier.
+        event_id: String,
+        /// Action to execute.
+        action: EventMutationAction,
+    },
+
     /// Request server shutdown.
     Shutdown,
 
@@ -106,6 +118,31 @@ impl Request {
     pub fn snooze(minutes: u32) -> Self {
         Self::Snooze { minutes }
     }
+
+    /// Creates a MutateEvent request.
+    pub fn mutate_event(
+        provider_name: impl Into<String>,
+        calendar_id: impl Into<String>,
+        event_id: impl Into<String>,
+        action: EventMutationAction,
+    ) -> Self {
+        Self::MutateEvent {
+            provider_name: provider_name.into(),
+            calendar_id: calendar_id.into(),
+            event_id: event_id.into(),
+            action,
+        }
+    }
+}
+
+/// Event mutation actions supported by the protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventMutationAction {
+    /// Decline an invited event.
+    Decline,
+    /// Delete an event.
+    Delete,
 }
 
 /// Deserializes a value that can be either a single string or a Vec<String>.
@@ -676,6 +713,30 @@ mod tests {
 
         let parsed: Request = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, Request::Snooze { minutes: 30 });
+    }
+
+    #[test]
+    fn request_serde_mutate_event() {
+        let request = Request::mutate_event(
+            "google:work",
+            "primary",
+            "evt-123",
+            EventMutationAction::Decline,
+        );
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"type\":\"mutate_event\""));
+        assert!(json.contains("\"action\":\"decline\""));
+
+        let parsed: Request = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed,
+            Request::MutateEvent {
+                provider_name: "google:work".to_string(),
+                calendar_id: "primary".to_string(),
+                event_id: "evt-123".to_string(),
+                action: EventMutationAction::Decline,
+            }
+        );
     }
 
     #[test]

@@ -465,6 +465,7 @@ mod tests {
         let start = Local::now() + chrono::Duration::minutes(minutes_from_now);
         MeetingView {
             id: id.to_string(),
+            provider_name: "unknown".to_string(),
             title: title.to_string(),
             start_local: start,
             end_local: start + chrono::Duration::hours(1),

@@ -57,8 +57,8 @@ pub mod raw_event;
 pub use error::{ProviderError, ProviderErrorCode, ProviderResult};
 pub use normalize::{normalize_event, normalize_events};
 pub use provider::{
-    BoxFuture, CalendarInfo, CalendarProvider, ErrorProvider, FetchOptions, FetchResult,
-    ProviderStatus,
+    BoxFuture, CalendarInfo, CalendarProvider, ErrorProvider, EventMutationAction, FetchOptions,
+    FetchResult, ProviderStatus,
 };
 pub use raw_event::{
     RawAttendee, RawConferenceData, RawEntryPoint, RawEvent, RawEventTime, ResponseStatus,

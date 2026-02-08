@@ -409,6 +409,9 @@ impl NormalizedEvent {
 pub struct MeetingView {
     /// The event ID (for deduplication and tracking).
     pub id: String,
+    /// Provider name that produced this event (e.g. "google:work").
+    #[serde(default = "default_provider_name")]
+    pub provider_name: String,
     /// The meeting title (may be truncated or privacy-redacted).
     pub title: String,
     /// Start time in local timezone.
@@ -442,11 +445,21 @@ impl MeetingView {
     ///
     /// Converts times to local timezone and computes status flags.
     pub fn from_event(event: &NormalizedEvent, now: DateTime<Utc>) -> Self {
+        Self::from_event_with_provider(event, "unknown", now)
+    }
+
+    /// Creates a MeetingView from a NormalizedEvent with an explicit provider name.
+    pub fn from_event_with_provider(
+        event: &NormalizedEvent,
+        provider_name: impl Into<String>,
+        now: DateTime<Utc>,
+    ) -> Self {
         let start_utc = event.start.to_utc_datetime();
         let end_utc = event.end.to_utc_datetime();
 
         Self {
             id: event.id.clone(),
+            provider_name: provider_name.into(),
             title: event.title.clone(),
             start_local: start_utc.with_timezone(&Local),
             end_local: end_utc.with_timezone(&Local),
@@ -481,6 +494,10 @@ impl MeetingView {
     pub fn duration_minutes(&self) -> i64 {
         (self.end_local - self.start_local).num_minutes()
     }
+}
+
+fn default_provider_name() -> String {
+    "unknown".to_string()
 }
 
 #[cfg(test)]

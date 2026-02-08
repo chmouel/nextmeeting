@@ -11,6 +11,9 @@ pub struct UiWidgets {
     pub hero_title_label: gtk::Label,
     pub hero_meta_label: gtk::Label,
     pub hero_service_label: gtk::Label,
+    pub hero_dismiss_button: gtk::Button,
+    pub hero_decline_button: gtk::Button,
+    pub hero_delete_button: gtk::Button,
     pub listbox: gtk::ListBox,
     pub join_button: gtk::Button,
     pub create_button: gtk::Button,
@@ -77,6 +80,24 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .css_classes(["suggested-action", "pill-button", "join-button"])
         .sensitive(false)
         .build();
+    let hero_dismiss_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("Dismiss this event")
+        .css_classes(["flat", "circular", "hero-icon-button"])
+        .sensitive(false)
+        .build();
+    let hero_decline_button = gtk::Button::builder()
+        .icon_name("mail-send-receive-symbolic")
+        .tooltip_text("Decline this event")
+        .css_classes(["flat", "circular", "hero-icon-button"])
+        .sensitive(false)
+        .build();
+    let hero_delete_button = gtk::Button::builder()
+        .icon_name("edit-delete-symbolic")
+        .tooltip_text("Delete this event")
+        .css_classes(["flat", "circular", "hero-icon-button", "hero-delete-button"])
+        .sensitive(false)
+        .build();
 
     let hero_header = gtk::Box::new(gtk::Orientation::Vertical, 6);
     hero_header.append(&hero_kicker_label);
@@ -84,8 +105,16 @@ pub fn build(app: &adw::Application) -> UiWidgets {
     hero_header.append(&hero_meta_label);
 
     let hero_footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    hero_footer.set_halign(gtk::Align::Fill);
+    hero_service_label.set_hexpand(true);
+    hero_service_label.set_halign(gtk::Align::Start);
+    let hero_actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    hero_actions.append(&hero_dismiss_button);
+    hero_actions.append(&hero_decline_button);
+    hero_actions.append(&hero_delete_button);
+    hero_actions.append(&join_button);
     hero_footer.append(&hero_service_label);
-    hero_footer.append(&join_button);
+    hero_footer.append(&hero_actions);
 
     let hero_body = gtk::Box::new(gtk::Orientation::Vertical, 14);
     hero_body.add_css_class("hero-card");
@@ -214,6 +243,9 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         hero_title_label,
         hero_meta_label,
         hero_service_label,
+        hero_dismiss_button,
+        hero_decline_button,
+        hero_delete_button,
         listbox,
         join_button,
         create_button,

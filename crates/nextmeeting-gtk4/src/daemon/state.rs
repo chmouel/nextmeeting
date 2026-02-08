@@ -28,4 +28,12 @@ impl MeetingState {
     pub fn remove_meeting(&mut self, event_id: &str) {
         self.meetings.retain(|meeting| meeting.id != event_id);
     }
+
+    pub fn remove_meeting_exact(&mut self, provider_name: &str, calendar_id: &str, event_id: &str) {
+        self.meetings.retain(|meeting| {
+            !(meeting.provider_name == provider_name
+                && meeting.calendar_id == calendar_id
+                && meeting.id == event_id)
+        });
+    }
 }

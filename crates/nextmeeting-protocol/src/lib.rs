@@ -33,8 +33,8 @@ mod types;
 pub use error::{ProtocolError, ProtocolResult};
 pub use framing::{FrameReader, FrameWriter, decode_message, encode_message};
 pub use types::{
-    Envelope, ErrorCode, ErrorResponse, MeetingsFilter, ProviderStatus, Request, Response,
-    StatusInfo,
+    Envelope, ErrorCode, ErrorResponse, EventMutationAction, MeetingsFilter, ProviderStatus,
+    Request, Response, StatusInfo,
 };
 
 /// Protocol version constant.

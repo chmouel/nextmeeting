@@ -14,11 +14,16 @@ use chrono::Utc;
 use tracing::{error, info, warn};
 
 use nextmeeting_core::{MeetingView, TimeWindow};
-use nextmeeting_providers::{CalendarProvider, FetchOptions, normalize_events};
+use nextmeeting_protocol::{ErrorCode, ErrorResponse, EventMutationAction as ProtocolEventAction};
+use nextmeeting_providers::{
+    CalendarProvider, EventMutationAction as ProviderEventMutationAction, FetchOptions,
+    ProviderErrorCode, normalize_events,
+};
 
 use nextmeeting_server::{
-    NotifyConfig, NotifyEngine, PidFile, Scheduler, SchedulerConfig, ServerConfig, SharedState,
-    SignalHandler, SocketServer, default_pid_path, make_connection_handler, new_shared_state,
+    EventMutationRequest, EventMutator, NotifyConfig, NotifyEngine, PidFile, Scheduler,
+    SchedulerConfig, ServerConfig, SharedState, SignalHandler, SocketServer, default_pid_path,
+    make_connection_handler_with_mutator, new_shared_state,
 };
 
 use crate::cli::Cli;
@@ -117,7 +122,33 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
 
     info!(path = %socket_path.display(), "Server listening");
 
-    let handler = make_connection_handler(state.clone());
+    let mutation_providers = providers.clone();
+    let event_mutator: EventMutator = Arc::new(move |request: EventMutationRequest| {
+        let providers = mutation_providers.clone();
+        Box::pin(async move {
+            let provider = providers
+                .iter()
+                .find(|p| p.name() == request.provider_name)
+                .ok_or_else(|| {
+                    ErrorResponse::new(
+                        ErrorCode::NotFound,
+                        format!("provider '{}' not found", request.provider_name),
+                    )
+                })?;
+
+            let provider_action = match request.action {
+                ProtocolEventAction::Decline => ProviderEventMutationAction::Decline,
+                ProtocolEventAction::Delete => ProviderEventMutationAction::Delete,
+            };
+
+            provider
+                .mutate_event(&request.calendar_id, &request.event_id, provider_action)
+                .await
+                .map_err(|e| map_provider_error(&request.provider_name, e))
+        })
+    });
+
+    let handler = make_connection_handler_with_mutator(state.clone(), event_mutator);
     let shutdown = signal_handler.shutdown();
 
     // Run until shutdown signal
@@ -253,7 +284,7 @@ async fn sync_all_providers(
                 let normalized = normalize_events(&result.events);
                 let meetings: Vec<MeetingView> = normalized
                     .iter()
-                    .map(|e| MeetingView::from_event(e, now))
+                    .map(|e| MeetingView::from_event_with_provider(e, &provider_name, now))
                     .collect();
 
                 info!(
@@ -306,5 +337,51 @@ async fn sync_all_providers(
         Err("one or more providers failed to sync".into())
     } else {
         Ok(())
+    }
+}
+
+fn map_provider_error(
+    provider_name: &str,
+    err: nextmeeting_providers::ProviderError,
+) -> ErrorResponse {
+    let code = match err.code() {
+        ProviderErrorCode::AuthenticationFailed => ErrorCode::AuthenticationFailed,
+        ProviderErrorCode::RateLimited => ErrorCode::RateLimited,
+        ProviderErrorCode::NotFound => ErrorCode::NotFound,
+        ProviderErrorCode::BadRequest => ErrorCode::InvalidRequest,
+        ProviderErrorCode::ConfigurationError => ErrorCode::InvalidRequest,
+        ProviderErrorCode::AuthorizationFailed
+        | ProviderErrorCode::NetworkError
+        | ProviderErrorCode::ServerError
+        | ProviderErrorCode::InvalidResponse
+        | ProviderErrorCode::CalendarError
+        | ProviderErrorCode::InternalError => ErrorCode::ProviderError,
+    };
+
+    ErrorResponse::new(code, format!("{}: {}", provider_name, err.message()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nextmeeting_providers::ProviderError;
+
+    #[test]
+    fn map_provider_error_maps_not_found() {
+        let response = map_provider_error("google:work", ProviderError::not_found("event missing"));
+        assert_eq!(response.code, ErrorCode::NotFound);
+        assert!(response.message.contains("google:work"));
+    }
+
+    #[test]
+    fn map_provider_error_maps_rate_limit() {
+        let response = map_provider_error("google:work", ProviderError::rate_limited("slow down"));
+        assert_eq!(response.code, ErrorCode::RateLimited);
+    }
+
+    #[test]
+    fn map_provider_error_maps_bad_request() {
+        let response = map_provider_error("google:work", ProviderError::bad_request("invalid"));
+        assert_eq!(response.code, ErrorCode::InvalidRequest);
     }
 }

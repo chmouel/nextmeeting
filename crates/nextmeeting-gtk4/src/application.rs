@@ -7,6 +7,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use nextmeeting_protocol::EventMutationAction;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
@@ -63,6 +64,21 @@ impl AppRuntime {
     pub fn dismiss_event(&mut self, event_id: &str) {
         self.dismissals.dismiss(event_id.to_string());
         self.state.remove_meeting(event_id);
+    }
+
+    pub async fn mutate_event(
+        &mut self,
+        provider_name: &str,
+        calendar_id: &str,
+        event_id: &str,
+        action: EventMutationAction,
+    ) -> Result<(), String> {
+        self.daemon
+            .mutate_event(provider_name, calendar_id, event_id, action)
+            .await?;
+        self.state
+            .remove_meeting_exact(provider_name, calendar_id, event_id);
+        Ok(())
     }
 
     pub fn clear_dismissals(&mut self) {
@@ -168,6 +184,15 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                         widgets_for_events
                             .join_button
                             .set_sensitive(meetings.iter().any(|m| m.primary_link.is_some()));
+                        widgets_for_events
+                            .hero_dismiss_button
+                            .set_sensitive(!meetings.is_empty());
+                        widgets_for_events
+                            .hero_decline_button
+                            .set_sensitive(!meetings.is_empty());
+                        widgets_for_events
+                            .hero_delete_button
+                            .set_sensitive(!meetings.is_empty());
                         update_hero(&widgets_for_events, &meetings);
 
                         render_meetings(
@@ -285,6 +310,124 @@ fn connect_actions(
                     }
                 }
             });
+        });
+    }
+
+    {
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        widgets.hero_dismiss_button.connect_clicked(move |_| {
+            runtime.spawn({
+                let app_runtime = app_runtime.clone();
+                let ui_tx = ui_tx.clone();
+                async move {
+                    let mut guard = app_runtime.lock().await;
+                    let Some(meeting) = guard.state.meetings().first().cloned() else {
+                        let _ = ui_tx.send(UiEvent::ActionFailed(
+                            "No event available in hero card".to_string(),
+                        ));
+                        return;
+                    };
+                    guard.dismiss_event(&meeting.id);
+                    let meetings = guard.state.meetings().to_vec();
+                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                    let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
+                        "Dismissed event {}",
+                        meeting.id
+                    )));
+                }
+            });
+        });
+    }
+
+    {
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        widgets.hero_decline_button.connect_clicked(move |_| {
+            let runner = runtime.clone();
+            let runtime_for_mutation = runtime.clone();
+            let app_runtime_for_task = app_runtime.clone();
+            let ui_tx_for_task = ui_tx.clone();
+            runner.spawn(async move {
+                let meeting = {
+                    let guard = app_runtime_for_task.lock().await;
+                    guard.state.meetings().first().cloned()
+                };
+                let Some(meeting) = meeting else {
+                    let _ = ui_tx_for_task.send(UiEvent::ActionFailed(
+                        "No event available in hero card".to_string(),
+                    ));
+                    return;
+                };
+
+                run_event_mutation(
+                    runtime_for_mutation.clone(),
+                    app_runtime_for_task.clone(),
+                    ui_tx_for_task.clone(),
+                    meeting.provider_name,
+                    meeting.calendar_id,
+                    meeting.id,
+                    EventMutationAction::Decline,
+                );
+            });
+        });
+    }
+
+    {
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        let window = widgets.window.clone();
+        widgets.hero_delete_button.connect_clicked(move |_| {
+            let dialog = adw::AlertDialog::new(
+                Some("Delete this event?"),
+                Some("This removes this event occurrence from your calendar."),
+            );
+            dialog.add_responses(&[("cancel", "Cancel"), ("delete", "Delete")]);
+            dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+            dialog.set_default_response(Some("cancel"));
+            dialog.set_close_response("cancel");
+
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            dialog.choose(
+                Some(&window),
+                None::<&gtk::gio::Cancellable>,
+                move |response| {
+                    if response.as_str() != "delete" {
+                        return;
+                    }
+                    let runtime = runtime.clone();
+                    let app_runtime = app_runtime.clone();
+                    let ui_tx = ui_tx.clone();
+                    let mutation_runtime = runtime.clone();
+                    runtime.spawn(async move {
+                        let meeting = {
+                            let guard = app_runtime.lock().await;
+                            guard.state.meetings().first().cloned()
+                        };
+                        let Some(meeting) = meeting else {
+                            let _ = ui_tx.send(UiEvent::ActionFailed(
+                                "No event available in hero card".to_string(),
+                            ));
+                            return;
+                        };
+
+                        run_event_mutation(
+                            mutation_runtime.clone(),
+                            app_runtime.clone(),
+                            ui_tx.clone(),
+                            meeting.provider_name,
+                            meeting.calendar_id,
+                            meeting.id,
+                            EventMutationAction::Delete,
+                        );
+                    });
+                },
+            );
         });
     }
 
@@ -576,20 +719,52 @@ fn render_meetings(
             row.add_css_class("live");
         }
 
-        // Circular dismiss button with icon
-        let dismiss = gtk::Button::builder()
-            .icon_name("window-close-symbolic")
-            .css_classes(["flat", "circular", "dismiss-button"])
-            .valign(gtk::Align::Center)
-            .tooltip_text("Dismiss this meeting")
-            .build();
         let event_id = meeting.id.clone();
+        let calendar_id = meeting.calendar_id.clone();
+        let provider_name = meeting.provider_name.clone();
+        let window = widgets.window.clone();
+
+        let menu_button = gtk::MenuButton::builder()
+            .icon_name("open-menu-symbolic")
+            .css_classes(["flat", "circular", "event-actions-button"])
+            .valign(gtk::Align::Center)
+            .tooltip_text("Event actions")
+            .build();
+
+        let menu_content = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        menu_content.add_css_class("event-actions-popover");
+
+        let dismiss_action = gtk::Button::builder()
+            .label("Dismiss")
+            .halign(gtk::Align::Fill)
+            .css_classes(["flat", "event-action-item"])
+            .build();
+        let decline_action = gtk::Button::builder()
+            .label("Decline")
+            .halign(gtk::Align::Fill)
+            .css_classes(["flat", "event-action-item"])
+            .build();
+        let delete_action = gtk::Button::builder()
+            .label("Delete")
+            .halign(gtk::Align::Fill)
+            .css_classes(["flat", "event-action-item", "event-action-destructive"])
+            .build();
+
+        menu_content.append(&dismiss_action);
+        menu_content.append(&decline_action);
+        menu_content.append(&delete_action);
+
+        let popover = gtk::Popover::builder().child(&menu_content).build();
+        menu_button.set_popover(Some(&popover));
 
         {
             let runtime = runtime.clone();
             let app_runtime = app_runtime.clone();
             let ui_tx = ui_tx.clone();
-            dismiss.connect_clicked(move |_| {
+            let popover = popover.clone();
+            let event_id = event_id.clone();
+            dismiss_action.connect_clicked(move |_| {
+                popover.popdown();
                 runtime.spawn({
                     let app_runtime = app_runtime.clone();
                     let ui_tx = ui_tx.clone();
@@ -607,7 +782,156 @@ fn render_meetings(
             });
         }
 
-        row.add_suffix(&dismiss);
+        {
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            let popover = popover.clone();
+            let provider_name = provider_name.clone();
+            let calendar_id = calendar_id.clone();
+            let event_id = event_id.clone();
+            decline_action.connect_clicked(move |_| {
+                popover.popdown();
+                run_event_mutation(
+                    runtime.clone(),
+                    app_runtime.clone(),
+                    ui_tx.clone(),
+                    provider_name.clone(),
+                    calendar_id.clone(),
+                    event_id.clone(),
+                    EventMutationAction::Decline,
+                );
+            });
+        }
+
+        {
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            let popover = popover.clone();
+            let provider_name = provider_name.clone();
+            let calendar_id = calendar_id.clone();
+            let event_id = event_id.clone();
+            let window = window.clone();
+            delete_action.connect_clicked(move |_| {
+                popover.popdown();
+                let dialog = adw::AlertDialog::new(
+                    Some("Delete this event?"),
+                    Some("This removes this event occurrence from your calendar."),
+                );
+                dialog.add_responses(&[("cancel", "Cancel"), ("delete", "Delete")]);
+                dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+                dialog.set_default_response(Some("cancel"));
+                dialog.set_close_response("cancel");
+                let runtime = runtime.clone();
+                let app_runtime = app_runtime.clone();
+                let ui_tx = ui_tx.clone();
+                let provider_name = provider_name.clone();
+                let calendar_id = calendar_id.clone();
+                let event_id = event_id.clone();
+                dialog.choose(
+                    Some(&window),
+                    None::<&gtk::gio::Cancellable>,
+                    move |response| {
+                        if response.as_str() == "delete" {
+                            run_event_mutation(
+                                runtime.clone(),
+                                app_runtime.clone(),
+                                ui_tx.clone(),
+                                provider_name.clone(),
+                                calendar_id.clone(),
+                                event_id.clone(),
+                                EventMutationAction::Delete,
+                            );
+                        }
+                    },
+                );
+            });
+        }
+
+        row.add_suffix(&menu_button);
         widgets.listbox.append(&row);
+    }
+}
+
+fn run_event_mutation(
+    runtime: Arc<Runtime>,
+    app_runtime: Arc<Mutex<AppRuntime>>,
+    ui_tx: mpsc::Sender<UiEvent>,
+    provider_name: String,
+    calendar_id: String,
+    event_id: String,
+    action: EventMutationAction,
+) {
+    let refresh_runtime = runtime.clone();
+    runtime.spawn({
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        async move {
+            let mut guard = app_runtime.lock().await;
+            match guard
+                .mutate_event(&provider_name, &calendar_id, &event_id, action)
+                .await
+            {
+                Ok(()) => {
+                    let meetings = guard.state.meetings().to_vec();
+                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                    let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
+                        "{} event {}",
+                        mutation_action_label(action),
+                        event_id
+                    )));
+                }
+                Err(err) => {
+                    let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                    return;
+                }
+            }
+            drop(guard);
+            trigger_post_mutation_refresh(
+                refresh_runtime.clone(),
+                app_runtime.clone(),
+                ui_tx.clone(),
+                mutation_action_label(action).to_string(),
+                event_id.clone(),
+            );
+        }
+    });
+}
+
+fn trigger_post_mutation_refresh(
+    runtime: Arc<Runtime>,
+    app_runtime: Arc<Mutex<AppRuntime>>,
+    ui_tx: mpsc::Sender<UiEvent>,
+    action_label: String,
+    event_id: String,
+) {
+    runtime.spawn(async move {
+        let mut guard = app_runtime.lock().await;
+        if let Err(err) = guard.force_refresh().await {
+            let _ = ui_tx.send(UiEvent::ActionFailed(format!(
+                "{} event {} but refresh request failed: {}",
+                action_label, event_id, err
+            )));
+            return;
+        }
+
+        if let Err(err) = guard.refresh().await {
+            let _ = ui_tx.send(UiEvent::ActionFailed(format!(
+                "{} event {} but refresh failed: {}",
+                action_label, event_id, err
+            )));
+            return;
+        }
+
+        let meetings = guard.state.meetings().to_vec();
+        let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+    });
+}
+
+fn mutation_action_label(action: EventMutationAction) -> &'static str {
+    match action {
+        EventMutationAction::Decline => "Declined",
+        EventMutationAction::Delete => "Deleted",
     }
 }

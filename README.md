@@ -9,6 +9,7 @@ the terminal or Waybar, and to run quick meeting actions.
 - Google Calendar and CalDAV provider support.
 - Terminal, JSON, and Waybar outputs.
 - Native GTK4/libadwaita desktop UI (`nextmeeting-gtk`) with StatusNotifier tray integration.
+- GTK per-event actions: local dismiss, plus calendar-backed decline/delete (Google provider).
 - Automatic meeting-link detection (Zoom, Meet, Teams, Webex, Jitsi, and more).
 - Desktop notification scheduling with snooze support.
 - Action commands for joining meetings, copying meeting details, refreshing
@@ -59,6 +60,11 @@ cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
 ```
 
 The daemon is started automatically when required.
+
+In the GTK agenda list, use the row action menu to:
+- Dismiss an event locally (hide only)
+- Decline an event in the calendar provider
+- Delete an event occurrence (with confirmation)
 
 ## Common Commands
 

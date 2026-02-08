@@ -35,7 +35,8 @@ pub use cache::{CacheEntry, EventCache};
 pub use config::{ServerConfig, default_socket_path};
 pub use error::{ServerError, ServerResult};
 pub use handler::{
-    RequestHandler, ServerState, SharedState, make_connection_handler, new_shared_state,
+    EventMutationRequest, EventMutator, RequestHandler, ServerState, SharedState,
+    make_connection_handler, make_connection_handler_with_mutator, new_shared_state,
 };
 pub use notify::{
     NotifyConfig, NotifyEngine, NotifyState, SharedNotifyState, new_notify_state, notification_hash,

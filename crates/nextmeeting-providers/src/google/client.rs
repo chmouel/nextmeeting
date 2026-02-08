@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::{debug, warn};
 
 use crate::error::{ProviderError, ProviderResult};
@@ -282,6 +283,115 @@ impl GoogleCalendarClient {
         })?;
 
         Ok(list.items)
+    }
+
+    /// Declines an event occurrence for the current user.
+    pub async fn decline_event(&self, calendar_id: &str, event_id: &str) -> ProviderResult<()> {
+        let url = self.event_url(calendar_id, event_id);
+        let body = json!({
+            "attendees": [
+                {
+                    "self": true,
+                    "responseStatus": "declined"
+                }
+            ]
+        });
+        let body =
+            serde_json::to_vec(&body).map_err(|e| ProviderError::bad_request(e.to_string()))?;
+
+        let response = self
+            .http_client
+            .patch(url)
+            .bearer_auth(&self.access_token)
+            .query(&[("sendUpdates", "none")])
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ProviderError::network("request timeout")
+                } else if e.is_connect() {
+                    ProviderError::network(format!("connection failed: {}", e))
+                } else {
+                    ProviderError::network(format!("request failed: {}", e))
+                }
+            })?;
+
+        Self::handle_empty_success_response(response, "decline event")
+    }
+
+    /// Deletes an event occurrence.
+    pub async fn delete_event(&self, calendar_id: &str, event_id: &str) -> ProviderResult<()> {
+        let url = self.event_url(calendar_id, event_id);
+        let response = self
+            .http_client
+            .delete(url)
+            .bearer_auth(&self.access_token)
+            .query(&[("sendUpdates", "none")])
+            .send()
+            .await
+            .map_err(|e| {
+                if e.is_timeout() {
+                    ProviderError::network("request timeout")
+                } else if e.is_connect() {
+                    ProviderError::network(format!("connection failed: {}", e))
+                } else {
+                    ProviderError::network(format!("request failed: {}", e))
+                }
+            })?;
+
+        Self::handle_empty_success_response(response, "delete event")
+    }
+
+    fn event_url(&self, calendar_id: &str, event_id: &str) -> String {
+        format!(
+            "{}/calendars/{}/events/{}",
+            CALENDAR_API_BASE,
+            urlencoding::encode(calendar_id),
+            urlencoding::encode(event_id)
+        )
+    }
+
+    fn handle_empty_success_response(
+        response: reqwest::Response,
+        action: &str,
+    ) -> ProviderResult<()> {
+        let status = response.status();
+
+        if status.is_success() {
+            return Ok(());
+        }
+
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(ProviderError::authentication(
+                "access token expired or invalid",
+            ));
+        }
+
+        if status == reqwest::StatusCode::FORBIDDEN {
+            return Err(ProviderError::authorization("access denied to calendar"));
+        }
+
+        if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
+            return Err(ProviderError::not_found("event not found"));
+        }
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(ProviderError::rate_limited("rate limit exceeded"));
+        }
+
+        if status.is_server_error() {
+            return Err(ProviderError::server(format!(
+                "API error during {} ({})",
+                action, status
+            )));
+        }
+
+        Err(ProviderError::bad_request(format!(
+            "request failed during {} ({})",
+            action, status
+        )))
     }
 
     /// Converts a Google Calendar API event to a RawEvent.
@@ -608,5 +718,13 @@ mod tests {
         assert_eq!(response.items.len(), 2);
         assert!(response.items[0].primary);
         assert!(!response.items[1].primary);
+    }
+
+    #[test]
+    fn event_url_escapes_calendar_and_event_ids() {
+        let client = GoogleCalendarClient::new("token", Duration::from_secs(1));
+        let url = client.event_url("work@example.com", "abc 123");
+        assert!(url.contains("work%40example.com"));
+        assert!(url.contains("abc%20123"));
     }
 }

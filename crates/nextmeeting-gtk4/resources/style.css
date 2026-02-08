@@ -149,6 +149,18 @@ window.nm-window {
     font-weight: 700;
 }
 
+.hero-icon-button {
+    border-radius: 999px;
+    min-width: 30px;
+    min-height: 30px;
+    padding: 5px;
+}
+
+.hero-delete-button:hover {
+    background-color: alpha(@error_bg_color, 0.15);
+    color: @error_color;
+}
+
 /* Meeting list */
 .meeting-scroller {
     border-radius: 14px;
@@ -213,6 +225,26 @@ window.nm-window {
 
 .dismiss-button:hover {
     background-color: alpha(@error_bg_color, 0.15);
+    color: @error_color;
+}
+
+.event-actions-button {
+    border-radius: 999px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 4px;
+}
+
+.event-actions-popover {
+    margin: 4px;
+}
+
+.event-action-item {
+    min-width: 120px;
+    justify-content: flex-start;
+}
+
+.event-action-destructive {
     color: @error_color;
 }
 
