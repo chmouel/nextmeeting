@@ -6,6 +6,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use libadwaita::prelude::*;
 use nextmeeting_protocol::EventMutationAction;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
@@ -512,9 +513,10 @@ fn render_meetings(
     // Find the first current/ongoing meeting for the JOIN NOW button
     let current_meeting_id = find_current_meeting(meetings);
 
-    for meeting in meetings {
+    for (index, meeting) in meetings.iter().enumerate() {
         let show_join = current_meeting_id.as_ref() == Some(&meeting.id);
-        let card = MeetingCard::new(meeting, show_join);
+        let always_show_actions = index == 0;
+        let card = MeetingCard::new(meeting, show_join, always_show_actions);
 
         // Connect join button if present
         if let Some(ref join_btn) = card.join_button {
@@ -538,6 +540,139 @@ fn render_meetings(
                         }
                     }
                 });
+            });
+        }
+
+        // Connect dismiss button
+        {
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            let event_id = meeting.id.clone();
+            card.dismiss_button.connect_clicked(move |_| {
+                let runtime = runtime.clone();
+                let app_runtime = app_runtime.clone();
+                let ui_tx = ui_tx.clone();
+                let event_id = event_id.clone();
+                runtime.spawn(async move {
+                    let mut guard = app_runtime.lock().await;
+                    guard.dismiss_event(&event_id);
+                    let meetings = guard.state.meetings().to_vec();
+                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                    let _ = ui_tx.send(UiEvent::ActionSucceeded("Event dismissed".to_string()));
+                });
+            });
+        }
+
+        // Connect decline button
+        {
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            let provider_name = meeting.provider_name.clone();
+            let calendar_id = meeting.calendar_id.clone();
+            let event_id = meeting.id.clone();
+            card.decline_button.connect_clicked(move |_| {
+                let runtime = runtime.clone();
+                let app_runtime = app_runtime.clone();
+                let ui_tx = ui_tx.clone();
+                let provider_name = provider_name.clone();
+                let calendar_id = calendar_id.clone();
+                let event_id = event_id.clone();
+                runtime.spawn(async move {
+                    let mut guard = app_runtime.lock().await;
+                    match guard
+                        .mutate_event(
+                            &provider_name,
+                            &calendar_id,
+                            &event_id,
+                            EventMutationAction::Decline,
+                        )
+                        .await
+                    {
+                        Ok(()) => {
+                            let meetings = guard.state.meetings().to_vec();
+                            let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                            let _ = ui_tx
+                                .send(UiEvent::ActionSucceeded("Event declined".to_string()));
+                        }
+                        Err(err) => {
+                            let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                        }
+                    }
+                });
+            });
+        }
+
+        // Connect delete button (with confirmation dialog)
+        {
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            let provider_name = meeting.provider_name.clone();
+            let calendar_id = meeting.calendar_id.clone();
+            let event_id = meeting.id.clone();
+            let event_title = meeting.title.clone();
+            let window = widgets.window.clone();
+            card.delete_button.connect_clicked(move |_| {
+                let runtime = runtime.clone();
+                let app_runtime = app_runtime.clone();
+                let ui_tx = ui_tx.clone();
+                let provider_name = provider_name.clone();
+                let calendar_id = calendar_id.clone();
+                let event_id = event_id.clone();
+                let event_title = event_title.clone();
+                let window = window.clone();
+
+                // Create confirmation dialog
+                let dialog = adw::AlertDialog::builder()
+                    .heading("Delete Event?")
+                    .body(format!(
+                        "Are you sure you want to delete \"{}\"? This cannot be undone.",
+                        event_title
+                    ))
+                    .default_response("cancel")
+                    .close_response("cancel")
+                    .build();
+                dialog.add_response("cancel", "Cancel");
+                dialog.add_response("delete", "Delete");
+                dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+
+                dialog.connect_response(None, move |_, response| {
+                    if response == "delete" {
+                        let runtime = runtime.clone();
+                        let app_runtime = app_runtime.clone();
+                        let ui_tx = ui_tx.clone();
+                        let provider_name = provider_name.clone();
+                        let calendar_id = calendar_id.clone();
+                        let event_id = event_id.clone();
+                        runtime.spawn(async move {
+                            let mut guard = app_runtime.lock().await;
+                            match guard
+                                .mutate_event(
+                                    &provider_name,
+                                    &calendar_id,
+                                    &event_id,
+                                    EventMutationAction::Delete,
+                                )
+                                .await
+                            {
+                                Ok(()) => {
+                                    let meetings = guard.state.meetings().to_vec();
+                                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
+                                    let _ = ui_tx.send(UiEvent::ActionSucceeded(
+                                        "Event deleted".to_string(),
+                                    ));
+                                }
+                                Err(err) => {
+                                    let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                                }
+                            }
+                        });
+                    }
+                });
+
+                dialog.present(Some(&window));
             });
         }
 

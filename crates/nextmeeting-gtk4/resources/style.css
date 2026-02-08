@@ -118,6 +118,23 @@ window.nm-window {
     padding: 6px 16px;
 }
 
+/* ===== Meeting card action buttons (shown on hover) ===== */
+.meeting-card-actions {
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.meeting-card:hover .meeting-card-actions,
+.meeting-card-actions-visible {
+    opacity: 1;
+}
+
+.meeting-card-action {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 4px;
+}
+
 /* ===== Sidebar actions ===== */
 .sidebar-action {
     margin: 4px 0;

@@ -12,6 +12,9 @@ use crate::utils::{format_time_range, truncate};
 pub struct MeetingCard {
     pub widget: gtk::Frame,
     pub join_button: Option<gtk::Button>,
+    pub dismiss_button: gtk::Button,
+    pub decline_button: gtk::Button,
+    pub delete_button: gtk::Button,
 }
 
 impl MeetingCard {
@@ -20,7 +23,8 @@ impl MeetingCard {
     /// # Arguments
     /// * `meeting` - The meeting to display
     /// * `show_join_button` - Whether to show the JOIN NOW button (for current/ongoing meetings)
-    pub fn new(meeting: &MeetingView, show_join_button: bool) -> Self {
+    /// * `always_show_actions` - Whether to always show action buttons (vs only on hover)
+    pub fn new(meeting: &MeetingView, show_join_button: bool, always_show_actions: bool) -> Self {
         let is_video = meeting
             .primary_link
             .as_ref()
@@ -111,6 +115,14 @@ impl MeetingCard {
 
         hbox.append(&center_box);
 
+        // Right side: action buttons container (shown on hover, or always for first card)
+        let action_buttons_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        action_buttons_box.set_valign(gtk::Align::Center);
+        action_buttons_box.add_css_class("meeting-card-actions");
+        if always_show_actions {
+            action_buttons_box.add_css_class("meeting-card-actions-visible");
+        }
+
         // Join button (optional)
         let join_button = if show_join_button && meeting.primary_link.is_some() {
             let btn_content = adw::ButtonContent::builder()
@@ -129,11 +141,47 @@ impl MeetingCard {
             None
         };
 
+        // Action buttons (dismiss, decline, delete) - shown on hover
+        let dismiss_button = gtk::Button::builder()
+            .icon_name("window-close-symbolic")
+            .tooltip_text("Dismiss this event (hide locally)")
+            .css_classes(["flat", "circular", "meeting-card-action"])
+            .valign(gtk::Align::Center)
+            .build();
+
+        let decline_button = gtk::Button::builder()
+            .icon_name("call-stop-symbolic")
+            .tooltip_text("Decline this event")
+            .css_classes(["flat", "circular", "meeting-card-action"])
+            .valign(gtk::Align::Center)
+            .build();
+
+        let delete_button = gtk::Button::builder()
+            .icon_name("user-trash-symbolic")
+            .tooltip_text("Delete this event")
+            .css_classes([
+                "flat",
+                "circular",
+                "meeting-card-action",
+                "destructive-action",
+            ])
+            .valign(gtk::Align::Center)
+            .build();
+
+        action_buttons_box.append(&delete_button);
+        action_buttons_box.append(&dismiss_button);
+        action_buttons_box.append(&decline_button);
+
+        hbox.append(&action_buttons_box);
+
         frame.set_child(Some(&hbox));
 
         Self {
             widget: frame,
             join_button,
+            dismiss_button,
+            decline_button,
+            delete_button,
         }
     }
 
