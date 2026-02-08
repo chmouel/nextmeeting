@@ -1,118 +1,71 @@
-/* NextMeeting GTK4 - Adwaita-native theme */
+/* NextMeeting GTK4 - Two-column layout theme */
 
 /* Window background - use system defaults */
 window.nm-window {
     background-color: @window_bg_color;
 }
 
-.root-shell {
-    border-radius: 20px;
+/* ===== Two-column layout ===== */
+.main-container {
+    /* Horizontal spacing between columns handled by gtk::Box spacing */
 }
 
-/* Status pill - connected/error states */
-.status-pill {
-    background-color: alpha(@accent_bg_color, 0.15);
-    color: @accent_color;
-    border-radius: 999px;
-    padding: 8px 14px;
-    font-weight: 700;
-    font-size: 0.85rem;
-    transition: background-color 150ms ease;
+.left-column {
+    /* Takes up remaining space via hexpand */
 }
 
-.status-pill.status-connected {
-    background-color: alpha(@success_bg_color, 0.15);
-    color: @success_color;
+.left-sidebar {
+    background-color: alpha(@card_bg_color, 0.5);
+    border-right: 1px solid alpha(@borders, 0.3);
+    padding: 16px;
+    border-radius: 12px 0 0 12px;
+    transition: width 200ms ease, padding 200ms ease;
 }
 
-.status-pill.status-error {
-    background-color: alpha(@error_bg_color, 0.15);
-    color: @error_color;
+/* Collapsed sidebar state */
+.left-sidebar-collapsed {
+    padding: 16px 8px;
 }
 
-/* Hero card with depth */
-.hero-frame {
-    border-radius: 16px;
-    border: 1px solid alpha(@borders, 0.5);
-    background-color: @card_bg_color;
-    box-shadow: 0 1px 3px alpha(black, 0.08), 0 2px 8px alpha(black, 0.04);
-    transition: box-shadow 200ms ease;
+.left-sidebar-collapsed .section-label {
+    opacity: 0;
+    font-size: 0;
+    margin: 0;
+    padding: 0;
 }
 
-.hero-frame:hover {
-    box-shadow: 0 2px 6px alpha(black, 0.12), 0 4px 12px alpha(black, 0.06);
+.left-sidebar-collapsed .sidebar-action {
+    margin: 8px 0;
 }
 
-.hero-card {
-    border-radius: 14px;
+.left-sidebar-collapsed .connection-status {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0;
+    justify-content: center;
 }
 
-.hero-kicker {
-    color: @accent_color;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-size: 0.8rem;
+.left-sidebar-collapsed .connection-label,
+.left-sidebar-collapsed .connection-icon {
+    opacity: 0;
+    font-size: 0;
+    min-width: 0;
 }
 
-.hero-title {
-    font-size: 1.4rem;
-    font-weight: 850;
+.left-sidebar-collapsed .connection-dot {
+    margin-left: 0;
+    min-width: 10px;
+    min-height: 10px;
+}
+
+/* ===== Schedule header ===== */
+.schedule-title {
+    font-size: 1.8rem;
+    font-weight: 900;
     color: @window_fg_color;
 }
 
-.hero-meta {
-    color: @dim_label_color;
-    font-size: 0.95rem;
-}
-
-.hero-meta.hero-ongoing {
-    color: @success_color;
-    font-weight: 600;
-}
-
-/* Pulse animation for live indicator */
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-}
-
-.live-indicator {
-    animation: pulse 2s ease-in-out infinite;
-}
-
-/* Service badges */
-.service-badge {
-    background-color: alpha(@accent_bg_color, 0.12);
-    color: @accent_color;
-    border-radius: 999px;
-    padding: 6px 12px;
-    font-weight: 700;
-    font-size: 0.85rem;
-}
-
-/* Service-specific badge colors */
-.badge-zoom {
-    background-color: alpha(@blue_3, 0.18);
-    color: @blue_4;
-}
-
-.badge-meet {
-    background-color: alpha(@green_3, 0.18);
-    color: @green_5;
-}
-
-.badge-teams {
-    background-color: alpha(@purple_3, 0.18);
-    color: @purple_4;
-}
-
-.badge-webex {
-    background-color: alpha(@green_3, 0.18);
-    color: @green_5;
-}
-
-/* Section labels */
+/* ===== Section labels ===== */
 .section-label {
     font-size: 0.85rem;
     letter-spacing: 0.07em;
@@ -121,150 +74,144 @@ window.nm-window {
     font-weight: 800;
 }
 
-/* Buttons */
-.pill-button {
+/* ===== Analog clock ===== */
+.analog-clock {
+    margin: 8px;
+}
+
+/* ===== Meeting cards ===== */
+.meeting-cards-container {
+    /* Container for the vertical stack of cards */
+}
+
+.meeting-card {
+    border-radius: 12px;
+    margin: 4px 0;
+    border: 1px solid alpha(@borders, 0.2);
+    transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.meeting-card:hover {
+    box-shadow: 0 2px 8px alpha(black, 0.08);
+}
+
+.meeting-card-video {
+    background-color: alpha(@blue_3, 0.12);
+    border-color: alpha(@blue_3, 0.25);
+}
+
+.meeting-card-video:hover {
+    border-color: alpha(@blue_3, 0.4);
+}
+
+.meeting-card-calendar {
+    background-color: alpha(@green_3, 0.10);
+    border-color: alpha(@green_3, 0.2);
+}
+
+.meeting-card-calendar:hover {
+    border-color: alpha(@green_3, 0.35);
+}
+
+.meeting-card-ongoing {
+    box-shadow: 0 0 0 2px alpha(@success_color, 0.3);
+}
+
+.meeting-card-icon {
+    opacity: 0.8;
+}
+
+.meeting-card-icon-video {
+    color: @blue_4;
+}
+
+.meeting-card-icon-calendar {
+    color: @green_5;
+}
+
+.meeting-card-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: alpha(black, 0.85);
+}
+
+.meeting-card-time {
+    color: alpha(black, 0.6);
+    font-size: 0.9rem;
+}
+
+.meeting-card-time-ongoing {
+    color: @success_color;
+    font-weight: 600;
+}
+
+.meeting-card-join {
     border-radius: 999px;
+    font-weight: 700;
+    padding: 6px 16px;
 }
 
-.action-button {
-    transition: background-color 150ms ease, box-shadow 200ms ease;
+/* ===== Sidebar actions ===== */
+.sidebar-action {
+    margin: 4px 0;
+    border-radius: 8px;
 }
 
-.action-button:hover {
-    box-shadow: 0 1px 2px alpha(black, 0.08);
+.sidebar-action-secondary {
+    opacity: 0.85;
 }
 
-.action-button-secondary {
-    opacity: 0.9;
-}
-
-.action-button-secondary:hover {
+.sidebar-action-secondary:hover {
     opacity: 1;
 }
 
-/* Join button - prominent CTA */
-.join-button {
-    border-radius: 999px;
-    padding: 8px 20px;
-    font-weight: 700;
+/* ===== Connection status ===== */
+.connection-status {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid alpha(@borders, 0.2);
 }
 
-.hero-icon-button {
-    border-radius: 999px;
-    min-width: 30px;
-    min-height: 30px;
-    padding: 5px;
+.connection-icon {
+    opacity: 0.6;
 }
 
-.hero-delete-button:hover {
-    background-color: alpha(@error_bg_color, 0.15);
-    color: @error_color;
+.connection-label {
+    font-size: 0.85rem;
+    color: @dim_label_color;
 }
 
-/* Meeting list */
+.connection-dot {
+    min-width: 8px;
+    min-height: 8px;
+    border-radius: 50%;
+    margin-left: 6px;
+}
+
+.connection-dot-pending {
+    background-color: @warning_color;
+}
+
+.connection-dot-connected {
+    background-color: @success_color;
+}
+
+.connection-dot-error {
+    background-color: @error_color;
+}
+
+/* ===== Meeting scroller ===== */
 .meeting-scroller {
     border-radius: 14px;
 }
 
-.meeting-list {
-    background: transparent;
-}
-
-/* Meeting rows */
-.meeting-row {
-    border-radius: 12px;
-    background-color: alpha(@card_bg_color, 0.6);
-    border: 1px solid alpha(@borders, 0.3);
-    transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.meeting-row:hover {
-    background-color: @card_bg_color;
-    border-color: alpha(@borders, 0.5);
-}
-
-.meeting-live-row {
-    border-color: alpha(@success_color, 0.3);
-    background-color: alpha(@success_bg_color, 0.08);
-}
-
-.meeting-live-row:hover {
-    border-color: alpha(@success_color, 0.5);
-    background-color: alpha(@success_bg_color, 0.12);
-}
-
-.meeting-title {
-    font-weight: 700;
-    font-size: 1rem;
-    color: @window_fg_color;
-}
-
-.meeting-time {
-    color: @dim_label_color;
-    font-size: 0.9rem;
-}
-
-.meeting-live {
-    color: @success_color;
-    font-weight: 700;
-}
-
-.meeting-service {
-    color: @dim_label_color;
-    font-size: 0.85rem;
-}
-
-/* Circular dismiss button */
-.dismiss-button {
-    border-radius: 999px;
-    min-width: 28px;
-    min-height: 28px;
-    padding: 4px;
-    transition: background-color 150ms ease, color 150ms ease;
-}
-
-.dismiss-button:hover {
-    background-color: alpha(@error_bg_color, 0.15);
-    color: @error_color;
-}
-
-.event-actions-button {
-    border-radius: 999px;
-    min-width: 28px;
-    min-height: 28px;
-    padding: 4px;
-}
-
-.event-actions-popover {
-    margin: 4px;
-}
-
-.event-action-item {
-    min-width: 120px;
-    justify-content: flex-start;
-}
-
-.event-action-destructive {
-    color: @error_color;
-}
-
-/* Empty state */
-.meeting-empty-label {
-    color: @dim_label_color;
-    font-size: 0.95rem;
-}
-
+/* ===== Empty state ===== */
 .empty-state-icon {
-    opacity: 0.4;
+    opacity: 0.3;
     margin-bottom: 8px;
 }
 
-/* ActionRow customizations */
-.meeting-action-row {
-    border-radius: 12px;
-    margin: 4px 0;
-}
-
-.meeting-action-row.live {
-    background-color: alpha(@success_bg_color, 0.06);
+.empty-state-label {
+    color: @dim_label_color;
+    font-size: 1rem;
 }

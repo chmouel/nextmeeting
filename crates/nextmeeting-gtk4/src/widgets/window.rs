@@ -3,31 +3,35 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
+use crate::widgets::analog_clock;
+
+// Button label constants - used in both window.rs and application.rs
+pub const LABEL_CREATE_MEET: &str = "Create Meet";
+pub const LABEL_SNOOZE: &str = "Snooze 10m";
+pub const LABEL_CALENDAR: &str = "Calendar";
+pub const LABEL_REFRESH: &str = "Refresh";
+pub const LABEL_CLEAR_DISMISSALS: &str = "Clear Dismissals";
+
 #[derive(Clone)]
 pub struct UiWidgets {
     pub window: adw::ApplicationWindow,
-    pub status_label: gtk::Label,
-    pub hero_kicker_label: gtk::Label,
-    pub hero_title_label: gtk::Label,
-    pub hero_meta_label: gtk::Label,
-    pub hero_service_label: gtk::Label,
-    pub hero_dismiss_button: gtk::Button,
-    pub hero_decline_button: gtk::Button,
-    pub hero_delete_button: gtk::Button,
-    pub listbox: gtk::ListBox,
-    pub join_button: gtk::Button,
+    pub meeting_cards_container: gtk::Box,
+    pub connection_status_label: gtk::Label,
+    pub connection_dot: gtk::Box,
     pub create_button: gtk::Button,
     pub refresh_button: gtk::Button,
     pub snooze_button: gtk::Button,
     pub calendar_button: gtk::Button,
     pub clear_dismissals_button: gtk::Button,
+    pub sidebar_toggle_button: gtk::ToggleButton,
+    pub left_sidebar: gtk::Box,
 }
 
 pub fn build(app: &adw::Application) -> UiWidgets {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("NextMeeting")
-        .default_width(480)
+        .default_width(700)
         .default_height(640)
         .build();
     window.add_css_class("nm-window");
@@ -39,199 +43,166 @@ pub fn build(app: &adw::Application) -> UiWidgets {
         .build();
     header.set_title_widget(Some(&window_title));
 
-    let status_label = gtk::Label::builder()
-        .label("Waiting for daemon…")
+    // Sidebar toggle button
+    let sidebar_toggle_button = gtk::ToggleButton::builder()
+        .icon_name("sidebar-show-symbolic")
+        .tooltip_text("Toggle Sidebar")
+        .active(true) // Expanded by default
+        .build();
+    header.pack_start(&sidebar_toggle_button);
+
+    // ===== LEFT COLUMN =====
+    let left_column = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    left_column.add_css_class("left-column");
+    left_column.set_hexpand(true);
+
+    // Header section with title and clock
+    let header_section = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    header_section.set_valign(gtk::Align::Start);
+
+    let schedule_title = gtk::Label::builder()
+        .label("Today's Schedule")
         .xalign(0.0)
-        .css_classes(["status-pill"])
+        .hexpand(true)
+        .css_classes(["schedule-title"])
         .build();
+    header_section.append(&schedule_title);
 
-    let hero_kicker_label = gtk::Label::builder()
-        .label("Up next")
-        .xalign(0.0)
-        .css_classes(["hero-kicker"])
-        .build();
+    let analog_clock = analog_clock::build();
+    header_section.append(&analog_clock);
 
-    let hero_title_label = gtk::Label::builder()
-        .label("No upcoming meetings")
-        .xalign(0.0)
-        .wrap(true)
-        .css_classes(["hero-title"])
-        .build();
+    left_column.append(&header_section);
 
-    let hero_meta_label = gtk::Label::builder()
-        .label("Refresh to fetch meetings")
-        .xalign(0.0)
-        .css_classes(["hero-meta"])
-        .build();
-
-    let hero_service_label = gtk::Label::builder()
-        .label("No link")
-        .xalign(0.0)
-        .css_classes(["service-badge"])
-        .build();
-
-    // Join button with icon
-    let join_content = adw::ButtonContent::builder()
-        .icon_name("call-start-symbolic")
-        .label("Join")
-        .build();
-    let join_button = gtk::Button::builder()
-        .child(&join_content)
-        .css_classes(["suggested-action", "pill-button", "join-button"])
-        .sensitive(false)
-        .build();
-    let hero_dismiss_button = gtk::Button::builder()
-        .icon_name("window-close-symbolic")
-        .tooltip_text("Dismiss this event")
-        .css_classes(["flat", "circular", "hero-icon-button"])
-        .sensitive(false)
-        .build();
-    let hero_decline_button = gtk::Button::builder()
-        .icon_name("mail-send-receive-symbolic")
-        .tooltip_text("Decline this event")
-        .css_classes(["flat", "circular", "hero-icon-button"])
-        .sensitive(false)
-        .build();
-    let hero_delete_button = gtk::Button::builder()
-        .icon_name("edit-delete-symbolic")
-        .tooltip_text("Delete this event")
-        .css_classes(["flat", "circular", "hero-icon-button", "hero-delete-button"])
-        .sensitive(false)
-        .build();
-
-    let hero_header = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    hero_header.append(&hero_kicker_label);
-    hero_header.append(&hero_title_label);
-    hero_header.append(&hero_meta_label);
-
-    let hero_footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    hero_footer.set_halign(gtk::Align::Fill);
-    hero_service_label.set_hexpand(true);
-    hero_service_label.set_halign(gtk::Align::Start);
-    let hero_actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    hero_actions.append(&hero_dismiss_button);
-    hero_actions.append(&hero_decline_button);
-    hero_actions.append(&hero_delete_button);
-    hero_actions.append(&join_button);
-    hero_footer.append(&hero_service_label);
-    hero_footer.append(&hero_actions);
-
-    let hero_body = gtk::Box::new(gtk::Orientation::Vertical, 14);
-    hero_body.add_css_class("hero-card");
-    hero_body.set_margin_top(16);
-    hero_body.set_margin_bottom(16);
-    hero_body.set_margin_start(16);
-    hero_body.set_margin_end(16);
-    hero_body.append(&hero_header);
-    hero_body.append(&hero_footer);
-
-    let hero_frame = gtk::Frame::new(None);
-    hero_frame.set_child(Some(&hero_body));
-    hero_frame.add_css_class("hero-frame");
-
-    // Action buttons with icons
-    let create_content = adw::ButtonContent::builder()
-        .icon_name("video-joined-symbolic")
-        .label("Create meet")
-        .build();
-    let create_button = gtk::Button::builder()
-        .child(&create_content)
-        .css_classes(["pill-button", "action-button"])
-        .build();
-
-    let refresh_content = adw::ButtonContent::builder()
-        .icon_name("view-refresh-symbolic")
-        .label("Refresh")
-        .build();
-    let refresh_button = gtk::Button::builder()
-        .child(&refresh_content)
-        .css_classes(["pill-button", "action-button"])
-        .build();
-
-    let snooze_content = adw::ButtonContent::builder()
-        .icon_name("alarm-symbolic")
-        .label("Snooze 10m")
-        .build();
-    let snooze_button = gtk::Button::builder()
-        .child(&snooze_content)
-        .css_classes(["pill-button", "action-button", "action-button-secondary"])
-        .build();
-
-    let calendar_content = adw::ButtonContent::builder()
-        .icon_name("x-office-calendar-symbolic")
-        .label("Calendar")
-        .build();
-    let calendar_button = gtk::Button::builder()
-        .child(&calendar_content)
-        .css_classes(["pill-button", "action-button", "action-button-secondary"])
-        .build();
-
-    let clear_content = adw::ButtonContent::builder()
-        .icon_name("edit-clear-all-symbolic")
-        .label("Clear dismissals")
-        .build();
-    let clear_dismissals_button = gtk::Button::builder()
-        .child(&clear_content)
-        .css_classes(["pill-button", "action-button", "action-button-secondary"])
-        .build();
-
-    let actions_label = gtk::Label::builder()
-        .label("Quick actions")
+    // All Meetings label
+    let meetings_label = gtk::Label::builder()
+        .label("All Meetings")
         .xalign(0.0)
         .css_classes(["section-label"])
         .build();
+    left_column.append(&meetings_label);
 
-    let actions_box = gtk::FlowBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(false)
-        .row_spacing(8)
-        .column_spacing(8)
-        .max_children_per_line(5)
-        .min_children_per_line(2)
-        .build();
-    actions_box.insert(&create_button, -1);
-    actions_box.insert(&refresh_button, -1);
-    actions_box.insert(&snooze_button, -1);
-    actions_box.insert(&calendar_button, -1);
-    actions_box.insert(&clear_dismissals_button, -1);
-
-    let listbox = gtk::ListBox::new();
-    listbox.set_selection_mode(gtk::SelectionMode::None);
-    listbox.add_css_class("meeting-list");
-    listbox.add_css_class("boxed-list");
+    // Meeting cards container in scrolled window
+    let meeting_cards_container = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    meeting_cards_container.add_css_class("meeting-cards-container");
 
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
-        .child(&listbox)
+        .child(&meeting_cards_container)
         .build();
     scrolled.set_min_content_height(200);
     scrolled.set_propagate_natural_height(true);
     scrolled.add_css_class("meeting-scroller");
 
-    let agenda_label = gtk::Label::builder()
-        .label("Today")
+    left_column.append(&scrolled);
+
+    // ===== LEFT SIDEBAR =====
+    let left_sidebar = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    left_sidebar.add_css_class("left-sidebar");
+    left_sidebar.set_width_request(220);
+
+    // Quick Actions label
+    let actions_label = gtk::Label::builder()
+        .label("Quick Actions")
         .xalign(0.0)
         .css_classes(["section-label"])
         .build();
+    left_sidebar.append(&actions_label);
 
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 14);
-    root.add_css_class("root-shell");
-    root.set_margin_top(20);
-    root.set_margin_bottom(20);
-    root.set_margin_start(20);
-    root.set_margin_end(20);
-    root.append(&status_label);
-    root.append(&hero_frame);
-    root.append(&actions_label);
-    root.append(&actions_box);
-    root.append(&agenda_label);
-    root.append(&scrolled);
+    // Action buttons - stacked vertically
+    let create_content = adw::ButtonContent::builder()
+        .icon_name("video-joined-symbolic")
+        .label(LABEL_CREATE_MEET)
+        .build();
+    let create_button = gtk::Button::builder()
+        .child(&create_content)
+        .css_classes(["sidebar-action"])
+        .build();
+
+    let snooze_content = adw::ButtonContent::builder()
+        .icon_name("alarm-symbolic")
+        .label(LABEL_SNOOZE)
+        .build();
+    let snooze_button = gtk::Button::builder()
+        .child(&snooze_content)
+        .css_classes(["sidebar-action"])
+        .build();
+
+    let calendar_content = adw::ButtonContent::builder()
+        .icon_name("x-office-calendar-symbolic")
+        .label(LABEL_CALENDAR)
+        .build();
+    let calendar_button = gtk::Button::builder()
+        .child(&calendar_content)
+        .css_classes(["sidebar-action"])
+        .build();
+
+    let refresh_content = adw::ButtonContent::builder()
+        .icon_name("view-refresh-symbolic")
+        .label(LABEL_REFRESH)
+        .build();
+    let refresh_button = gtk::Button::builder()
+        .child(&refresh_content)
+        .css_classes(["sidebar-action"])
+        .build();
+
+    let clear_content = adw::ButtonContent::builder()
+        .icon_name("edit-clear-all-symbolic")
+        .label(LABEL_CLEAR_DISMISSALS)
+        .build();
+    let clear_dismissals_button = gtk::Button::builder()
+        .child(&clear_content)
+        .css_classes(["sidebar-action", "sidebar-action-secondary"])
+        .build();
+
+    left_sidebar.append(&create_button);
+    left_sidebar.append(&snooze_button);
+    left_sidebar.append(&calendar_button);
+    left_sidebar.append(&refresh_button);
+    left_sidebar.append(&clear_dismissals_button);
+
+    // Spacer to push connection status to bottom
+    let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    spacer.set_vexpand(true);
+    left_sidebar.append(&spacer);
+
+    // Connection status at bottom
+    let connection_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    connection_box.add_css_class("connection-status");
+    connection_box.set_halign(gtk::Align::Start);
+
+    let connection_icon = gtk::Image::from_icon_name("x-office-calendar-symbolic");
+    connection_icon.set_pixel_size(16);
+    connection_icon.add_css_class("connection-icon");
+    connection_box.append(&connection_icon);
+
+    let connection_status_label = gtk::Label::builder()
+        .label("Connecting…")
+        .css_classes(["connection-label"])
+        .build();
+    connection_box.append(&connection_status_label);
+
+    let connection_dot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    connection_dot.add_css_class("connection-dot");
+    connection_dot.add_css_class("connection-dot-pending");
+    connection_box.append(&connection_dot);
+
+    left_sidebar.append(&connection_box);
+
+    // ===== MAIN CONTAINER =====
+    let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 20);
+    main_container.add_css_class("main-container");
+    main_container.set_margin_top(20);
+    main_container.set_margin_bottom(20);
+    main_container.set_margin_start(20);
+    main_container.set_margin_end(20);
+    main_container.append(&left_sidebar);
+    main_container.append(&left_column);
 
     let clamp = adw::Clamp::builder()
-        .maximum_size(760)
-        .tightening_threshold(540)
-        .child(&root)
+        .maximum_size(900)
+        .tightening_threshold(600)
+        .child(&main_container)
         .build();
 
     let toolbar = adw::ToolbarView::new();
@@ -242,20 +213,15 @@ pub fn build(app: &adw::Application) -> UiWidgets {
 
     UiWidgets {
         window,
-        status_label,
-        hero_kicker_label,
-        hero_title_label,
-        hero_meta_label,
-        hero_service_label,
-        hero_dismiss_button,
-        hero_decline_button,
-        hero_delete_button,
-        listbox,
-        join_button,
+        meeting_cards_container,
+        connection_status_label,
+        connection_dot,
         create_button,
         refresh_button,
         snooze_button,
         calendar_button,
         clear_dismissals_button,
+        sidebar_toggle_button,
+        left_sidebar,
     }
 }

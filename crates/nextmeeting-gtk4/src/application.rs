@@ -6,15 +6,18 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use libadwaita::prelude::*;
 use nextmeeting_protocol::EventMutationAction;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 use crate::config::GtkConfig;
 use crate::tray::{TrayCommand, manager::TrayManager};
-use crate::utils::{format_time_range, truncate};
-use crate::widgets::window::{UiWidgets, build as build_window};
+use crate::widgets::meeting_card::MeetingCard;
+use crate::widgets::window::{
+    LABEL_CALENDAR, LABEL_CLEAR_DISMISSALS, LABEL_CREATE_MEET, LABEL_REFRESH, LABEL_SNOOZE,
+    UiWidgets, build as build_window,
+};
+use crate::window_state::WindowState;
 
 #[derive(Debug)]
 pub struct AppRuntime {
@@ -22,6 +25,7 @@ pub struct AppRuntime {
     daemon: crate::daemon::client::DaemonClient,
     pub state: crate::daemon::state::MeetingState,
     dismissals: crate::dismissals::DismissedEvents,
+    pub window_state: WindowState,
 }
 
 impl Default for AppRuntime {
@@ -39,6 +43,7 @@ impl AppRuntime {
             daemon,
             state: crate::daemon::state::MeetingState::default(),
             dismissals: crate::dismissals::DismissedEvents::load(),
+            window_state: WindowState::load(),
         }
     }
 
@@ -163,6 +168,19 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
+    // Apply initial sidebar state - read synchronously before idle callback to avoid race
+    let initial_collapsed = {
+        let guard = runtime.block_on(app_runtime.lock());
+        guard.window_state.is_sidebar_collapsed()
+    };
+    {
+        let widgets = widgets.clone();
+        glib::idle_add_local_once(move || {
+            apply_sidebar_state(&widgets, initial_collapsed);
+            widgets.sidebar_toggle_button.set_active(!initial_collapsed);
+        });
+    }
+
     let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>();
 
     {
@@ -175,30 +193,19 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
             while let Ok(event) = ui_rx.try_recv() {
                 match event {
                     UiEvent::MeetingsLoaded(meetings) => {
-                        // Update status with connected class
+                        // Update connection status
                         widgets_for_events
-                            .status_label
-                            .set_label(&format!("Connected • {} meeting(s)", meetings.len()));
+                            .connection_status_label
+                            .set_label(&format!("{} meeting(s)", meetings.len()));
                         widgets_for_events
-                            .status_label
-                            .remove_css_class("status-error");
+                            .connection_dot
+                            .remove_css_class("connection-dot-pending");
                         widgets_for_events
-                            .status_label
-                            .add_css_class("status-connected");
-
+                            .connection_dot
+                            .remove_css_class("connection-dot-error");
                         widgets_for_events
-                            .join_button
-                            .set_sensitive(meetings.iter().any(|m| m.primary_link.is_some()));
-                        widgets_for_events
-                            .hero_dismiss_button
-                            .set_sensitive(!meetings.is_empty());
-                        widgets_for_events
-                            .hero_decline_button
-                            .set_sensitive(!meetings.is_empty());
-                        widgets_for_events
-                            .hero_delete_button
-                            .set_sensitive(!meetings.is_empty());
-                        update_hero(&widgets_for_events, &meetings);
+                            .connection_dot
+                            .add_css_class("connection-dot-connected");
 
                         render_meetings(
                             &widgets_for_events,
@@ -210,17 +217,20 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                     }
                     UiEvent::ActionFailed(err) => {
                         widgets_for_events
-                            .status_label
-                            .set_label(&format!("Error • {err}"));
+                            .connection_status_label
+                            .set_label(&format!("Error: {}", truncate_error(&err)));
                         widgets_for_events
-                            .status_label
-                            .remove_css_class("status-connected");
+                            .connection_dot
+                            .remove_css_class("connection-dot-pending");
                         widgets_for_events
-                            .status_label
-                            .add_css_class("status-error");
+                            .connection_dot
+                            .remove_css_class("connection-dot-connected");
+                        widgets_for_events
+                            .connection_dot
+                            .add_css_class("connection-dot-error");
                     }
                     UiEvent::ActionSucceeded(msg) => {
-                        widgets_for_events.status_label.set_label(&msg);
+                        widgets_for_events.connection_status_label.set_label(&msg);
                     }
                 }
             }
@@ -297,149 +307,6 @@ fn connect_actions(
         let runtime = runtime.clone();
         let app_runtime = app_runtime.clone();
         let ui_tx = ui_tx.clone();
-        widgets.join_button.connect_clicked(move |_| {
-            runtime.spawn({
-                let app_runtime = app_runtime.clone();
-                let ui_tx = ui_tx.clone();
-                async move {
-                    let guard = app_runtime.lock().await;
-                    match guard.open_next_meeting() {
-                        Ok(()) => {
-                            let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                "Opened next meeting URL".to_string(),
-                            ));
-                        }
-                        Err(err) => {
-                            let _ = ui_tx.send(UiEvent::ActionFailed(err));
-                        }
-                    }
-                }
-            });
-        });
-    }
-
-    {
-        let runtime = runtime.clone();
-        let app_runtime = app_runtime.clone();
-        let ui_tx = ui_tx.clone();
-        widgets.hero_dismiss_button.connect_clicked(move |_| {
-            runtime.spawn({
-                let app_runtime = app_runtime.clone();
-                let ui_tx = ui_tx.clone();
-                async move {
-                    let mut guard = app_runtime.lock().await;
-                    let Some(meeting) = guard.state.meetings().first().cloned() else {
-                        let _ = ui_tx.send(UiEvent::ActionFailed(
-                            "No event available in hero card".to_string(),
-                        ));
-                        return;
-                    };
-                    guard.dismiss_event(&meeting.id);
-                    let meetings = guard.state.meetings().to_vec();
-                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                    let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
-                        "Dismissed event {}",
-                        meeting.id
-                    )));
-                }
-            });
-        });
-    }
-
-    {
-        let runtime = runtime.clone();
-        let app_runtime = app_runtime.clone();
-        let ui_tx = ui_tx.clone();
-        widgets.hero_decline_button.connect_clicked(move |_| {
-            let runner = runtime.clone();
-            let runtime_for_mutation = runtime.clone();
-            let app_runtime_for_task = app_runtime.clone();
-            let ui_tx_for_task = ui_tx.clone();
-            runner.spawn(async move {
-                let meeting = {
-                    let guard = app_runtime_for_task.lock().await;
-                    guard.state.meetings().first().cloned()
-                };
-                let Some(meeting) = meeting else {
-                    let _ = ui_tx_for_task.send(UiEvent::ActionFailed(
-                        "No event available in hero card".to_string(),
-                    ));
-                    return;
-                };
-
-                run_event_mutation(
-                    runtime_for_mutation.clone(),
-                    app_runtime_for_task.clone(),
-                    ui_tx_for_task.clone(),
-                    meeting.provider_name,
-                    meeting.calendar_id,
-                    meeting.id,
-                    EventMutationAction::Decline,
-                );
-            });
-        });
-    }
-
-    {
-        let runtime = runtime.clone();
-        let app_runtime = app_runtime.clone();
-        let ui_tx = ui_tx.clone();
-        let window = widgets.window.clone();
-        widgets.hero_delete_button.connect_clicked(move |_| {
-            let dialog = adw::AlertDialog::new(
-                Some("Delete this event?"),
-                Some("This removes this event occurrence from your calendar."),
-            );
-            dialog.add_responses(&[("cancel", "Cancel"), ("delete", "Delete")]);
-            dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
-            dialog.set_default_response(Some("cancel"));
-            dialog.set_close_response("cancel");
-
-            let runtime = runtime.clone();
-            let app_runtime = app_runtime.clone();
-            let ui_tx = ui_tx.clone();
-            dialog.choose(
-                Some(&window),
-                None::<&gtk::gio::Cancellable>,
-                move |response| {
-                    if response.as_str() != "delete" {
-                        return;
-                    }
-                    let runtime = runtime.clone();
-                    let app_runtime = app_runtime.clone();
-                    let ui_tx = ui_tx.clone();
-                    let mutation_runtime = runtime.clone();
-                    runtime.spawn(async move {
-                        let meeting = {
-                            let guard = app_runtime.lock().await;
-                            guard.state.meetings().first().cloned()
-                        };
-                        let Some(meeting) = meeting else {
-                            let _ = ui_tx.send(UiEvent::ActionFailed(
-                                "No event available in hero card".to_string(),
-                            ));
-                            return;
-                        };
-
-                        run_event_mutation(
-                            mutation_runtime.clone(),
-                            app_runtime.clone(),
-                            ui_tx.clone(),
-                            meeting.provider_name,
-                            meeting.calendar_id,
-                            meeting.id,
-                            EventMutationAction::Delete,
-                        );
-                    });
-                },
-            );
-        });
-    }
-
-    {
-        let runtime = runtime.clone();
-        let app_runtime = app_runtime.clone();
-        let ui_tx = ui_tx.clone();
         widgets.create_button.connect_clicked(move |_| {
             runtime.spawn({
                 let app_runtime = app_runtime.clone();
@@ -474,7 +341,7 @@ fn connect_actions(
                     match guard.snooze(10).await {
                         Ok(()) => {
                             let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                                "Notifications snoozed for 10 minutes".to_string(),
+                                "Snoozed 10 min".to_string(),
                             ));
                         }
                         Err(err) => {
@@ -499,7 +366,7 @@ fn connect_actions(
                     match guard.open_calendar_day() {
                         Ok(()) => {
                             let _ = ui_tx
-                                .send(UiEvent::ActionSucceeded("Opened calendar day".to_string()));
+                                .send(UiEvent::ActionSucceeded("Opened calendar".to_string()));
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -536,6 +403,25 @@ fn connect_actions(
             });
         });
     }
+
+    // Sidebar toggle button
+    {
+        let toggle_button = widgets.sidebar_toggle_button.clone();
+        let widgets = widgets.clone();
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        toggle_button.connect_toggled(move |btn| {
+            let collapsed = !btn.is_active();
+            apply_sidebar_state(&widgets, collapsed);
+
+            // Persist state
+            let app_runtime = app_runtime.clone();
+            runtime.spawn(async move {
+                let mut guard = app_runtime.lock().await;
+                guard.window_state.set_sidebar_collapsed(collapsed);
+            });
+        });
+    }
 }
 
 fn trigger_refresh(
@@ -549,7 +435,7 @@ fn trigger_refresh(
         match guard.force_refresh().await {
             Ok(()) => {
                 let _ = ui_tx.send(UiEvent::ActionSucceeded(
-                    "Daemon refresh requested".to_string(),
+                    "Refreshing…".to_string(),
                 ));
             }
             Err(err) => {
@@ -570,88 +456,6 @@ fn trigger_refresh(
     });
 }
 
-/// Get the CSS class for a service badge based on link kind
-fn get_service_badge_class(link: Option<&nextmeeting_core::EventLink>) -> Option<&'static str> {
-    use nextmeeting_core::LinkKind;
-    link.map(|l| match l.kind {
-        LinkKind::Zoom | LinkKind::ZoomGov | LinkKind::ZoomNative => "badge-zoom",
-        LinkKind::GoogleMeet | LinkKind::MeetStream | LinkKind::Hangouts => "badge-meet",
-        LinkKind::Teams => "badge-teams",
-        LinkKind::Webex => "badge-webex",
-        _ => "",
-    })
-    .filter(|s| !s.is_empty())
-}
-
-fn update_hero(widgets: &UiWidgets, meetings: &[nextmeeting_core::MeetingView]) {
-    if let Some(meeting) = meetings.first() {
-        let service = meeting
-            .primary_link
-            .as_ref()
-            .map(|link| link.kind.display_name().to_string())
-            .unwrap_or_else(|| "No link".to_string());
-
-        // Update kicker based on meeting state
-        if meeting.is_ongoing {
-            widgets.hero_kicker_label.set_label("Happening now");
-            widgets.hero_kicker_label.add_css_class("live-indicator");
-        } else {
-            widgets.hero_kicker_label.set_label("Up next");
-            widgets.hero_kicker_label.remove_css_class("live-indicator");
-        }
-
-        let timing = if meeting.is_ongoing {
-            widgets.hero_meta_label.add_css_class("hero-ongoing");
-            format!(
-                "Ongoing • {}",
-                format_time_range(meeting.start_local, meeting.end_local)
-            )
-        } else {
-            widgets.hero_meta_label.remove_css_class("hero-ongoing");
-            // Calculate minutes until start
-            let now = chrono::Local::now();
-            let mins_until = meeting.minutes_until_start(now);
-            if mins_until > 0 && mins_until <= 60 {
-                format!(
-                    "Starts in {} min • {}",
-                    mins_until,
-                    format_time_range(meeting.start_local, meeting.end_local)
-                )
-            } else {
-                format_time_range(meeting.start_local, meeting.end_local)
-            }
-        };
-
-        widgets
-            .hero_title_label
-            .set_label(&truncate(&meeting.title, 90));
-        widgets.hero_meta_label.set_label(&timing);
-        widgets.hero_service_label.set_label(&service);
-
-        // Update service badge styling
-        widgets.hero_service_label.remove_css_class("badge-zoom");
-        widgets.hero_service_label.remove_css_class("badge-meet");
-        widgets.hero_service_label.remove_css_class("badge-teams");
-        widgets.hero_service_label.remove_css_class("badge-webex");
-        if let Some(badge_class) = get_service_badge_class(meeting.primary_link.as_ref()) {
-            widgets.hero_service_label.add_css_class(badge_class);
-        }
-    } else {
-        widgets.hero_kicker_label.set_label("Up next");
-        widgets.hero_kicker_label.remove_css_class("live-indicator");
-        widgets.hero_title_label.set_label("No upcoming meetings");
-        widgets
-            .hero_meta_label
-            .set_label("Try Refresh to pull the latest events");
-        widgets.hero_meta_label.remove_css_class("hero-ongoing");
-        widgets.hero_service_label.set_label("No link");
-        widgets.hero_service_label.remove_css_class("badge-zoom");
-        widgets.hero_service_label.remove_css_class("badge-meet");
-        widgets.hero_service_label.remove_css_class("badge-teams");
-        widgets.hero_service_label.remove_css_class("badge-webex");
-    }
-}
-
 fn render_meetings(
     widgets: &UiWidgets,
     meetings: &[nextmeeting_core::MeetingView],
@@ -659,284 +463,149 @@ fn render_meetings(
     app_runtime: Arc<Mutex<AppRuntime>>,
     ui_tx: mpsc::Sender<UiEvent>,
 ) {
-    while let Some(child) = widgets.listbox.first_child() {
-        widgets.listbox.remove(&child);
+    // Clear existing cards
+    while let Some(child) = widgets.meeting_cards_container.first_child() {
+        widgets.meeting_cards_container.remove(&child);
     }
 
     if meetings.is_empty() {
-        let row = gtk::ListBoxRow::new();
-        row.add_css_class("meeting-empty-row");
-
-        // Empty state with icon
-        let empty_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        // Empty state
+        let empty_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
         empty_box.set_halign(gtk::Align::Center);
         empty_box.set_valign(gtk::Align::Center);
-        empty_box.set_margin_top(24);
-        empty_box.set_margin_bottom(24);
+        empty_box.set_margin_top(40);
+        empty_box.set_margin_bottom(40);
 
         let icon = gtk::Image::from_icon_name("x-office-calendar-symbolic");
-        icon.set_pixel_size(48);
+        icon.set_pixel_size(64);
         icon.add_css_class("empty-state-icon");
 
         let label = gtk::Label::builder()
-            .label("No visible meetings")
-            .css_classes(["meeting-empty-label"])
+            .label("No meetings today")
+            .css_classes(["empty-state-label"])
             .build();
 
         empty_box.append(&icon);
         empty_box.append(&label);
-        row.set_child(Some(&empty_box));
-        widgets.listbox.append(&row);
+        widgets.meeting_cards_container.append(&empty_box);
         return;
     }
 
+    // Find the first current/ongoing meeting for the JOIN NOW button
+    let current_meeting_id = find_current_meeting(meetings);
+
     for meeting in meetings {
-        let row = adw::ActionRow::builder()
-            .title(truncate(&meeting.title, 64))
-            .css_classes(["meeting-action-row"])
-            .build();
+        let show_join = current_meeting_id.as_ref() == Some(&meeting.id);
+        let card = MeetingCard::new(meeting, show_join);
 
-        // Build subtitle with time and service
-        let time_line = if meeting.is_ongoing {
-            format!(
-                "Happening now • {}",
-                format_time_range(meeting.start_local, meeting.end_local)
-            )
-        } else {
-            format_time_range(meeting.start_local, meeting.end_local)
-        };
-
-        let service = meeting
-            .primary_link
-            .as_ref()
-            .map(|link| link.kind.display_name().to_string())
-            .unwrap_or_default();
-
-        let subtitle = if service.is_empty() {
-            time_line
-        } else {
-            format!("{} • {}", time_line, service)
-        };
-        row.set_subtitle(&subtitle);
-
-        // Add live styling
-        if meeting.is_ongoing {
-            row.add_css_class("live");
-        }
-
-        let event_id = meeting.id.clone();
-        let calendar_id = meeting.calendar_id.clone();
-        let provider_name = meeting.provider_name.clone();
-        let window = widgets.window.clone();
-
-        let menu_button = gtk::MenuButton::builder()
-            .icon_name("open-menu-symbolic")
-            .css_classes(["flat", "circular", "event-actions-button"])
-            .valign(gtk::Align::Center)
-            .tooltip_text("Event actions")
-            .build();
-
-        let menu_content = gtk::Box::new(gtk::Orientation::Vertical, 4);
-        menu_content.add_css_class("event-actions-popover");
-
-        let dismiss_action = gtk::Button::builder()
-            .label("Dismiss")
-            .halign(gtk::Align::Fill)
-            .css_classes(["flat", "event-action-item"])
-            .build();
-        let decline_action = gtk::Button::builder()
-            .label("Decline")
-            .halign(gtk::Align::Fill)
-            .css_classes(["flat", "event-action-item"])
-            .build();
-        let delete_action = gtk::Button::builder()
-            .label("Delete")
-            .halign(gtk::Align::Fill)
-            .css_classes(["flat", "event-action-item", "event-action-destructive"])
-            .build();
-
-        menu_content.append(&dismiss_action);
-        menu_content.append(&decline_action);
-        menu_content.append(&delete_action);
-
-        let popover = gtk::Popover::builder().child(&menu_content).build();
-        menu_button.set_popover(Some(&popover));
-
-        {
+        // Connect join button if present
+        if let Some(ref join_btn) = card.join_button {
             let runtime = runtime.clone();
             let app_runtime = app_runtime.clone();
             let ui_tx = ui_tx.clone();
-            let popover = popover.clone();
-            let event_id = event_id.clone();
-            dismiss_action.connect_clicked(move |_| {
-                popover.popdown();
+            join_btn.connect_clicked(move |_| {
                 runtime.spawn({
                     let app_runtime = app_runtime.clone();
                     let ui_tx = ui_tx.clone();
-                    let event_id = event_id.clone();
                     async move {
-                        let mut guard = app_runtime.lock().await;
-                        guard.dismiss_event(&event_id);
-                        let meetings = guard.state.meetings().to_vec();
-                        let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                        let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
-                            "Dismissed event {event_id}"
-                        )));
+                        let guard = app_runtime.lock().await;
+                        match guard.open_next_meeting() {
+                            Ok(()) => {
+                                let _ = ui_tx.send(UiEvent::ActionSucceeded(
+                                    "Opened meeting".to_string(),
+                                ));
+                            }
+                            Err(err) => {
+                                let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                            }
+                        }
                     }
                 });
             });
         }
 
-        {
-            let runtime = runtime.clone();
-            let app_runtime = app_runtime.clone();
-            let ui_tx = ui_tx.clone();
-            let popover = popover.clone();
-            let provider_name = provider_name.clone();
-            let calendar_id = calendar_id.clone();
-            let event_id = event_id.clone();
-            decline_action.connect_clicked(move |_| {
-                popover.popdown();
-                run_event_mutation(
-                    runtime.clone(),
-                    app_runtime.clone(),
-                    ui_tx.clone(),
-                    provider_name.clone(),
-                    calendar_id.clone(),
-                    event_id.clone(),
-                    EventMutationAction::Decline,
-                );
-            });
-        }
-
-        {
-            let runtime = runtime.clone();
-            let app_runtime = app_runtime.clone();
-            let ui_tx = ui_tx.clone();
-            let popover = popover.clone();
-            let provider_name = provider_name.clone();
-            let calendar_id = calendar_id.clone();
-            let event_id = event_id.clone();
-            let window = window.clone();
-            delete_action.connect_clicked(move |_| {
-                popover.popdown();
-                let dialog = adw::AlertDialog::new(
-                    Some("Delete this event?"),
-                    Some("This removes this event occurrence from your calendar."),
-                );
-                dialog.add_responses(&[("cancel", "Cancel"), ("delete", "Delete")]);
-                dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
-                dialog.set_default_response(Some("cancel"));
-                dialog.set_close_response("cancel");
-                let runtime = runtime.clone();
-                let app_runtime = app_runtime.clone();
-                let ui_tx = ui_tx.clone();
-                let provider_name = provider_name.clone();
-                let calendar_id = calendar_id.clone();
-                let event_id = event_id.clone();
-                dialog.choose(
-                    Some(&window),
-                    None::<&gtk::gio::Cancellable>,
-                    move |response| {
-                        if response.as_str() == "delete" {
-                            run_event_mutation(
-                                runtime.clone(),
-                                app_runtime.clone(),
-                                ui_tx.clone(),
-                                provider_name.clone(),
-                                calendar_id.clone(),
-                                event_id.clone(),
-                                EventMutationAction::Delete,
-                            );
-                        }
-                    },
-                );
-            });
-        }
-
-        row.add_suffix(&menu_button);
-        widgets.listbox.append(&row);
+        widgets.meeting_cards_container.append(&card.widget);
     }
 }
 
-fn run_event_mutation(
-    runtime: Arc<Runtime>,
-    app_runtime: Arc<Mutex<AppRuntime>>,
-    ui_tx: mpsc::Sender<UiEvent>,
-    provider_name: String,
-    calendar_id: String,
-    event_id: String,
-    action: EventMutationAction,
-) {
-    let refresh_runtime = runtime.clone();
-    runtime.spawn({
-        let app_runtime = app_runtime.clone();
-        let ui_tx = ui_tx.clone();
-        async move {
-            let mut guard = app_runtime.lock().await;
-            match guard
-                .mutate_event(&provider_name, &calendar_id, &event_id, action)
-                .await
-            {
-                Ok(()) => {
-                    let meetings = guard.state.meetings().to_vec();
-                    let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-                    let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
-                        "{} event {}",
-                        mutation_action_label(action),
-                        event_id
-                    )));
-                }
-                Err(err) => {
-                    let _ = ui_tx.send(UiEvent::ActionFailed(err));
-                    return;
-                }
-            }
-            drop(guard);
-            trigger_post_mutation_refresh(
-                refresh_runtime.clone(),
-                app_runtime.clone(),
-                ui_tx.clone(),
-                mutation_action_label(action).to_string(),
-                event_id.clone(),
-            );
+/// Find the ID of the current/ongoing meeting that should get the JOIN NOW button.
+/// Priority: ongoing meetings first, then meetings starting within 5 minutes.
+fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<String> {
+    // First check for ongoing meetings
+    if let Some(m) = meetings.iter().find(|m| m.is_ongoing) {
+        return Some(m.id.clone());
+    }
+
+    // Check for meetings starting within 5 minutes
+    let now = chrono::Local::now();
+    for meeting in meetings {
+        let mins_until = meeting.minutes_until_start(now);
+        if mins_until >= 0 && mins_until <= 5 {
+            return Some(meeting.id.clone());
         }
-    });
+    }
+
+    // Return first meeting with a link as fallback
+    meetings
+        .iter()
+        .find(|m| m.primary_link.is_some())
+        .map(|m| m.id.clone())
 }
 
-fn trigger_post_mutation_refresh(
-    runtime: Arc<Runtime>,
-    app_runtime: Arc<Mutex<AppRuntime>>,
-    ui_tx: mpsc::Sender<UiEvent>,
-    action_label: String,
-    event_id: String,
-) {
-    runtime.spawn(async move {
-        let mut guard = app_runtime.lock().await;
-        if let Err(err) = guard.force_refresh().await {
-            let _ = ui_tx.send(UiEvent::ActionFailed(format!(
-                "{} event {} but refresh request failed: {}",
-                action_label, event_id, err
-            )));
-            return;
-        }
-
-        if let Err(err) = guard.refresh().await {
-            let _ = ui_tx.send(UiEvent::ActionFailed(format!(
-                "{} event {} but refresh failed: {}",
-                action_label, event_id, err
-            )));
-            return;
-        }
-
-        let meetings = guard.state.meetings().to_vec();
-        let _ = ui_tx.send(UiEvent::MeetingsLoaded(meetings));
-    });
+fn truncate_error(err: &str) -> String {
+    if err.len() > 30 {
+        format!("{}…", &err[..30])
+    } else {
+        err.to_string()
+    }
 }
 
-fn mutation_action_label(action: EventMutationAction) -> &'static str {
-    match action {
-        EventMutationAction::Decline => "Declined",
-        EventMutationAction::Delete => "Deleted",
+fn apply_sidebar_state(widgets: &UiWidgets, collapsed: bool) {
+    if collapsed {
+        widgets.left_sidebar.add_css_class("left-sidebar-collapsed");
+        widgets.left_sidebar.set_width_request(64);
+
+        // Update toggle button icon and tooltip
+        widgets
+            .sidebar_toggle_button
+            .set_icon_name("sidebar-show-symbolic");
+        widgets
+            .sidebar_toggle_button
+            .set_tooltip_text(Some("Show Sidebar"));
+
+        // Hide button labels
+        set_button_label(&widgets.create_button, "");
+        set_button_label(&widgets.snooze_button, "");
+        set_button_label(&widgets.calendar_button, "");
+        set_button_label(&widgets.refresh_button, "");
+        set_button_label(&widgets.clear_dismissals_button, "");
+    } else {
+        widgets
+            .left_sidebar
+            .remove_css_class("left-sidebar-collapsed");
+        widgets.left_sidebar.set_width_request(220);
+
+        // Update toggle button icon and tooltip
+        widgets
+            .sidebar_toggle_button
+            .set_icon_name("sidebar-hide-symbolic");
+        widgets
+            .sidebar_toggle_button
+            .set_tooltip_text(Some("Hide Sidebar"));
+
+        // Restore button labels
+        set_button_label(&widgets.create_button, LABEL_CREATE_MEET);
+        set_button_label(&widgets.snooze_button, LABEL_SNOOZE);
+        set_button_label(&widgets.calendar_button, LABEL_CALENDAR);
+        set_button_label(&widgets.refresh_button, LABEL_REFRESH);
+        set_button_label(&widgets.clear_dismissals_button, LABEL_CLEAR_DISMISSALS);
+    }
+}
+
+fn set_button_label(button: &gtk::Button, label: &str) {
+    if let Some(child) = button.child() {
+        if let Some(btn_content) = child.downcast_ref::<adw::ButtonContent>() {
+            btn_content.set_label(label);
+        }
     }
 }
