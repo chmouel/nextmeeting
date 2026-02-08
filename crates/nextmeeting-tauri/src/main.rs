@@ -499,6 +499,19 @@ where
     LaunchOptions { mock, mode }
 }
 
+#[cfg(target_os = "linux")]
+fn effective_launch_mode(mode: LaunchMode) -> LaunchMode {
+    match mode {
+        LaunchMode::Menubar => LaunchMode::Desktop,
+        other => other,
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn effective_launch_mode(mode: LaunchMode) -> LaunchMode {
+    mode
+}
+
 fn truncate_title(title: &str, max_len: Option<usize>) -> String {
     let max = max_len.unwrap_or(40);
     if max == 0 {
@@ -746,6 +759,9 @@ fn setup_menubar_mode(app: &mut tauri::App<tauri::Wry>) -> tauri::Result<()> {
 
     hide_main_window(app.handle())?;
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "linux")]
+        let _ = window.set_always_on_top(false);
+        #[cfg(not(target_os = "linux"))]
         let _ = window.set_always_on_top(true);
     }
 
@@ -945,6 +961,7 @@ fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
 fn main() {
     let env_mode = std::env::var("NEXTMEETING_GUI_MODE").ok();
     let launch = parse_launch_options(std::env::args(), env_mode.as_deref());
+    let launch_mode = effective_launch_mode(launch.mode);
     let config = ClientConfig::load().unwrap_or_default();
     let dismissed = Arc::new(Mutex::new(DismissedEvents::load()));
 
@@ -968,7 +985,7 @@ fn main() {
             quit_app
         ]);
 
-    configure_builder(builder, launch.mode)
+    configure_builder(builder, launch_mode)
         .run(tauri::generate_context!())
         .expect("failed to run nextmeeting GUI");
 }
@@ -1047,6 +1064,23 @@ mod tests {
         let options = parse_launch_options(args, Some("menubar"));
 
         assert_eq!(options.mode, LaunchMode::Desktop);
+    }
+
+    #[test]
+    fn effective_launch_mode_keeps_desktop() {
+        assert_eq!(effective_launch_mode(LaunchMode::Desktop), LaunchMode::Desktop);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn effective_launch_mode_disables_menubar_on_linux() {
+        assert_eq!(effective_launch_mode(LaunchMode::Menubar), LaunchMode::Desktop);
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn effective_launch_mode_keeps_menubar_off_linux() {
+        assert_eq!(effective_launch_mode(LaunchMode::Menubar), LaunchMode::Menubar);
     }
 
     #[test]

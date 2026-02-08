@@ -2,12 +2,12 @@
 
 NextMeeting is a calendar companion for Linux and macOS desktop environments.
 It integrates with Google Calendar to display upcoming events in a status bar
-(such as Waybar), in a desktop menubar app, or in your terminal.
+(such as Waybar), in a desktop app (plus a macOS menubar app), or in your terminal.
 
 ## Features
 
 - Google Calendar integration with OAuth authentication.
-- Waybar integration plus a standalone desktop/menubar application.
+- Waybar integration plus a standalone desktop application and a macOS menubar mode.
 - Automatic meeting-link detection for Zoom, Google Meet, Teams, Webex, and Jitsi.
 - Customisable desktop alerts before meetings commence.
 - Client/server model: a background daemon with a responsive CLI client.
