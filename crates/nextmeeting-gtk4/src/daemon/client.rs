@@ -3,7 +3,7 @@ use std::time::Duration;
 use nextmeeting_client::config::ClientConfig;
 use nextmeeting_client::socket::SocketClient;
 use nextmeeting_core::MeetingView;
-use nextmeeting_protocol::{EventMutationAction, MeetingsFilter, Request, Response};
+use nextmeeting_protocol::{EventMutationAction, MeetingsFilter, Request, Response, StatusInfo};
 
 #[derive(Debug, Clone)]
 pub struct DaemonClient {
@@ -93,6 +93,19 @@ impl DaemonClient {
             .map_err(|e| e.to_string())?;
         match response {
             Response::Ok => Ok(()),
+            Response::Error { error } => Err(error.message),
+            other => Err(format!("unexpected response: {other:?}")),
+        }
+    }
+
+    pub async fn get_status(&self) -> Result<StatusInfo, String> {
+        let response = self
+            .socket_client()
+            .send(Request::Status)
+            .await
+            .map_err(|e| e.to_string())?;
+        match response {
+            Response::Status { info } => Ok(info),
             Response::Error { error } => Err(error.message),
             other => Err(format!("unexpected response: {other:?}")),
         }

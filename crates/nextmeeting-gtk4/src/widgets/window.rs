@@ -16,7 +16,7 @@ pub struct UiWidgets {
     pub clear_dismissals_button: gtk::Button,
 }
 
-pub fn build(app: &adw::Application) -> UiWidgets {
+pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("NextMeeting")
@@ -91,7 +91,7 @@ pub fn build(app: &adw::Application) -> UiWidgets {
 
     let snooze_button = gtk::Button::builder()
         .icon_name("alarm-symbolic")
-        .tooltip_text("Hide notifications for 10 minutes")
+        .tooltip_text(&format!("Hide notifications for {} minutes", snooze_minutes))
         .css_classes(["sidebar-action"])
         .build();
 

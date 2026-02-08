@@ -10,10 +10,17 @@ use nextmeeting_protocol::EventMutationAction;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
+use chrono::{DateTime, Local, Utc};
+
 use crate::config::GtkConfig;
 use crate::tray::{TrayCommand, manager::TrayManager};
 use crate::widgets::meeting_card::MeetingCard;
 use crate::widgets::window::{UiWidgets, build as build_window};
+
+fn format_snooze_time(until: DateTime<Utc>) -> String {
+    let local: DateTime<Local> = until.into();
+    local.format("%H:%M").to_string()
+}
 
 #[derive(Debug)]
 pub struct AppRuntime {
@@ -21,6 +28,7 @@ pub struct AppRuntime {
     daemon: crate::daemon::client::DaemonClient,
     pub state: crate::daemon::state::MeetingState,
     dismissals: crate::dismissals::DismissedEvents,
+    snooze_minutes: u32,
 }
 
 impl Default for AppRuntime {
@@ -33,12 +41,18 @@ impl AppRuntime {
     pub fn new() -> Self {
         let config = GtkConfig::load();
         let daemon = crate::daemon::client::DaemonClient::from_config(&config.client);
+        let snooze_minutes = config.snooze_minutes();
         Self {
             config,
             daemon,
             state: crate::daemon::state::MeetingState::default(),
             dismissals: crate::dismissals::DismissedEvents::load(),
+            snooze_minutes,
         }
+    }
+
+    pub fn snooze_minutes(&self) -> u32 {
+        self.snooze_minutes
     }
 
     pub async fn refresh(&mut self) -> Result<usize, String> {
@@ -58,6 +72,14 @@ impl AppRuntime {
 
     pub async fn snooze(&self, minutes: u32) -> Result<(), String> {
         self.daemon.snooze(minutes).await
+    }
+
+    pub async fn get_snoozed_until(&self) -> Option<DateTime<Utc>> {
+        self.daemon
+            .get_status()
+            .await
+            .ok()
+            .and_then(|s| s.snoozed_until)
     }
 
     pub fn dismiss_event(&mut self, event_id: &str) {
@@ -113,6 +135,7 @@ enum UiEvent {
     MeetingsLoaded(Vec<nextmeeting_core::MeetingView>),
     ActionFailed(String),
     ActionSucceeded(String),
+    SnoozeStateChanged(Option<DateTime<Utc>>),
 }
 
 impl GtkApp {
@@ -151,7 +174,12 @@ impl GtkApp {
 }
 
 fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mutex<AppRuntime>>) {
-    let widgets = Rc::new(build_window(app));
+    // Get snooze_minutes synchronously at startup
+    let snooze_minutes = runtime.block_on(async {
+        let guard = app_runtime.lock().await;
+        guard.snooze_minutes()
+    });
+    let widgets = Rc::new(build_window(app, snooze_minutes));
     widgets.window.set_hide_on_close(true);
 
     let provider = gtk::CssProvider::new();
@@ -187,6 +215,9 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
                     }
                     UiEvent::ActionSucceeded(_msg) => {
                         // Success handling - could add toast notification here
+                    }
+                    UiEvent::SnoozeStateChanged(snoozed_until) => {
+                        update_snooze_button(&widgets_for_events.snooze_button, snoozed_until, snooze_minutes);
                     }
                 }
             }
@@ -240,7 +271,41 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         });
     }
 
-    trigger_refresh(runtime, app_runtime, ui_tx);
+    // Periodic snooze status check (every 30 seconds)
+    {
+        let runtime_for_snooze = runtime.clone();
+        let app_runtime_for_snooze = app_runtime.clone();
+        let ui_tx_for_snooze = ui_tx.clone();
+
+        glib::source::timeout_add_seconds_local(30, move || {
+            let runtime = runtime_for_snooze.clone();
+            let app_runtime = app_runtime_for_snooze.clone();
+            let ui_tx = ui_tx_for_snooze.clone();
+
+            runtime.spawn(async move {
+                let guard = app_runtime.lock().await;
+                let snoozed_until = guard.get_snoozed_until().await;
+                let _ = ui_tx.send(UiEvent::SnoozeStateChanged(snoozed_until));
+            });
+
+            glib::ControlFlow::Continue
+        });
+    }
+
+    trigger_refresh(runtime.clone(), app_runtime.clone(), ui_tx.clone());
+
+    // Initial snooze state check
+    {
+        let app_runtime_init = app_runtime.clone();
+        let ui_tx_init = ui_tx;
+
+        runtime.spawn(async move {
+            let guard = app_runtime_init.lock().await;
+            let snoozed_until = guard.get_snoozed_until().await;
+            let _ = ui_tx_init.send(UiEvent::SnoozeStateChanged(snoozed_until));
+        });
+    }
+
     widgets.window.present();
 }
 
@@ -294,10 +359,29 @@ fn connect_actions(
                 let ui_tx = ui_tx.clone();
                 async move {
                     let guard = app_runtime.lock().await;
-                    match guard.snooze(10).await {
+                    // Check if already snoozed - if so, clear it (toggle behavior)
+                    let currently_snoozed = guard.get_snoozed_until().await;
+                    let is_active = currently_snoozed
+                        .map(|until| until > Utc::now())
+                        .unwrap_or(false);
+
+                    let minutes = if is_active { 0 } else { guard.snooze_minutes() };
+                    match guard.snooze(minutes).await {
                         Ok(()) => {
-                            let _ =
-                                ui_tx.send(UiEvent::ActionSucceeded("Snoozed 10 min".to_string()));
+                            if is_active {
+                                let _ = ui_tx.send(UiEvent::ActionSucceeded(
+                                    "Snooze cleared".to_string(),
+                                ));
+                                let _ = ui_tx.send(UiEvent::SnoozeStateChanged(None));
+                            } else {
+                                let _ = ui_tx.send(UiEvent::ActionSucceeded(format!(
+                                    "Snoozed {} min",
+                                    minutes
+                                )));
+                                // Query the snoozed_until from server to update UI
+                                let snoozed_until = guard.get_snoozed_until().await;
+                                let _ = ui_tx.send(UiEvent::SnoozeStateChanged(snoozed_until));
+                            }
                         }
                         Err(err) => {
                             let _ = ui_tx.send(UiEvent::ActionFailed(err));
@@ -483,4 +567,21 @@ fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<St
         .iter()
         .find(|m| m.primary_link.is_some())
         .map(|m| m.id.clone())
+}
+
+fn update_snooze_button(button: &gtk::Button, snoozed_until: Option<DateTime<Utc>>, snooze_minutes: u32) {
+    let now = Utc::now();
+    match snoozed_until {
+        Some(until) if until > now => {
+            button.add_css_class("snoozed");
+            button.set_tooltip_text(Some(&format!("Snoozed until {}", format_snooze_time(until))));
+        }
+        _ => {
+            button.remove_css_class("snoozed");
+            button.set_tooltip_text(Some(&format!(
+                "Hide notifications for {} minutes",
+                snooze_minutes
+            )));
+        }
+    }
 }

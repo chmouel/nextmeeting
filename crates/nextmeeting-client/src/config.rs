@@ -187,6 +187,9 @@ pub struct NotificationSettings {
 
     /// Foreground color for "soon" notifications in Waybar.
     pub min_color_foreground: Option<String>,
+
+    /// Snooze duration in minutes (default: 10).
+    pub snooze_minutes: Option<u32>,
 }
 
 /// Server/connection settings.

@@ -124,6 +124,10 @@ window.nm-window {
     border-radius: 8px;
 }
 
+.sidebar-action.snoozed {
+    background-color: alpha(@warning_color, 0.3);
+}
+
 .sidebar-action-secondary {
     opacity: 0.85;
 }
