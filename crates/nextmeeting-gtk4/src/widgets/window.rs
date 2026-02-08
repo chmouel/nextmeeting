@@ -3,8 +3,6 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
-use crate::widgets::analog_clock;
-
 #[derive(Clone)]
 pub struct UiWidgets {
     pub window: adw::ApplicationWindow,
@@ -34,24 +32,31 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     header.set_title_widget(Some(&window_title));
 
     // ===== LEFT COLUMN =====
-    let left_column = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    let left_column = gtk::Box::new(gtk::Orientation::Vertical, 8);
     left_column.add_css_class("left-column");
     left_column.set_hexpand(true);
 
-    // Header section with title and clock
+    // Header section with title
     let header_section = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     header_section.set_valign(gtk::Align::Start);
 
     let schedule_title = gtk::Label::builder()
         .label("Today's Schedule")
         .xalign(0.0)
-        .hexpand(true)
         .css_classes(["schedule-title"])
         .build();
-    header_section.append(&schedule_title);
 
-    let analog_clock = analog_clock::build();
-    header_section.append(&analog_clock);
+    let date_label = gtk::Label::builder()
+        .label(&chrono::Local::now().format("%A, %B %-d").to_string())
+        .xalign(0.0)
+        .css_classes(["schedule-date"])
+        .build();
+
+    let title_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    title_box.set_hexpand(true);
+    title_box.append(&schedule_title);
+    title_box.append(&date_label);
+    header_section.append(&title_box);
 
     left_column.append(&header_section);
 
@@ -64,7 +69,7 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     left_column.append(&meetings_label);
 
     // Meeting cards container in scrolled window
-    let meeting_cards_container = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let meeting_cards_container = gtk::Box::new(gtk::Orientation::Vertical, 4);
     meeting_cards_container.add_css_class("meeting-cards-container");
 
     let scrolled = gtk::ScrolledWindow::builder()
@@ -124,12 +129,12 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     left_sidebar.append(&clear_dismissals_button);
 
     // ===== MAIN CONTAINER =====
-    let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 20);
+    let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     main_container.add_css_class("main-container");
-    main_container.set_margin_top(20);
-    main_container.set_margin_bottom(20);
-    main_container.set_margin_start(20);
-    main_container.set_margin_end(20);
+    main_container.set_margin_top(12);
+    main_container.set_margin_bottom(12);
+    main_container.set_margin_start(12);
+    main_container.set_margin_end(12);
     main_container.append(&left_sidebar);
     main_container.append(&left_column);
 

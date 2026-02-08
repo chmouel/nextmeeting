@@ -32,6 +32,13 @@ window.nm-window {
     color: @window_fg_color;
 }
 
+.schedule-date {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: @accent_color;
+    letter-spacing: 0.03em;
+}
+
 /* ===== Section labels ===== */
 .section-label {
     font-size: 0.85rem;
@@ -39,11 +46,6 @@ window.nm-window {
     text-transform: uppercase;
     color: @dim_label_color;
     font-weight: 800;
-}
-
-/* ===== Analog clock ===== */
-.analog-clock {
-    margin: 8px;
 }
 
 /* ===== Meeting cards ===== */
