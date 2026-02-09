@@ -147,8 +147,10 @@ impl AppRuntime {
             .map_err(|e| e.to_string())
     }
 
-    pub fn edit_calendar_event_url(&self, url: &str) -> Result<(), String> {
-        nextmeeting_client::actions::edit_calendar_event_url(url).map_err(|e| e.to_string())
+    pub fn edit_calendar_event_url(&self, url: &str, event_id: &str) -> Result<(), String> {
+        let domain = self.config.client.google_domain.as_deref();
+        nextmeeting_client::actions::edit_calendar_event_url(url, event_id, domain)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -706,16 +708,18 @@ fn render_meetings(
             let app_runtime = app_runtime.clone();
             let ui_tx = ui_tx.clone();
             let calendar_url = meeting.calendar_url.clone();
+            let event_id_for_edit = meeting.id.clone();
             card.calendar_button.connect_clicked(move |_| {
                 let runtime = runtime.clone();
                 let app_runtime = app_runtime.clone();
                 let ui_tx = ui_tx.clone();
                 let calendar_url = calendar_url.clone();
+                let event_id = event_id_for_edit.clone();
                 runtime.spawn(async move {
                     match calendar_url {
                         Some(url) => {
                             let guard = app_runtime.lock().await;
-                            match guard.edit_calendar_event_url(&url) {
+                            match guard.edit_calendar_event_url(&url, &event_id) {
                                 Ok(()) => {
                                     let _ = ui_tx.send(UiEvent::ActionSucceeded(
                                         "Opened calendar event editor".to_string(),

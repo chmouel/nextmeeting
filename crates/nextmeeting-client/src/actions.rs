@@ -70,29 +70,32 @@ pub fn open_calendar_day(
 }
 
 /// Opens a specific calendar event URL in edit mode in the default browser.
-pub fn edit_calendar_event_url(url: &str) -> ClientResult<()> {
+pub fn edit_calendar_event_url(
+    url: &str,
+    event_id: &str,
+    google_domain: Option<&str>,
+) -> ClientResult<()> {
     let url = url.trim();
     if url.is_empty() {
         return Err(ClientError::Action("calendar event URL is empty".into()));
     }
 
-    let edit_url = calendar_edit_url(url);
+    let edit_url = calendar_edit_url(url, event_id, google_domain);
     info!(url = %edit_url, "opening calendar event editor URL");
     open::that(&edit_url).map_err(|e| ClientError::Action(format!("failed to open URL: {}", e)))?;
     Ok(())
 }
 
-fn calendar_edit_url(url: &str) -> String {
-    if is_google_calendar_event_url(url) && !url.contains("action=EDIT") {
-        let sep = if url.contains('?') { '&' } else { '?' };
-        return format!("{url}{sep}action=EDIT");
+fn calendar_edit_url(url: &str, event_id: &str, google_domain: Option<&str>) -> String {
+    if url.contains("calendar.google.") || url.contains("google.com/calendar") {
+        let base = if let Some(domain) = google_domain {
+            format!("https://calendar.google.com/a/{domain}/calendar/r/eventedit/{event_id}")
+        } else {
+            format!("https://calendar.google.com/calendar/r/eventedit/{event_id}")
+        };
+        return base;
     }
     url.to_string()
-}
-
-fn is_google_calendar_event_url(url: &str) -> bool {
-    (url.contains("calendar.google.") || url.contains("google.com/calendar"))
-        && (url.contains("/event") || url.contains("eid="))
 }
 
 /// Sends a snooze request to the server.
@@ -416,7 +419,7 @@ mod tests {
 
     #[test]
     fn edit_calendar_event_url_rejects_empty() {
-        let result = edit_calendar_event_url("   ");
+        let result = edit_calendar_event_url("   ", "event123", None);
         assert!(result.is_err());
         assert!(
             result
@@ -427,17 +430,26 @@ mod tests {
     }
 
     #[test]
-    fn calendar_edit_url_adds_action_for_google_event() {
+    fn calendar_edit_url_constructs_eventedit_url() {
+        let url = "https://www.google.com/calendar/event?eid=abc123";
+        assert_eq!(
+            calendar_edit_url(url, "event456", None),
+            "https://calendar.google.com/calendar/r/eventedit/event456"
+        );
+    }
+
+    #[test]
+    fn calendar_edit_url_with_google_domain() {
         let url = "https://calendar.google.com/calendar/u/0/r/event?eid=abc123";
         assert_eq!(
-            calendar_edit_url(url),
-            "https://calendar.google.com/calendar/u/0/r/event?eid=abc123&action=EDIT"
+            calendar_edit_url(url, "event456", Some("example.com")),
+            "https://calendar.google.com/a/example.com/calendar/r/eventedit/event456"
         );
     }
 
     #[test]
     fn calendar_edit_url_keeps_non_google_url() {
         let url = "https://example.com/event/123";
-        assert_eq!(calendar_edit_url(url), url.to_string());
+        assert_eq!(calendar_edit_url(url, "event456", None), url.to_string());
     }
 }
