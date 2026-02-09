@@ -49,6 +49,8 @@ pub enum OutputFormat {
 pub enum UrgencyClass {
     /// Meeting is currently ongoing.
     Ongoing,
+    /// Meeting is currently ongoing and close to ending.
+    EndingSoon,
     /// Meeting starts soon (within threshold).
     Soon,
     /// Meeting is upcoming but not imminent.
@@ -62,6 +64,7 @@ impl UrgencyClass {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Ongoing => "ongoing",
+            Self::EndingSoon => "ending_soon",
             Self::Soon => "soon",
             Self::Upcoming => "upcoming",
             Self::AllDay => "allday",
@@ -102,6 +105,10 @@ pub struct FormatOptions {
     pub notify_min_color_foreground: Option<String>,
     /// Whether to show all-day meetings in Waybar output.
     pub waybar_show_all_day: bool,
+    /// Enable "ending soon" behaviour for ongoing meetings.
+    pub end_warning_enabled: bool,
+    /// Minutes before meeting end to mark as "ending soon".
+    pub end_warning_minutes_before: Option<i64>,
 }
 
 impl Default for FormatOptions {
@@ -122,6 +129,8 @@ impl Default for FormatOptions {
             notify_min_color: None,
             notify_min_color_foreground: None,
             waybar_show_all_day: true,
+            end_warning_enabled: false,
+            end_warning_minutes_before: None,
         }
     }
 }
@@ -496,6 +505,9 @@ impl OutputFormatter {
         }
 
         if meeting.start_local <= now && now < meeting.end_local {
+            if self.is_meeting_ending_soon(meeting, now) {
+                return UrgencyClass::EndingSoon;
+            }
             return UrgencyClass::Ongoing;
         }
 
@@ -505,6 +517,25 @@ impl OutputFormatter {
         } else {
             UrgencyClass::Upcoming
         }
+    }
+
+    /// Returns true when a meeting is ongoing and within the configured end-warning window.
+    fn is_meeting_ending_soon(&self, meeting: &MeetingView, now: DateTime<Local>) -> bool {
+        if !self.options.end_warning_enabled {
+            return false;
+        }
+
+        let threshold = match self.options.end_warning_minutes_before {
+            Some(minutes) if minutes > 0 => minutes,
+            _ => return false,
+        };
+
+        if !(meeting.start_local <= now && now < meeting.end_local) {
+            return false;
+        }
+
+        let minutes_left = meeting.minutes_until_end(now);
+        minutes_left >= 0 && minutes_left <= threshold
     }
 
     /// Formats the time display for a meeting.
@@ -823,6 +854,25 @@ mod tests {
         MeetingView::from_event(&event, now)
     }
 
+    fn ongoing_meeting_ending_in(now: DateTime<Utc>, minutes_until_end: i64) -> MeetingView {
+        let end = now + chrono::Duration::minutes(minutes_until_end);
+        let start = end - chrono::Duration::minutes(30);
+
+        let event = NormalizedEvent::new(
+            "evt-ongoing",
+            "Sprint Review",
+            EventTime::from_utc(start),
+            EventTime::from_utc(end),
+            "primary",
+        )
+        .with_link(EventLink::new(
+            LinkKind::GoogleMeet,
+            "https://meet.google.com/abc-defg-hij",
+        ));
+
+        MeetingView::from_event(&event, now)
+    }
+
     mod ellipsis_tests {
         use super::*;
 
@@ -899,6 +949,7 @@ mod tests {
         #[test]
         fn as_str_values() {
             assert_eq!(UrgencyClass::Ongoing.as_str(), "ongoing");
+            assert_eq!(UrgencyClass::EndingSoon.as_str(), "ending_soon");
             assert_eq!(UrgencyClass::Soon.as_str(), "soon");
             assert_eq!(UrgencyClass::Upcoming.as_str(), "upcoming");
             assert_eq!(UrgencyClass::AllDay.as_str(), "allday");
@@ -917,6 +968,8 @@ mod tests {
             assert_eq!(opts.hour_separator, ":");
             assert_eq!(opts.time_format, TimeFormat::H24);
             assert!(opts.show_relative_time);
+            assert!(!opts.end_warning_enabled);
+            assert_eq!(opts.end_warning_minutes_before, None);
         }
     }
 
@@ -1055,6 +1108,21 @@ mod tests {
             assert!(output.text.contains("Team Standup"));
             assert!(output.class.is_some());
             assert!(!output.tooltip.is_empty());
+        }
+
+        #[test]
+        fn format_waybar_ending_soon_class() {
+            let now_utc = utc(2025, 2, 5, 10, 0, 0);
+            let now_local = local_from_utc(now_utc);
+            let meeting = ongoing_meeting_ending_in(now_utc, 4);
+            let mut opts = FormatOptions::default();
+            opts.end_warning_enabled = true;
+            opts.end_warning_minutes_before = Some(5);
+            let formatter = OutputFormatter::new(opts);
+
+            let output = formatter.format_waybar_at(&[meeting], "No meetings", now_local);
+
+            assert_eq!(output.class, Some("ending_soon".to_string()));
         }
 
         #[test]

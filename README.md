@@ -96,6 +96,10 @@ Display timing notes:
 - Near-term meetings are shown as relative text (`In 15 minutes`).
 - Meetings beyond `display.until_offset` (default 60 minutes) are shown as absolute time.
 - Cross-day meetings are shown as `Tomorrow at ...` or `Mon 03 at ...`.
+- Optional end-warning mode is disabled by default; when enabled, you must set
+  `notifications.end_warning_minutes_before`.
+- With end-warning mode enabled, Waybar output uses class `ending_soon` when an
+  ongoing meeting is close to finishing.
 
 ## Environment Variables
 

@@ -351,6 +351,10 @@ fn render_output(cli: &Cli, config: &ClientConfig, meetings: &[MeetingView]) {
         format_options.waybar_show_all_day = show;
     }
 
+    format_options.end_warning_enabled = notifications.end_warning_enabled;
+    format_options.end_warning_minutes_before =
+        notifications.end_warning_minutes_before.map(i64::from);
+
     let formatter = OutputFormatter::new(format_options);
     let no_meeting_text = &display.no_meeting_text;
 

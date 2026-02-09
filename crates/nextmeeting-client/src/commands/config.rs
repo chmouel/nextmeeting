@@ -46,6 +46,10 @@ pub fn validate(config: &ClientConfig) -> ClientResult<()> {
         }
     }
 
+    config.notifications.validate_end_warning().map_err(|e| {
+        crate::error::ClientError::Config(format!("invalid notifications configuration: {}", e))
+    })?;
+
     println!("Configuration is valid.");
     Ok(())
 }
@@ -55,4 +59,29 @@ pub fn path() -> ClientResult<()> {
     let config_path = ClientConfig::default_path();
     println!("config: {}", config_path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate;
+    use crate::config::ClientConfig;
+
+    #[test]
+    fn validate_rejects_enabled_end_warning_without_threshold() {
+        let mut config = ClientConfig::default();
+        config.notifications.end_warning_enabled = true;
+        let err = validate(&config).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("invalid notifications configuration")
+        );
+    }
+
+    #[test]
+    fn validate_accepts_enabled_end_warning_with_threshold() {
+        let mut config = ClientConfig::default();
+        config.notifications.end_warning_enabled = true;
+        config.notifications.end_warning_minutes_before = Some(5);
+        assert!(validate(&config).is_ok());
+    }
 }

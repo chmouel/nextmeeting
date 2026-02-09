@@ -190,6 +190,34 @@ pub struct NotificationSettings {
 
     /// Snooze duration in minutes (default: 10).
     pub snooze_minutes: Option<u32>,
+
+    /// Enable warning shortly before an ongoing meeting ends.
+    pub end_warning_enabled: bool,
+
+    /// Minutes before meeting end to trigger the end-warning feature.
+    pub end_warning_minutes_before: Option<u32>,
+}
+
+impl NotificationSettings {
+    /// Validates end-warning notification settings.
+    pub fn validate_end_warning(&self) -> Result<(), String> {
+        if !self.end_warning_enabled {
+            return Ok(());
+        }
+
+        let minutes = self.end_warning_minutes_before.ok_or_else(|| {
+            "notifications.end_warning_enabled is true but notifications.end_warning_minutes_before is not set"
+                .to_string()
+        })?;
+
+        if minutes == 0 {
+            return Err(
+                "notifications.end_warning_minutes_before must be greater than zero".to_string(),
+            );
+        }
+
+        Ok(())
+    }
 }
 
 /// Server/connection settings.
@@ -648,5 +676,47 @@ client_secret = "env::_NM_TOML_TEST_SECRET"
             accounts: vec![test_account("work"), test_account("personal")],
         };
         assert!(settings.validate().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod notification_settings_tests {
+    use super::NotificationSettings;
+
+    #[test]
+    fn end_warning_disabled_allows_missing_threshold() {
+        let settings = NotificationSettings::default();
+        assert!(settings.validate_end_warning().is_ok());
+    }
+
+    #[test]
+    fn end_warning_enabled_requires_threshold() {
+        let settings = NotificationSettings {
+            end_warning_enabled: true,
+            ..NotificationSettings::default()
+        };
+        let err = settings.validate_end_warning().unwrap_err();
+        assert!(err.contains("end_warning_minutes_before"));
+    }
+
+    #[test]
+    fn end_warning_enabled_rejects_zero() {
+        let settings = NotificationSettings {
+            end_warning_enabled: true,
+            end_warning_minutes_before: Some(0),
+            ..NotificationSettings::default()
+        };
+        let err = settings.validate_end_warning().unwrap_err();
+        assert!(err.contains("greater than zero"));
+    }
+
+    #[test]
+    fn end_warning_enabled_accepts_positive_threshold() {
+        let settings = NotificationSettings {
+            end_warning_enabled: true,
+            end_warning_minutes_before: Some(5),
+            ..NotificationSettings::default()
+        };
+        assert!(settings.validate_end_warning().is_ok());
     }
 }

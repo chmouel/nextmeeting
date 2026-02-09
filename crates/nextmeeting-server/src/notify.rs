@@ -39,6 +39,10 @@ pub struct NotifyConfig {
     pub icon_path: Option<String>,
     /// Time to send morning agenda notification (format: "HH:MM").
     pub morning_agenda_time: Option<String>,
+    /// Whether to warn shortly before an ongoing meeting ends.
+    pub end_warning_enabled: bool,
+    /// Minutes before meeting end to trigger end-warning notifications.
+    pub end_warning_minutes_before: Option<u32>,
 }
 
 impl Default for NotifyConfig {
@@ -52,6 +56,8 @@ impl Default for NotifyConfig {
             expiry_secs: None,
             icon_path: None,
             morning_agenda_time: None,
+            end_warning_enabled: false,
+            end_warning_minutes_before: None,
         }
     }
 }
@@ -104,6 +110,13 @@ impl NotifyConfig {
     /// Builder: set morning agenda time.
     pub fn with_morning_agenda_time(mut self, time: impl Into<String>) -> Self {
         self.morning_agenda_time = Some(time.into());
+        self
+    }
+
+    /// Builder: configure end-warning notifications.
+    pub fn with_end_warning(mut self, enabled: bool, minutes_before: Option<u32>) -> Self {
+        self.end_warning_enabled = enabled;
+        self.end_warning_minutes_before = minutes_before;
         self
     }
 }
@@ -195,10 +208,28 @@ pub fn new_notify_state() -> SharedNotifyState {
 ///
 /// The hash is based on the meeting ID, start time, and notification offset.
 pub fn notification_hash(meeting: &MeetingView, notify_minutes: u32) -> String {
+    notification_hash_with_kind(meeting, notify_minutes, NotificationKind::StartsSoon)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum NotificationKind {
+    StartsSoon,
+    EndingSoon,
+}
+
+fn notification_hash_with_kind(
+    meeting: &MeetingView,
+    notify_minutes: u32,
+    kind: NotificationKind,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(meeting.id.as_bytes());
     hasher.update(meeting.start_local.timestamp().to_le_bytes());
     hasher.update(notify_minutes.to_le_bytes());
+    match kind {
+        NotificationKind::StartsSoon => hasher.update(b"starts-soon"),
+        NotificationKind::EndingSoon => hasher.update(b"ending-soon"),
+    }
     let result = hasher.finalize();
     hex::encode(result)
 }
@@ -256,7 +287,11 @@ impl NotifyEngine {
                 // Check if we're within the notification window
                 // (notify_time <= now < meeting.start_local)
                 if now >= notify_time && now < meeting.start_local {
-                    let hash = notification_hash(meeting, notify_minutes);
+                    let hash = notification_hash_with_kind(
+                        meeting,
+                        notify_minutes,
+                        NotificationKind::StartsSoon,
+                    );
 
                     let mut state = self.state.write().await;
                     if !state.was_sent(&hash)
@@ -265,6 +300,28 @@ impl NotifyEngine {
                         state.mark_sent(hash);
                         sent_count += 1;
                     }
+                }
+            }
+
+            if self.should_send_end_warning(meeting, now)
+                && let Some(minutes_before) = self.config.end_warning_minutes_before
+            {
+                let hash = notification_hash_with_kind(
+                    meeting,
+                    minutes_before,
+                    NotificationKind::EndingSoon,
+                );
+
+                let minutes_left = meeting.minutes_until_end(now).max(0) as u32;
+
+                let mut state = self.state.write().await;
+                if !state.was_sent(&hash)
+                    && self
+                        .send_end_warning_notification(meeting, minutes_left)
+                        .await
+                {
+                    state.mark_sent(hash);
+                    sent_count += 1;
                 }
             }
         }
@@ -335,6 +392,97 @@ impl NotifyEngine {
                 false
             }
         }
+    }
+
+    /// Sends a desktop notification for an ongoing meeting that is about to end.
+    async fn send_end_warning_notification(
+        &self,
+        meeting: &MeetingView,
+        minutes_left: u32,
+    ) -> bool {
+        let summary = if minutes_left == 0 {
+            format!("Meeting ending now: {}", meeting.title)
+        } else if minutes_left == 1 {
+            format!("Meeting ending in 1 minute: {}", meeting.title)
+        } else {
+            format!(
+                "Meeting ending in {} minutes: {}",
+                minutes_left, meeting.title
+            )
+        };
+
+        let body = format!("Ends at {}", meeting.end_local.format("%H:%M"));
+
+        #[cfg(target_os = "linux")]
+        let urgency = if let Some(ref urg) = self.config.urgency {
+            parse_urgency(urg)
+        } else if minutes_left <= 1 {
+            Urgency::Critical
+        } else if minutes_left <= 5 {
+            Urgency::Normal
+        } else {
+            Urgency::Low
+        };
+
+        let timeout_secs = self.config.expiry_secs.unwrap_or(self.config.timeout_secs);
+
+        debug!(
+            title = %meeting.title,
+            minutes_left = minutes_left,
+            "Sending end-warning notification"
+        );
+
+        let mut notification = Notification::new();
+        notification
+            .appname(&self.config.app_name)
+            .summary(&summary)
+            .body(&body)
+            .timeout(Duration::from_secs(timeout_secs as u64));
+
+        if let Some(ref icon) = self.config.icon_path {
+            notification.icon(icon);
+        }
+
+        #[cfg(target_os = "linux")]
+        notification.urgency(urgency);
+
+        match notification.show() {
+            Ok(_) => {
+                info!(
+                    title = %meeting.title,
+                    minutes_left = minutes_left,
+                    "End-warning notification sent"
+                );
+                true
+            }
+            Err(e) => {
+                error!(
+                    error = %e,
+                    title = %meeting.title,
+                    "Failed to send end-warning notification"
+                );
+                false
+            }
+        }
+    }
+
+    /// Returns true if the meeting is currently in the configured end-warning window.
+    fn should_send_end_warning(&self, meeting: &MeetingView, now: DateTime<Local>) -> bool {
+        if !self.config.end_warning_enabled {
+            return false;
+        }
+
+        let minutes_before = match self.config.end_warning_minutes_before {
+            Some(minutes) if minutes > 0 => minutes as i64,
+            _ => return false,
+        };
+
+        if !(meeting.start_local <= now && now < meeting.end_local) {
+            return false;
+        }
+
+        let warning_start = meeting.end_local - chrono::Duration::minutes(minutes_before);
+        now >= warning_start
     }
 
     /// Checks if it's time to send the morning agenda notification.
@@ -493,6 +641,8 @@ mod tests {
         let config = NotifyConfig::default();
         assert!(!config.notify_minutes.is_empty());
         assert!(config.enabled);
+        assert!(!config.end_warning_enabled);
+        assert_eq!(config.end_warning_minutes_before, None);
     }
 
     #[test]
@@ -538,6 +688,14 @@ mod tests {
         let hash2 = notification_hash(&meeting, 5);
 
         assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn end_warning_hash_differs_from_start_hash() {
+        let meeting = make_meeting("1", "Meeting 1", 10);
+        let start_hash = notification_hash_with_kind(&meeting, 5, NotificationKind::StartsSoon);
+        let end_hash = notification_hash_with_kind(&meeting, 5, NotificationKind::EndingSoon);
+        assert_ne!(start_hash, end_hash);
     }
 
     #[tokio::test]
@@ -621,6 +779,48 @@ mod tests {
     fn config_with_morning_agenda() {
         let config = NotifyConfig::default().with_morning_agenda_time("08:00");
         assert_eq!(config.morning_agenda_time, Some("08:00".to_string()));
+    }
+
+    #[test]
+    fn config_with_end_warning() {
+        let config = NotifyConfig::default().with_end_warning(true, Some(4));
+        assert!(config.end_warning_enabled);
+        assert_eq!(config.end_warning_minutes_before, Some(4));
+    }
+
+    #[test]
+    fn should_send_end_warning_false_when_disabled() {
+        let meeting = make_meeting("1", "Test", -1);
+        let now = Local::now();
+        let engine = NotifyEngine::new(NotifyConfig::default());
+        assert!(!engine.should_send_end_warning(&meeting, now));
+    }
+
+    #[test]
+    fn should_send_end_warning_false_without_threshold() {
+        let meeting = make_meeting("1", "Test", -1);
+        let now = Local::now();
+        let config = NotifyConfig::default().with_end_warning(true, None);
+        let engine = NotifyEngine::new(config);
+        assert!(!engine.should_send_end_warning(&meeting, now));
+    }
+
+    #[test]
+    fn should_send_end_warning_true_when_within_window() {
+        let meeting = make_meeting("1", "Test", -57); // 3 minutes left (meeting lasts 1 hour)
+        let now = Local::now();
+        let config = NotifyConfig::default().with_end_warning(true, Some(5));
+        let engine = NotifyEngine::new(config);
+        assert!(engine.should_send_end_warning(&meeting, now));
+    }
+
+    #[test]
+    fn should_send_end_warning_false_outside_window() {
+        let meeting = make_meeting("1", "Test", -10); // 50 minutes left
+        let now = Local::now();
+        let config = NotifyConfig::default().with_end_warning(true, Some(5));
+        let engine = NotifyEngine::new(config);
+        assert!(!engine.should_send_end_warning(&meeting, now));
     }
 
     #[cfg(target_os = "linux")]

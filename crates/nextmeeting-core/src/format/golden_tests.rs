@@ -69,6 +69,30 @@ fn ongoing_meeting(now: DateTime<Utc>, title: &str) -> MeetingView {
     MeetingView::from_event(&event, now)
 }
 
+/// Create an ongoing meeting that is about to end.
+fn ongoing_meeting_ending_in(
+    now: DateTime<Utc>,
+    title: &str,
+    minutes_until_end: i64,
+) -> MeetingView {
+    let end = now + chrono::Duration::minutes(minutes_until_end);
+    let start = end - chrono::Duration::minutes(30);
+
+    let event = NormalizedEvent::new(
+        "evt-ending-soon",
+        title,
+        EventTime::from_utc(start),
+        EventTime::from_utc(end),
+        "primary",
+    )
+    .with_link(EventLink::new(
+        LinkKind::Zoom,
+        "https://zoom.us/j/123456789",
+    ));
+
+    MeetingView::from_event(&event, now)
+}
+
 /// Create an all-day event.
 fn all_day_meeting(now: DateTime<Utc>, title: &str) -> MeetingView {
     let today = now.date_naive();
@@ -271,6 +295,21 @@ fn golden_waybar_ongoing() {
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
 
     insta::assert_json_snapshot!("waybar_ongoing", output);
+}
+
+#[test]
+fn golden_waybar_ending_soon() {
+    let now_utc = reference_time();
+    let now_local = local_from_utc(now_utc);
+    let meetings = vec![ongoing_meeting_ending_in(now_utc, "Sprint Review", 4)];
+
+    let mut options = FormatOptions::default();
+    options.end_warning_enabled = true;
+    options.end_warning_minutes_before = Some(5);
+    let formatter = OutputFormatter::new(options);
+    let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
+
+    insta::assert_json_snapshot!("waybar_ending_soon", output);
 }
 
 #[test]

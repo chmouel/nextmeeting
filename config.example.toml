@@ -53,6 +53,8 @@ skip_without_guests = false      # Skip events without other attendees (solo eve
 
 [notifications]
 minutes_before = [5, 1] # Minutes before to notify
+end_warning_enabled = false # Warn shortly before an ongoing meeting ends
+# end_warning_minutes_before = 5 # Required when end_warning_enabled = true
 
 [server]
 socket_path = "/tmp/nextmeeting.sock" # Path to server socket

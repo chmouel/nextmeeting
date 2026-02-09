@@ -35,6 +35,11 @@ use crate::error::{ClientError, ClientResult};
 /// This function blocks until a shutdown signal is received (SIGTERM/SIGINT)
 /// or the process is otherwise terminated.
 pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
+    config
+        .notifications
+        .validate_end_warning()
+        .map_err(|e| ClientError::Config(format!("invalid notifications configuration: {}", e)))?;
+
     // 1. Build providers from config
     let providers = build_providers(config)?;
     if providers.is_empty() {
@@ -255,6 +260,11 @@ fn build_notify_config(config: &ClientConfig) -> NotifyConfig {
         notify_config = notify_config.with_morning_agenda_time(time);
     }
 
+    notify_config = notify_config.with_end_warning(
+        notifications.end_warning_enabled,
+        notifications.end_warning_minutes_before,
+    );
+
     notify_config
 }
 
@@ -368,6 +378,7 @@ fn map_provider_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ClientConfig;
     use nextmeeting_providers::ProviderError;
 
     #[test]
@@ -387,5 +398,16 @@ mod tests {
     fn map_provider_error_maps_bad_request() {
         let response = map_provider_error("google:work", ProviderError::bad_request("invalid"));
         assert_eq!(response.code, ErrorCode::InvalidRequest);
+    }
+
+    #[test]
+    fn build_notify_config_maps_end_warning_settings() {
+        let mut config = ClientConfig::default();
+        config.notifications.end_warning_enabled = true;
+        config.notifications.end_warning_minutes_before = Some(7);
+
+        let notify = build_notify_config(&config);
+        assert!(notify.end_warning_enabled);
+        assert_eq!(notify.end_warning_minutes_before, Some(7));
     }
 }

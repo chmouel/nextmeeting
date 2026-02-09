@@ -1,0 +1,9 @@
+---
+source: crates/nextmeeting-core/src/format/golden_tests.rs
+expression: output
+---
+{
+  "text": "4 minutes to go - Sprint Review",
+  "tooltip": "• 10:34 - Sprint Review",
+  "class": "ending_soon"
+}
