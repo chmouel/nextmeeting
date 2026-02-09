@@ -495,7 +495,7 @@ impl OutputFormatter {
             return UrgencyClass::AllDay;
         }
 
-        if meeting.is_ongoing {
+        if meeting.start_local <= now && now < meeting.end_local {
             return UrgencyClass::Ongoing;
         }
 
@@ -518,7 +518,7 @@ impl OutputFormatter {
             return "All day".to_string();
         }
 
-        if meeting.is_ongoing {
+        if meeting.start_local <= now && now < meeting.end_local {
             let minutes_left = meeting.minutes_until_end(now);
             return self.format_time_remaining(minutes_left, true);
         }

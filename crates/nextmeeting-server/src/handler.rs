@@ -84,7 +84,11 @@ impl ServerState {
 
     /// Returns the cached meetings, optionally filtered.
     pub fn get_meetings(&self, filter: Option<&MeetingsFilter>) -> Vec<MeetingView> {
+        let now = chrono::Local::now();
         let mut meetings: Vec<_> = self.meetings.to_vec();
+
+        // Filter out non-all-day meetings that have already ended
+        meetings.retain(|m| m.is_all_day || m.end_local > now);
 
         if let Some(filter) = filter {
             // Apply skip_all_day filter

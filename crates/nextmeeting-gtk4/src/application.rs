@@ -593,7 +593,8 @@ fn render_meetings(
         let always_show_actions = index == 0;
         let is_dismissed = dismissed_ids.contains(&meeting.id);
         let minutes_until = meeting.minutes_until_start(now);
-        let is_soon = !meeting.is_ongoing
+        let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
+        let is_soon = !is_ongoing
             && !meeting.is_all_day
             && minutes_until > 0
             && minutes_until <= SOON_THRESHOLD_MINUTES;
@@ -872,12 +873,15 @@ fn render_meetings(
 /// Priority: ongoing meetings first, then meetings starting within 5 minutes.
 fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<String> {
     // First check for ongoing meetings
-    if let Some(m) = meetings.iter().find(|m| m.is_ongoing) {
+    let now = chrono::Local::now();
+    if let Some(m) = meetings
+        .iter()
+        .find(|m| m.start_local <= now && now < m.end_local)
+    {
         return Some(m.id.clone());
     }
 
     // Check for meetings starting within 5 minutes
-    let now = chrono::Local::now();
     for meeting in meetings {
         let mins_until = meeting.minutes_until_start(now);
         if (0..=5).contains(&mins_until) {

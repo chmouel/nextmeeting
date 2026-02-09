@@ -4,6 +4,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 
+use chrono::Local;
 use nextmeeting_core::MeetingView;
 
 use crate::utils::{format_time_range, truncate};
@@ -186,7 +187,9 @@ impl MeetingCard {
         } else {
             frame.add_css_class("meeting-card-calendar");
         }
-        if meeting.is_ongoing {
+        let now = Local::now();
+        let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
+        if is_ongoing {
             frame.add_css_class("meeting-card-ongoing");
         } else if is_soon && !is_dismissed {
             frame.add_css_class("meeting-card-soon");
@@ -237,11 +240,22 @@ impl MeetingCard {
         center_box.append(&title_label);
 
         // Time and service line
-        let time_text = if meeting.is_ongoing {
-            format!(
-                "Now • {}",
-                format_time_range(meeting.start_local, meeting.end_local)
-            )
+        let time_text = if is_ongoing {
+            let minutes_left = meeting.minutes_until_end(now);
+            let time_remaining = if minutes_left <= 0 {
+                "Ending".to_string()
+            } else if minutes_left < 60 {
+                format!("{} minutes to go", minutes_left)
+            } else {
+                let hours = minutes_left / 60;
+                let mins = minutes_left % 60;
+                if mins == 0 {
+                    format!("{}H to go", hours)
+                } else {
+                    format!("{}H{:02} to go", hours, mins)
+                }
+            };
+            format!("Now • {}", time_remaining)
         } else {
             format_time_range(meeting.start_local, meeting.end_local)
         };
@@ -263,7 +277,7 @@ impl MeetingCard {
             .xalign(0.0)
             .css_classes(["meeting-card-time"])
             .build();
-        if meeting.is_ongoing {
+        if is_ongoing {
             time_label.add_css_class("meeting-card-time-ongoing");
         }
         center_box.append(&time_label);
