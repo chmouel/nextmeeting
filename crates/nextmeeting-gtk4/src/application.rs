@@ -582,15 +582,15 @@ fn render_meetings(
         return;
     }
 
-    // Find the first current/ongoing meeting for the JOIN NOW button
-    let current_meeting_id = find_current_meeting(meetings);
+    // Find the next upcoming meeting for the JOIN NOW button
+    let next_meeting_id = find_next_meeting(meetings);
 
     const SOON_THRESHOLD_MINUTES: i64 = 5;
     let now = Local::now();
 
-    for (index, meeting) in meetings.iter().enumerate() {
-        let show_join = current_meeting_id.as_ref() == Some(&meeting.id);
-        let always_show_actions = index == 0;
+    for meeting in meetings {
+        let show_join = next_meeting_id.as_ref() == Some(&meeting.id);
+        let always_show_actions = show_join;
         let is_dismissed = dismissed_ids.contains(&meeting.id);
         let minutes_until = meeting.minutes_until_start(now);
         let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
@@ -869,27 +869,37 @@ fn render_meetings(
     }
 }
 
-/// Find the ID of the current/ongoing meeting that should get the JOIN NOW button.
-/// Priority: ongoing meetings first, then meetings starting within 5 minutes.
-fn find_current_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<String> {
-    // First check for ongoing meetings
+/// Find the ID of the next upcoming meeting that should get the JOIN NOW button.
+/// Priority: imminent (within 5 min) > next upcoming with link > ongoing with link > first with link.
+fn find_next_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<String> {
     let now = chrono::Local::now();
-    if let Some(m) = meetings
-        .iter()
-        .find(|m| m.start_local <= now && now < m.end_local)
-    {
-        return Some(m.id.clone());
-    }
 
-    // Check for meetings starting within 5 minutes
+    // First: meeting starting within 5 minutes (imminent, not yet started)
     for meeting in meetings {
         let mins_until = meeting.minutes_until_start(now);
-        if (0..=5).contains(&mins_until) {
+        let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
+        if !is_ongoing && (0..=5).contains(&mins_until) {
             return Some(meeting.id.clone());
         }
     }
 
-    // Return first meeting with a link as fallback
+    // Second: next upcoming meeting with a link (hasn't started yet, soonest first)
+    if let Some(m) = meetings
+        .iter()
+        .find(|m| m.start_local > now && m.primary_link.is_some())
+    {
+        return Some(m.id.clone());
+    }
+
+    // Fallback: ongoing meeting with a link
+    if let Some(m) = meetings
+        .iter()
+        .find(|m| m.start_local <= now && now < m.end_local && m.primary_link.is_some())
+    {
+        return Some(m.id.clone());
+    }
+
+    // Last resort: first meeting with a link
     meetings
         .iter()
         .find(|m| m.primary_link.is_some())
