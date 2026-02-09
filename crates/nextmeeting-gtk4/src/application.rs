@@ -146,6 +146,10 @@ impl AppRuntime {
         nextmeeting_client::actions::open_calendar_day(self.state.meetings(), domain)
             .map_err(|e| e.to_string())
     }
+
+    pub fn edit_calendar_event_url(&self, url: &str) -> Result<(), String> {
+        nextmeeting_client::actions::edit_calendar_event_url(url).map_err(|e| e.to_string())
+    }
 }
 
 #[derive(Debug)]
@@ -692,6 +696,42 @@ fn render_meetings(
                         "Event dismissed"
                     };
                     let _ = ui_tx.send(UiEvent::ActionSucceeded(msg.to_string()));
+                });
+            });
+        }
+
+        // Connect edit-calendar-event button
+        {
+            let runtime = runtime.clone();
+            let app_runtime = app_runtime.clone();
+            let ui_tx = ui_tx.clone();
+            let calendar_url = meeting.calendar_url.clone();
+            card.calendar_button.connect_clicked(move |_| {
+                let runtime = runtime.clone();
+                let app_runtime = app_runtime.clone();
+                let ui_tx = ui_tx.clone();
+                let calendar_url = calendar_url.clone();
+                runtime.spawn(async move {
+                    match calendar_url {
+                        Some(url) => {
+                            let guard = app_runtime.lock().await;
+                            match guard.edit_calendar_event_url(&url) {
+                                Ok(()) => {
+                                    let _ = ui_tx.send(UiEvent::ActionSucceeded(
+                                        "Opened calendar event editor".to_string(),
+                                    ));
+                                }
+                                Err(err) => {
+                                    let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                                }
+                            }
+                        }
+                        None => {
+                            let _ = ui_tx.send(UiEvent::ActionFailed(
+                                "No calendar event URL for this meeting".to_string(),
+                            ));
+                        }
+                    }
                 });
             });
         }

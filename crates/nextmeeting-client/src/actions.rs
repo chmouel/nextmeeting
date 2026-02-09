@@ -69,6 +69,32 @@ pub fn open_calendar_day(
     Ok(())
 }
 
+/// Opens a specific calendar event URL in edit mode in the default browser.
+pub fn edit_calendar_event_url(url: &str) -> ClientResult<()> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err(ClientError::Action("calendar event URL is empty".into()));
+    }
+
+    let edit_url = calendar_edit_url(url);
+    info!(url = %edit_url, "opening calendar event editor URL");
+    open::that(&edit_url).map_err(|e| ClientError::Action(format!("failed to open URL: {}", e)))?;
+    Ok(())
+}
+
+fn calendar_edit_url(url: &str) -> String {
+    if is_google_calendar_event_url(url) && !url.contains("action=EDIT") {
+        let sep = if url.contains('?') { '&' } else { '?' };
+        return format!("{url}{sep}action=EDIT");
+    }
+    url.to_string()
+}
+
+fn is_google_calendar_event_url(url: &str) -> bool {
+    (url.contains("calendar.google.") || url.contains("google.com/calendar"))
+        && (url.contains("/event") || url.contains("eid="))
+}
+
 /// Sends a snooze request to the server.
 pub async fn snooze(client: &SocketClient, minutes: u32) -> ClientResult<()> {
     info!(minutes = minutes, "snoozing notifications");
@@ -386,5 +412,32 @@ mod tests {
     #[test]
     fn find_url_in_text_none() {
         assert_eq!(find_url_in_text("no url here"), None);
+    }
+
+    #[test]
+    fn edit_calendar_event_url_rejects_empty() {
+        let result = edit_calendar_event_url("   ");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("calendar event URL is empty")
+        );
+    }
+
+    #[test]
+    fn calendar_edit_url_adds_action_for_google_event() {
+        let url = "https://calendar.google.com/calendar/u/0/r/event?eid=abc123";
+        assert_eq!(
+            calendar_edit_url(url),
+            "https://calendar.google.com/calendar/u/0/r/event?eid=abc123&action=EDIT"
+        );
+    }
+
+    #[test]
+    fn calendar_edit_url_keeps_non_google_url() {
+        let url = "https://example.com/event/123";
+        assert_eq!(calendar_edit_url(url), url.to_string());
     }
 }

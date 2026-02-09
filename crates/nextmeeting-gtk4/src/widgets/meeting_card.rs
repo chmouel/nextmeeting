@@ -12,6 +12,7 @@ use crate::utils::{format_time_range, truncate};
 pub struct MeetingCard {
     pub widget: gtk::Frame,
     pub join_button: Option<gtk::Button>,
+    pub calendar_button: gtk::Button,
     pub dismiss_button: gtk::Button,
     pub decline_button: gtk::Button,
     pub delete_button: gtk::Button,
@@ -21,9 +22,139 @@ pub struct MeetingCard {
 
 pub fn normalise_description(description: Option<&str>) -> Option<String> {
     description
-        .map(str::trim)
+        .map(html_to_text)
+        .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+}
+
+fn html_to_text(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '<' {
+            let mut tag = String::new();
+            let mut closed = false;
+            for next in chars.by_ref() {
+                if next == '>' {
+                    closed = true;
+                    break;
+                }
+                tag.push(next);
+            }
+
+            if !closed {
+                output.push('<');
+                output.push_str(&tag);
+                continue;
+            }
+
+            let tag = tag.trim().to_ascii_lowercase();
+            if matches!(tag.as_str(), "br" | "br/" | "p" | "/p" | "div" | "/div")
+                && !output.ends_with('\n')
+            {
+                output.push('\n');
+            } else if tag.starts_with("li") {
+                if !output.is_empty() && !output.ends_with('\n') {
+                    output.push('\n');
+                }
+                output.push_str("• ");
+            } else if tag == "/li" && !output.ends_with('\n') {
+                output.push('\n');
+            }
+            continue;
+        }
+
+        if ch == '&' {
+            let mut entity = String::new();
+            let mut closed = false;
+            while let Some(next) = chars.peek().copied() {
+                entity.push(next);
+                chars.next();
+                if next == ';' {
+                    closed = true;
+                    break;
+                }
+                if entity.len() > 12 {
+                    break;
+                }
+            }
+
+            if closed {
+                match decode_html_entity(&entity) {
+                    Some(decoded) => output.push_str(&decoded),
+                    None => {
+                        output.push('&');
+                        output.push_str(&entity);
+                    }
+                }
+                continue;
+            }
+
+            output.push('&');
+            output.push_str(&entity);
+            continue;
+        }
+
+        output.push(ch);
+    }
+
+    collapse_text_whitespace(&output)
+}
+
+fn decode_html_entity(entity_with_semicolon: &str) -> Option<String> {
+    let entity = entity_with_semicolon.strip_suffix(';')?;
+    let decoded = match entity {
+        "amp" => "&".to_string(),
+        "lt" => "<".to_string(),
+        "gt" => ">".to_string(),
+        "quot" => "\"".to_string(),
+        "apos" => "'".to_string(),
+        "nbsp" => " ".to_string(),
+        _ if entity.starts_with("#x") || entity.starts_with("#X") => {
+            let value = u32::from_str_radix(&entity[2..], 16).ok()?;
+            char::from_u32(value)?.to_string()
+        }
+        _ if entity.starts_with('#') => {
+            let value = entity[1..].parse::<u32>().ok()?;
+            char::from_u32(value)?.to_string()
+        }
+        _ => return None,
+    };
+    Some(decoded)
+}
+
+fn collapse_text_whitespace(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut saw_space = false;
+    let mut newline_run = 0usize;
+
+    for ch in input.chars() {
+        if ch == '\n' {
+            if output.ends_with(' ') {
+                output.pop();
+            }
+            if newline_run < 2 {
+                output.push('\n');
+            }
+            newline_run += 1;
+            saw_space = false;
+            continue;
+        }
+
+        newline_run = 0;
+        if ch.is_whitespace() {
+            if !saw_space && !output.ends_with('\n') {
+                output.push(' ');
+                saw_space = true;
+            }
+        } else {
+            output.push(ch);
+            saw_space = false;
+        }
+    }
+
+    output.trim().to_string()
 }
 
 impl MeetingCard {
@@ -215,9 +346,27 @@ impl MeetingCard {
             .valign(gtk::Align::Center)
             .build();
 
+        let calendar_button = gtk::Button::builder()
+            .icon_name("document-edit-symbolic")
+            .tooltip_text(if meeting.calendar_url.is_some() {
+                "Edit this calendar event"
+            } else {
+                "No calendar event URL available"
+            })
+            .css_classes([
+                "flat",
+                "circular",
+                "meeting-card-action",
+                "meeting-card-interactive-action",
+            ])
+            .valign(gtk::Align::Center)
+            .sensitive(meeting.calendar_url.is_some())
+            .build();
+
         action_buttons_box.append(&delete_button);
         action_buttons_box.append(&dismiss_button);
         action_buttons_box.append(&decline_button);
+        action_buttons_box.append(&calendar_button);
 
         hbox.append(&action_buttons_box);
         root_box.append(&hbox);
@@ -258,6 +407,7 @@ impl MeetingCard {
         Self {
             widget: frame,
             join_button,
+            calendar_button,
             dismiss_button,
             decline_button,
             delete_button,
@@ -311,5 +461,34 @@ mod tests {
     #[test]
     fn normalise_description_none_stays_none() {
         assert_eq!(normalise_description(None), None);
+    }
+
+    #[test]
+    fn normalise_description_strips_html_tags() {
+        assert_eq!(
+            normalise_description(Some("<p>Hello<br>world</p>")),
+            Some("Hello\nworld".to_string())
+        );
+    }
+
+    #[test]
+    fn normalise_description_decodes_html_entities() {
+        assert_eq!(
+            normalise_description(Some("Tom &amp; Jerry &lt;3")),
+            Some("Tom & Jerry <3".to_string())
+        );
+    }
+
+    #[test]
+    fn normalise_description_handles_list_items() {
+        assert_eq!(
+            normalise_description(Some("<ul><li>One</li><li>Two</li></ul>")),
+            Some("• One\n• Two".to_string())
+        );
+    }
+
+    #[test]
+    fn normalise_description_html_only_becomes_none() {
+        assert_eq!(normalise_description(Some("<p>   </p>")), None);
     }
 }
