@@ -8,7 +8,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::error::{ProviderError, ProviderResult};
 use crate::raw_event::{
@@ -126,6 +126,7 @@ impl GoogleCalendarClient {
 
     /// Fetches a single page of events.
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(self), fields(calendar_id, status, elapsed_ms))]
     async fn list_events_page(
         &self,
         calendar_id: &str,
@@ -136,6 +137,17 @@ impl GoogleCalendarClient {
         etag: Option<&str>,
         page_token: Option<&str>,
     ) -> ProviderResult<EventListResponse> {
+        use tracing::Span;
+
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            debug!(
+                calendar_id = %calendar_id,
+                "Fetching events from Google Calendar API"
+            );
+        }
+
+        let start = std::time::Instant::now();
+
         let url = format!(
             "{}/calendars/{}/events",
             CALENDAR_API_BASE,
@@ -176,6 +188,27 @@ impl GoogleCalendarClient {
         })?;
 
         let status = response.status();
+        let elapsed = start.elapsed();
+
+        // Log API response at DEBUG level (level 3+)
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            debug!(
+                calendar_id = %calendar_id,
+                status = %status,
+                elapsed_ms = elapsed.as_millis(),
+                "Google Calendar API response"
+            );
+            Span::current().record("status", status.as_u16());
+            Span::current().record("elapsed_ms", elapsed.as_millis());
+        }
+
+        // Log response headers at TRACE level (level 5)
+        if tracing::enabled!(tracing::Level::TRACE) {
+            trace!(
+                headers = ?response.headers(),
+                "API response headers"
+            );
+        }
 
         // Handle 304 Not Modified
         if status == reqwest::StatusCode::NOT_MODIFIED {

@@ -4,8 +4,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::Parser;
-use tracing::{Level, debug, info};
-use tracing_subscriber::EnvFilter;
+use tracing::{debug, info};
 
 use nextmeeting_client::cli::{AuthProvider, Cli, Command, ConfigAction};
 use nextmeeting_client::config::ClientConfig;
@@ -32,19 +31,32 @@ async fn main() -> ExitCode {
         ClientConfig::load().unwrap_or_default()
     };
 
-    // Initialize tracing: CLI --debug overrides config debug
-    let debug_enabled = cli.debug || config.debug;
-    let filter = if debug_enabled {
-        EnvFilter::new(Level::DEBUG.to_string())
+    // Initialize tracing based on debug level
+    let debug_level = cli.effective_debug_level(&config);
+
+    // Use JSON format for server command, compact for others
+    let format = if matches!(cli.command, Some(Command::Server)) {
+        nextmeeting_core::tracing::TracingOutputFormat::Json
     } else {
-        EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new(Level::WARN.to_string()))
+        nextmeeting_core::tracing::TracingOutputFormat::Compact
     };
 
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .init();
+    let tracing_config = nextmeeting_core::tracing::TracingConfig::default()
+        .with_debug_level(debug_level)
+        .with_format(format);
+
+    nextmeeting_core::tracing::init_tracing(tracing_config)
+        .expect("failed to initialize tracing");
+
+    if debug_level >= nextmeeting_core::tracing::DebugLevel::Info {
+        info!(
+            debug_level = debug_level as u8,
+            protocol_logging = debug_level.enable_protocol_logging(),
+            calendar_logging = debug_level.enable_calendar_logging(),
+            performance_metrics = debug_level.enable_performance_metrics(),
+            "Initialized with debug configuration"
+        );
+    }
 
     // Run the command
     match run(cli, config).await {

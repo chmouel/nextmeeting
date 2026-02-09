@@ -345,11 +345,14 @@ impl Scheduler {
         self.config.next_sync_delay()
     }
 
+    #[tracing::instrument(skip(self, sync_fn), fields(sync_duration_ms))]
     async fn do_sync<F, Fut>(&self, sync_fn: &F)
     where
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<(), String>>,
     {
+        use tracing::Span;
+
         let state = self.state.read().await;
         if state.consecutive_failures >= self.config.max_consecutive_failures {
             error!(
@@ -361,14 +364,28 @@ impl Scheduler {
         }
         drop(state);
 
-        debug!("Starting sync");
+        let start = std::time::Instant::now();
+        debug!("Starting calendar sync");
+
         match sync_fn().await {
             Ok(()) => {
-                info!("Sync completed successfully");
+                let duration = start.elapsed();
+                info!(
+                    sync_duration_ms = duration.as_millis(),
+                    "Sync completed successfully"
+                );
+                if tracing::enabled!(tracing::Level::DEBUG) {
+                    Span::current().record("sync_duration_ms", duration.as_millis());
+                }
                 self.state.write().await.record_success();
             }
             Err(e) => {
-                warn!(error = %e, "Sync failed");
+                let duration = start.elapsed();
+                warn!(
+                    error = %e,
+                    sync_duration_ms = duration.as_millis(),
+                    "Sync failed"
+                );
                 self.state.write().await.record_failure(e);
             }
         }

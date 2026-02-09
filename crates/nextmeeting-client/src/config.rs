@@ -27,6 +27,9 @@ pub struct ClientConfig {
     /// Debug mode.
     pub debug: bool,
 
+    /// Debug level (0-5). Takes precedence over debug boolean.
+    pub debug_level: Option<u8>,
+
     /// Google Workspace domain (used for calendar URLs and meeting creation).
     pub google_domain: Option<String>,
 
@@ -280,6 +283,20 @@ impl ClientConfig {
     /// Returns the path for storing dismissed event IDs.
     pub fn dismissed_events_path() -> PathBuf {
         Self::default_data_dir().join("dismissed-events.json")
+    }
+
+    /// Get effective debug level from config
+    pub fn effective_debug_level(&self) -> nextmeeting_core::tracing::DebugLevel {
+        use nextmeeting_core::tracing::DebugLevel;
+
+        if let Some(level) = self.debug_level {
+            DebugLevel::from_u8(level)
+        } else if self.debug {
+            // Backward compat: debug = true → level 2
+            DebugLevel::Debug
+        } else {
+            DebugLevel::Off
+        }
     }
 }
 

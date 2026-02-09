@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Semaphore;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use nextmeeting_protocol::{
     Envelope, MAX_MESSAGE_SIZE, PROTOCOL_VERSION, ProtocolError, Request, Response,
@@ -100,7 +100,15 @@ impl SocketServer {
         let permit = permit.expect("semaphore should not be closed");
 
         let (stream, _addr) = self.listener.accept().await?;
-        debug!("Accepted new connection");
+
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            let active = self.config.max_connections - self.connection_semaphore.available_permits();
+            debug!(
+                active_connections = active,
+                max_connections = self.config.max_connections,
+                "Accepted new connection"
+            );
+        }
 
         Ok(Connection {
             stream,
@@ -234,11 +242,45 @@ impl Connection {
             );
         }
 
+        // Log protocol requests at DEBUG level (level 2+)
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            debug!(
+                request_id = %envelope.request_id,
+                request_type = ?envelope.payload,
+                "Received IPC request"
+            );
+        }
+
+        // Log full request envelope at TRACE level (level 5)
+        if tracing::enabled!(tracing::Level::TRACE) {
+            trace!(
+                payload = ?envelope,
+                "Full request envelope"
+            );
+        }
+
         Ok(Some(envelope))
     }
 
     /// Writes a response envelope to the connection.
     pub async fn write_response(&mut self, envelope: &Envelope<Response>) -> ServerResult<()> {
+        // Log protocol responses at DEBUG level (level 2+)
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            debug!(
+                request_id = %envelope.request_id,
+                response_type = ?envelope.payload,
+                "Sending IPC response"
+            );
+        }
+
+        // Log full response envelope at TRACE level (level 5)
+        if tracing::enabled!(tracing::Level::TRACE) {
+            trace!(
+                payload = ?envelope,
+                "Full response envelope"
+            );
+        }
+
         let json =
             serde_json::to_vec(envelope).map_err(nextmeeting_protocol::ProtocolError::from)?;
 

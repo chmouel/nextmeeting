@@ -345,8 +345,15 @@ impl RequestHandler {
     }
 
     /// Handles a single request and returns the response.
+    #[tracing::instrument(skip(self), fields(request_type, duration_ms))]
     pub async fn handle(&self, request: &Request) -> Response {
-        match request {
+        use tracing::Span;
+
+        let start = std::time::Instant::now();
+        let request_type = format!("{:?}", request);
+        Span::current().record("request_type", &request_type);
+
+        let response = match request {
             Request::Ping => {
                 debug!("Handling Ping request");
                 Response::Pong
@@ -360,6 +367,7 @@ impl RequestHandler {
                 debug!(?filter, "Handling GetMeetings request");
                 let state = self.state.read().await;
                 let meetings = state.get_meetings(filter.as_ref());
+                debug!(meeting_count = meetings.len(), "Returning meetings");
                 Response::meetings(meetings)
             }
             Request::Snooze { minutes } => {
@@ -438,7 +446,20 @@ impl RequestHandler {
                 state.request_shutdown();
                 Response::Ok
             }
+        };
+
+        // Record timing metrics at DEBUG level (level 4+)
+        let duration = start.elapsed();
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            Span::current().record("duration_ms", duration.as_millis());
+            debug!(
+                request_type = %request_type,
+                duration_ms = duration.as_millis(),
+                "Request handled"
+            );
         }
+
+        response
     }
 
     /// Handles a connection, processing all requests until the connection closes.

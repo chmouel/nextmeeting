@@ -13,9 +13,17 @@ pub struct Cli {
     #[arg(long, short, env = "NEXTMEETING_CONFIG")]
     pub config: Option<PathBuf>,
 
-    /// Enable debug output
-    #[arg(long, short = 'v')]
+    /// Enable debug mode (equivalent to --debug-level 2)
+    #[arg(long, short = 'd')]
     pub debug: bool,
+
+    /// Increase verbosity (can be repeated: -v, -vv, -vvv, etc.)
+    #[arg(long, short = 'v', action = clap::ArgAction::Count)]
+    pub verbose: u8,
+
+    /// Set explicit debug level (0-5)
+    #[arg(long, value_name = "LEVEL")]
+    pub debug_level: Option<u8>,
 
     // --- Output format flags ---
     /// Output in Waybar JSON format
@@ -104,6 +112,36 @@ impl Cli {
             || self.create.is_some()
             || self.snooze.is_some()
             || self.refresh
+    }
+
+    /// Determine effective debug level from CLI args, env, and config
+    pub fn effective_debug_level(&self, config: &crate::config::ClientConfig) -> nextmeeting_core::tracing::DebugLevel {
+        use nextmeeting_core::tracing::DebugLevel;
+
+        // 1. CLI explicit level
+        if let Some(level) = self.debug_level {
+            return DebugLevel::from_u8(level);
+        }
+
+        // 2. CLI verbose flags (-v, -vv, etc.)
+        if self.verbose > 0 {
+            return DebugLevel::from_u8(self.verbose);
+        }
+
+        // 3. CLI --debug flag (backward compat)
+        if self.debug {
+            return DebugLevel::Debug;
+        }
+
+        // 4. Environment variable
+        if let Ok(level_str) = std::env::var("NEXTMEETING_DEBUG_LEVEL") {
+            if let Ok(level) = level_str.parse::<u8>() {
+                return DebugLevel::from_u8(level);
+            }
+        }
+
+        // 5. Config file
+        config.effective_debug_level()
     }
 }
 

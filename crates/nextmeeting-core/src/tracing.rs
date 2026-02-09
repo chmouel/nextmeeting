@@ -53,6 +53,55 @@ pub enum TracingOutputFormat {
     Json,
 }
 
+/// Debug level for incremental logging verbosity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DebugLevel {
+    Off = 0,
+    Info = 1,
+    Debug = 2,
+    Calendar = 3,
+    Performance = 4,
+    Trace = 5,
+}
+
+impl DebugLevel {
+    pub fn from_u8(level: u8) -> Self {
+        match level {
+            0 => Self::Off,
+            1 => Self::Info,
+            2 => Self::Debug,
+            3 => Self::Calendar,
+            4 => Self::Performance,
+            5.. => Self::Trace,
+        }
+    }
+
+    pub fn tracing_level(&self) -> Level {
+        match self {
+            Self::Off => Level::WARN,
+            Self::Info => Level::INFO,
+            Self::Debug | Self::Calendar | Self::Performance => Level::DEBUG,
+            Self::Trace => Level::TRACE,
+        }
+    }
+
+    pub fn enable_protocol_logging(&self) -> bool {
+        *self >= DebugLevel::Debug
+    }
+
+    pub fn enable_calendar_logging(&self) -> bool {
+        *self >= DebugLevel::Calendar
+    }
+
+    pub fn enable_performance_metrics(&self) -> bool {
+        *self >= DebugLevel::Performance
+    }
+
+    pub fn enable_span_events(&self) -> bool {
+        *self >= DebugLevel::Performance
+    }
+}
+
 /// Configuration for tracing initialization
 #[derive(Debug, Clone)]
 pub struct TracingConfig {
@@ -70,6 +119,8 @@ pub struct TracingConfig {
     pub include_span_events: bool,
     /// Custom env filter directive (overrides default_level if set)
     pub env_filter: Option<String>,
+    /// Debug level (controls feature gates)
+    pub debug_level: DebugLevel,
 }
 
 impl Default for TracingConfig {
@@ -82,6 +133,7 @@ impl Default for TracingConfig {
             include_timestamp: true,
             include_span_events: false,
             env_filter: None,
+            debug_level: DebugLevel::Off,
         }
     }
 }
@@ -98,6 +150,7 @@ impl TracingConfig {
             include_timestamp: false,
             include_span_events: false,
             env_filter: None,
+            debug_level: DebugLevel::Debug,
         }
     }
 
@@ -112,6 +165,7 @@ impl TracingConfig {
             include_timestamp: true,
             include_span_events: true,
             env_filter: None,
+            debug_level: DebugLevel::Info,
         }
     }
 
@@ -133,6 +187,16 @@ impl TracingConfig {
     #[must_use]
     pub fn with_env_filter(mut self, filter: impl Into<String>) -> Self {
         self.env_filter = Some(filter.into());
+        self
+    }
+
+    /// Create config from debug level
+    #[must_use]
+    pub fn with_debug_level(mut self, level: DebugLevel) -> Self {
+        self.debug_level = level;
+        self.default_level = level.tracing_level();
+        self.include_span_events = level.enable_span_events();
+        self.include_location = level >= DebugLevel::Debug;
         self
     }
 }
@@ -264,5 +328,36 @@ mod tests {
         assert_eq!(config.default_level, Level::WARN);
         assert_eq!(config.output_format, TracingOutputFormat::Json);
         assert_eq!(config.env_filter, Some("nextmeeting=trace".to_string()));
+    }
+
+    #[test]
+    fn debug_level_ordering() {
+        assert!(DebugLevel::Trace > DebugLevel::Performance);
+        assert!(DebugLevel::Debug < DebugLevel::Calendar);
+        assert!(DebugLevel::Off < DebugLevel::Info);
+    }
+
+    #[test]
+    fn debug_level_from_u8() {
+        assert_eq!(DebugLevel::from_u8(0), DebugLevel::Off);
+        assert_eq!(DebugLevel::from_u8(3), DebugLevel::Calendar);
+        assert_eq!(DebugLevel::from_u8(10), DebugLevel::Trace);
+    }
+
+    #[test]
+    fn debug_level_features() {
+        assert!(!DebugLevel::Info.enable_protocol_logging());
+        assert!(DebugLevel::Debug.enable_protocol_logging());
+        assert!(DebugLevel::Calendar.enable_calendar_logging());
+        assert!(!DebugLevel::Debug.enable_calendar_logging());
+    }
+
+    #[test]
+    fn with_debug_level_sets_config() {
+        let config = TracingConfig::default().with_debug_level(DebugLevel::Performance);
+        assert_eq!(config.debug_level, DebugLevel::Performance);
+        assert_eq!(config.default_level, Level::DEBUG);
+        assert!(config.include_span_events);
+        assert!(config.include_location);
     }
 }
