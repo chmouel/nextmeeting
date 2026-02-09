@@ -315,7 +315,10 @@ impl OutputFormatter {
             let first = &meetings[0];
             let raw_title = self.privacy_title(&first.title);
             let title = self.truncate_title(&raw_title);
-            (format!("All day: {}", title), Some("allday".to_string()))
+            (
+                format!("All day: {}", html_escape(&title)),
+                Some("allday".to_string()),
+            )
         };
 
         // Build tooltip with all meetings
@@ -399,7 +402,11 @@ impl OutputFormatter {
         } else {
             let time_str = self.format_time(meeting, now, waybar_markup);
             let title = self.format_title(meeting, hyperlink);
-            format!("{} - {}", time_str, title)
+            if waybar_markup {
+                format!("{} - {}", time_str, html_escape(&title))
+            } else {
+                format!("{} - {}", time_str, title)
+            }
         };
 
         FormattedMeeting {

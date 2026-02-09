@@ -115,7 +115,10 @@ impl Cli {
     }
 
     /// Determine effective debug level from CLI args, env, and config
-    pub fn effective_debug_level(&self, config: &crate::config::ClientConfig) -> nextmeeting_core::tracing::DebugLevel {
+    pub fn effective_debug_level(
+        &self,
+        config: &crate::config::ClientConfig,
+    ) -> nextmeeting_core::tracing::DebugLevel {
         use nextmeeting_core::tracing::DebugLevel;
 
         // 1. CLI explicit level

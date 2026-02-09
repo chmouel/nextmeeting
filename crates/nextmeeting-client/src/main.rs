@@ -45,8 +45,7 @@ async fn main() -> ExitCode {
         .with_debug_level(debug_level)
         .with_format(format);
 
-    nextmeeting_core::tracing::init_tracing(tracing_config)
-        .expect("failed to initialize tracing");
+    nextmeeting_core::tracing::init_tracing(tracing_config).expect("failed to initialize tracing");
 
     if debug_level >= nextmeeting_core::tracing::DebugLevel::Info {
         info!(

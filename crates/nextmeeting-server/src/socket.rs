@@ -102,7 +102,8 @@ impl SocketServer {
         let (stream, _addr) = self.listener.accept().await?;
 
         if tracing::enabled!(tracing::Level::DEBUG) {
-            let active = self.config.max_connections - self.connection_semaphore.available_permits();
+            let active =
+                self.config.max_connections - self.connection_semaphore.available_permits();
             debug!(
                 active_connections = active,
                 max_connections = self.config.max_connections,
