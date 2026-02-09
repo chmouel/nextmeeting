@@ -21,6 +21,10 @@ calendar_ids = ["primary"]
 # client_secret = "OTHER_CLIENT_SECRET"
 # calendar_ids = ["primary"]
 
+# Display timing notes:
+# - Near-term meetings are shown as relative text (`In 15 minutes`).
+# - Meetings beyond `display.until_offset` (default 60 minutes) are shown as absolute time.
+# - Cross-day meetings are shown as `Tomorrow at ...` or `Mon 03 at ...`.
 [display]
 max_title_length = 30             # Truncate titles with ellipsis
 no_meeting_text = "No meeting"    # Text when no meetings
@@ -53,8 +57,7 @@ skip_without_guests = false      # Skip events without other attendees (solo eve
 
 [notifications]
 minutes_before = [5, 1] # Minutes before to notify
-end_warning_enabled = false # Warn shortly before an ongoing meeting ends
-# end_warning_minutes_before = 5 # Required when end_warning_enabled = true
+# end_warning_minutes = 5 # If unset, no end-warning notification/class is emitted
 
 [server]
 socket_path = "/tmp/nextmeeting.sock" # Path to server socket

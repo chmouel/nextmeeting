@@ -260,10 +260,7 @@ fn build_notify_config(config: &ClientConfig) -> NotifyConfig {
         notify_config = notify_config.with_morning_agenda_time(time);
     }
 
-    notify_config = notify_config.with_end_warning(
-        notifications.end_warning_enabled,
-        notifications.end_warning_minutes_before,
-    );
+    notify_config = notify_config.with_end_warning_minutes(notifications.end_warning_minutes);
 
     notify_config
 }
@@ -401,13 +398,11 @@ mod tests {
     }
 
     #[test]
-    fn build_notify_config_maps_end_warning_settings() {
+    fn build_notify_config_maps_end_warning_minutes() {
         let mut config = ClientConfig::default();
-        config.notifications.end_warning_enabled = true;
-        config.notifications.end_warning_minutes_before = Some(7);
+        config.notifications.end_warning_minutes = Some(7);
 
         let notify = build_notify_config(&config);
-        assert!(notify.end_warning_enabled);
-        assert_eq!(notify.end_warning_minutes_before, Some(7));
+        assert_eq!(notify.end_warning_minutes, Some(7));
     }
 }

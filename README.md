@@ -41,19 +41,19 @@ nextmeeting auth google --account work \
   --client-secret <YOUR_CLIENT_SECRET>
 ```
 
-2. Show the next meeting:
+1. Show the next meeting:
 
 ```sh
 nextmeeting
 ```
 
-3. Use Waybar output:
+1. Use Waybar output:
 
 ```sh
 nextmeeting --waybar
 ```
 
-4. Launch the GTK desktop UI:
+1. Launch the GTK desktop UI:
 
 ```sh
 cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
@@ -62,10 +62,12 @@ cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
 The daemon is started automatically when required.
 
 GTK lifecycle behaviour:
+
 - The app runs as a single instance; launching `nextmeeting-gtk` again presents the existing window.
 - Closing the titlebar window hides it to tray; use tray `Quit` to exit the app.
 
 In the GTK agenda list, use the row action menu to:
+
 - Edit an event directly in Google Calendar (or open provider event URL)
 - Dismiss an event locally (hide only)
 - Decline an event in the calendar provider
@@ -91,15 +93,6 @@ Default configuration path:
 `~/.config/nextmeeting/config.toml`
 
 Use `config.example.toml` as a template.
-
-Display timing notes:
-- Near-term meetings are shown as relative text (`In 15 minutes`).
-- Meetings beyond `display.until_offset` (default 60 minutes) are shown as absolute time.
-- Cross-day meetings are shown as `Tomorrow at ...` or `Mon 03 at ...`.
-- Optional end-warning mode is disabled by default; when enabled, you must set
-  `notifications.end_warning_minutes_before`.
-- With end-warning mode enabled, Waybar output uses class `ending_soon` when an
-  ongoing meeting is close to finishing.
 
 ## Environment Variables
 

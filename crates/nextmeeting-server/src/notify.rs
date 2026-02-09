@@ -39,10 +39,10 @@ pub struct NotifyConfig {
     pub icon_path: Option<String>,
     /// Time to send morning agenda notification (format: "HH:MM").
     pub morning_agenda_time: Option<String>,
-    /// Whether to warn shortly before an ongoing meeting ends.
-    pub end_warning_enabled: bool,
     /// Minutes before meeting end to trigger end-warning notifications.
-    pub end_warning_minutes_before: Option<u32>,
+    ///
+    /// If not set, end-warning notifications are disabled.
+    pub end_warning_minutes: Option<u32>,
 }
 
 impl Default for NotifyConfig {
@@ -56,8 +56,7 @@ impl Default for NotifyConfig {
             expiry_secs: None,
             icon_path: None,
             morning_agenda_time: None,
-            end_warning_enabled: false,
-            end_warning_minutes_before: None,
+            end_warning_minutes: None,
         }
     }
 }
@@ -114,9 +113,8 @@ impl NotifyConfig {
     }
 
     /// Builder: configure end-warning notifications.
-    pub fn with_end_warning(mut self, enabled: bool, minutes_before: Option<u32>) -> Self {
-        self.end_warning_enabled = enabled;
-        self.end_warning_minutes_before = minutes_before;
+    pub fn with_end_warning_minutes(mut self, minutes_before: Option<u32>) -> Self {
+        self.end_warning_minutes = minutes_before;
         self
     }
 }
@@ -304,7 +302,7 @@ impl NotifyEngine {
             }
 
             if self.should_send_end_warning(meeting, now)
-                && let Some(minutes_before) = self.config.end_warning_minutes_before
+                && let Some(minutes_before) = self.config.end_warning_minutes
             {
                 let hash = notification_hash_with_kind(
                     meeting,
@@ -468,11 +466,7 @@ impl NotifyEngine {
 
     /// Returns true if the meeting is currently in the configured end-warning window.
     fn should_send_end_warning(&self, meeting: &MeetingView, now: DateTime<Local>) -> bool {
-        if !self.config.end_warning_enabled {
-            return false;
-        }
-
-        let minutes_before = match self.config.end_warning_minutes_before {
+        let minutes_before = match self.config.end_warning_minutes {
             Some(minutes) if minutes > 0 => minutes as i64,
             _ => return false,
         };
@@ -641,8 +635,7 @@ mod tests {
         let config = NotifyConfig::default();
         assert!(!config.notify_minutes.is_empty());
         assert!(config.enabled);
-        assert!(!config.end_warning_enabled);
-        assert_eq!(config.end_warning_minutes_before, None);
+        assert_eq!(config.end_warning_minutes, None);
     }
 
     #[test]
@@ -782,10 +775,9 @@ mod tests {
     }
 
     #[test]
-    fn config_with_end_warning() {
-        let config = NotifyConfig::default().with_end_warning(true, Some(4));
-        assert!(config.end_warning_enabled);
-        assert_eq!(config.end_warning_minutes_before, Some(4));
+    fn config_with_end_warning_minutes() {
+        let config = NotifyConfig::default().with_end_warning_minutes(Some(4));
+        assert_eq!(config.end_warning_minutes, Some(4));
     }
 
     #[test]
@@ -800,7 +792,7 @@ mod tests {
     fn should_send_end_warning_false_without_threshold() {
         let meeting = make_meeting("1", "Test", -1);
         let now = Local::now();
-        let config = NotifyConfig::default().with_end_warning(true, None);
+        let config = NotifyConfig::default().with_end_warning_minutes(None);
         let engine = NotifyEngine::new(config);
         assert!(!engine.should_send_end_warning(&meeting, now));
     }
@@ -809,7 +801,7 @@ mod tests {
     fn should_send_end_warning_true_when_within_window() {
         let meeting = make_meeting("1", "Test", -57); // 3 minutes left (meeting lasts 1 hour)
         let now = Local::now();
-        let config = NotifyConfig::default().with_end_warning(true, Some(5));
+        let config = NotifyConfig::default().with_end_warning_minutes(Some(5));
         let engine = NotifyEngine::new(config);
         assert!(engine.should_send_end_warning(&meeting, now));
     }
@@ -818,7 +810,7 @@ mod tests {
     fn should_send_end_warning_false_outside_window() {
         let meeting = make_meeting("1", "Test", -10); // 50 minutes left
         let now = Local::now();
-        let config = NotifyConfig::default().with_end_warning(true, Some(5));
+        let config = NotifyConfig::default().with_end_warning_minutes(Some(5));
         let engine = NotifyEngine::new(config);
         assert!(!engine.should_send_end_warning(&meeting, now));
     }

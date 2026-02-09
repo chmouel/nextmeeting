@@ -105,10 +105,10 @@ pub struct FormatOptions {
     pub notify_min_color_foreground: Option<String>,
     /// Whether to show all-day meetings in Waybar output.
     pub waybar_show_all_day: bool,
-    /// Enable "ending soon" behaviour for ongoing meetings.
-    pub end_warning_enabled: bool,
     /// Minutes before meeting end to mark as "ending soon".
-    pub end_warning_minutes_before: Option<i64>,
+    ///
+    /// If not set, end-warning behaviour is disabled.
+    pub end_warning_minutes: Option<i64>,
 }
 
 impl Default for FormatOptions {
@@ -129,8 +129,7 @@ impl Default for FormatOptions {
             notify_min_color: None,
             notify_min_color_foreground: None,
             waybar_show_all_day: true,
-            end_warning_enabled: false,
-            end_warning_minutes_before: None,
+            end_warning_minutes: None,
         }
     }
 }
@@ -521,11 +520,7 @@ impl OutputFormatter {
 
     /// Returns true when a meeting is ongoing and within the configured end-warning window.
     fn is_meeting_ending_soon(&self, meeting: &MeetingView, now: DateTime<Local>) -> bool {
-        if !self.options.end_warning_enabled {
-            return false;
-        }
-
-        let threshold = match self.options.end_warning_minutes_before {
+        let threshold = match self.options.end_warning_minutes {
             Some(minutes) if minutes > 0 => minutes,
             _ => return false,
         };
@@ -968,8 +963,7 @@ mod tests {
             assert_eq!(opts.hour_separator, ":");
             assert_eq!(opts.time_format, TimeFormat::H24);
             assert!(opts.show_relative_time);
-            assert!(!opts.end_warning_enabled);
-            assert_eq!(opts.end_warning_minutes_before, None);
+            assert_eq!(opts.end_warning_minutes, None);
         }
     }
 
@@ -1116,8 +1110,7 @@ mod tests {
             let now_local = local_from_utc(now_utc);
             let meeting = ongoing_meeting_ending_in(now_utc, 4);
             let mut opts = FormatOptions::default();
-            opts.end_warning_enabled = true;
-            opts.end_warning_minutes_before = Some(5);
+            opts.end_warning_minutes = Some(5);
             let formatter = OutputFormatter::new(opts);
 
             let output = formatter.format_waybar_at(&[meeting], "No meetings", now_local);

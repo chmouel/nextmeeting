@@ -1,0 +1,12 @@
+[Unit]
+Description=NextMeeting Server
+After=sway-session.target
+
+[Service]
+Type=simple
+ExecStart=nextmeeting server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=sway-session.target

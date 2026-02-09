@@ -67,21 +67,17 @@ mod tests {
     use crate::config::ClientConfig;
 
     #[test]
-    fn validate_rejects_enabled_end_warning_without_threshold() {
+    fn validate_accepts_missing_end_warning_minutes() {
         let mut config = ClientConfig::default();
-        config.notifications.end_warning_enabled = true;
-        let err = validate(&config).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("invalid notifications configuration")
-        );
+        config.notifications.end_warning_minutes = None;
+        assert!(validate(&config).is_ok());
     }
 
     #[test]
-    fn validate_accepts_enabled_end_warning_with_threshold() {
+    fn validate_rejects_zero_end_warning_minutes() {
         let mut config = ClientConfig::default();
-        config.notifications.end_warning_enabled = true;
-        config.notifications.end_warning_minutes_before = Some(5);
-        assert!(validate(&config).is_ok());
+        config.notifications.end_warning_minutes = Some(0);
+        let err = validate(&config).unwrap_err();
+        assert!(err.to_string().contains("end_warning_minutes"));
     }
 }

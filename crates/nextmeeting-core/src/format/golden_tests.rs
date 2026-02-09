@@ -304,8 +304,7 @@ fn golden_waybar_ending_soon() {
     let meetings = vec![ongoing_meeting_ending_in(now_utc, "Sprint Review", 4)];
 
     let mut options = FormatOptions::default();
-    options.end_warning_enabled = true;
-    options.end_warning_minutes_before = Some(5);
+    options.end_warning_minutes = Some(5);
     let formatter = OutputFormatter::new(options);
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
 
