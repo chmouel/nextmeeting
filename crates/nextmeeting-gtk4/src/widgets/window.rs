@@ -47,7 +47,7 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
         .build();
 
     let date_label = gtk::Label::builder()
-        .label(&chrono::Local::now().format("%A, %B %-d").to_string())
+        .label(chrono::Local::now().format("%A, %B %-d").to_string())
         .xalign(0.0)
         .css_classes(["schedule-date"])
         .build();
@@ -90,14 +90,14 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
 
     // Action buttons - icons only with tooltips
     let create_button = gtk::Button::builder()
-        .icon_name("video-joined-symbolic")
+        .icon_name("camera-video-symbolic")
         .tooltip_text("Create a new Google Meet video call")
         .css_classes(["sidebar-action"])
         .build();
 
     let snooze_button = gtk::Button::builder()
         .icon_name("alarm-symbolic")
-        .tooltip_text(&format!(
+        .tooltip_text(format!(
             "Hide notifications for {} minutes",
             snooze_minutes
         ))
@@ -105,7 +105,7 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
         .build();
 
     let calendar_button = gtk::Button::builder()
-        .icon_name("x-office-calendar-symbolic")
+        .icon_name("calendar-month-symbolic")
         .tooltip_text("Open today's calendar")
         .css_classes(["sidebar-action"])
         .build();
@@ -117,7 +117,7 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
         .build();
 
     let clear_dismissals_button = gtk::Button::builder()
-        .icon_name("edit-clear-all-symbolic")
+        .icon_name("edit-clear-symbolic")
         .tooltip_text("Show previously dismissed meetings")
         .css_classes(["sidebar-action", "sidebar-action-secondary"])
         .build();

@@ -69,6 +69,7 @@ In the GTK agenda list, use the row action menu to:
 - Dismiss an event locally (hide only)
 - Decline an event in the calendar provider
 - Delete an event occurrence (with confirmation)
+- Click a meeting card to expand and view its event description inline
 
 ## Common Commands
 

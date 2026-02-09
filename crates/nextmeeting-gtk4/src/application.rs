@@ -561,7 +561,7 @@ fn render_meetings(
         empty_box.set_margin_top(40);
         empty_box.set_margin_bottom(40);
 
-        let icon = gtk::Image::from_icon_name("x-office-calendar-symbolic");
+        let icon = gtk::Image::from_icon_name("calendar-month-symbolic");
         icon.set_pixel_size(64);
         icon.add_css_class("empty-state-icon");
 
@@ -598,6 +598,38 @@ fn render_meetings(
             is_dismissed,
             is_soon,
         );
+        card.set_description_text(meeting.description.as_deref());
+
+        {
+            let card_widget = card.widget.clone();
+            let description_revealer = card.description_revealer.clone();
+            let frame = card.widget.clone();
+            let click = gtk::GestureClick::new();
+            click.set_button(gtk::gdk::BUTTON_PRIMARY);
+            click.connect_released(move |gesture, _, x, y| {
+                if gesture.current_button() != gtk::gdk::BUTTON_PRIMARY {
+                    return;
+                }
+
+                if let Some(picked_widget) = card_widget.pick(x, y, gtk::PickFlags::DEFAULT)
+                    && widget_or_ancestor_has_css_class(
+                        &picked_widget,
+                        "meeting-card-interactive-action",
+                    )
+                {
+                    return;
+                }
+
+                let show = !description_revealer.reveals_child();
+                description_revealer.set_reveal_child(show);
+                if show {
+                    frame.add_css_class("meeting-card-expanded");
+                } else {
+                    frame.remove_css_class("meeting-card-expanded");
+                }
+            });
+            card.widget.add_controller(click);
+        }
 
         // Connect join button if present
         if let Some(ref join_btn) = card.join_button {
@@ -848,4 +880,15 @@ fn update_show_dismissed_button(button: &gtk::Button, showing: bool) {
         button.remove_css_class("showing-dismissed");
         button.set_tooltip_text(Some("Show dismissed meetings"));
     }
+}
+
+fn widget_or_ancestor_has_css_class(widget: &gtk::Widget, class_name: &str) -> bool {
+    let mut current = Some(widget.clone());
+    while let Some(item) = current {
+        if item.has_css_class(class_name) {
+            return true;
+        }
+        current = item.parent();
+    }
+    false
 }

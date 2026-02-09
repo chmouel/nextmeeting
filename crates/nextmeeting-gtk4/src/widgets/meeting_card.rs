@@ -15,6 +15,15 @@ pub struct MeetingCard {
     pub dismiss_button: gtk::Button,
     pub decline_button: gtk::Button,
     pub delete_button: gtk::Button,
+    pub description_revealer: gtk::Revealer,
+    pub description_label: gtk::Label,
+}
+
+pub fn normalise_description(description: Option<&str>) -> Option<String> {
+    description
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 impl MeetingCard {
@@ -55,18 +64,20 @@ impl MeetingCard {
             frame.add_css_class("meeting-card-dismissed");
         }
 
+        let root_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+
         // Main horizontal box
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         hbox.set_margin_top(12);
-        hbox.set_margin_bottom(12);
+        hbox.set_margin_bottom(4);
         hbox.set_margin_start(14);
         hbox.set_margin_end(14);
 
         // Icon
         let icon_name = if is_video {
-            "video-joined-symbolic"
+            "camera-video-symbolic"
         } else {
-            "x-office-calendar-symbolic"
+            "calendar-month-symbolic"
         };
         let icon = gtk::Image::from_icon_name(icon_name);
         icon.set_pixel_size(24);
@@ -145,7 +156,11 @@ impl MeetingCard {
             let btn = gtk::Button::builder()
                 .child(&btn_content)
                 .tooltip_text("Open video meeting link")
-                .css_classes(["suggested-action", "meeting-card-join"])
+                .css_classes([
+                    "suggested-action",
+                    "meeting-card-join",
+                    "meeting-card-interactive-action",
+                ])
                 .valign(gtk::Align::Center)
                 .build();
             if is_soon {
@@ -159,21 +174,31 @@ impl MeetingCard {
 
         // Action buttons (dismiss, decline, delete) - shown on hover
         let (dismiss_icon, dismiss_tooltip) = if is_dismissed {
-            ("view-restore-symbolic", "Restore this event")
+            ("edit-undo-symbolic", "Restore this event")
         } else {
             ("window-close-symbolic", "Dismiss this event (hide locally)")
         };
         let dismiss_button = gtk::Button::builder()
             .icon_name(dismiss_icon)
             .tooltip_text(dismiss_tooltip)
-            .css_classes(["flat", "circular", "meeting-card-action"])
+            .css_classes([
+                "flat",
+                "circular",
+                "meeting-card-action",
+                "meeting-card-interactive-action",
+            ])
             .valign(gtk::Align::Center)
             .build();
 
         let decline_button = gtk::Button::builder()
             .icon_name("call-stop-symbolic")
             .tooltip_text("Decline this event")
-            .css_classes(["flat", "circular", "meeting-card-action"])
+            .css_classes([
+                "flat",
+                "circular",
+                "meeting-card-action",
+                "meeting-card-interactive-action",
+            ])
             .valign(gtk::Align::Center)
             .build();
 
@@ -185,6 +210,7 @@ impl MeetingCard {
                 "circular",
                 "meeting-card-action",
                 "destructive-action",
+                "meeting-card-interactive-action",
             ])
             .valign(gtk::Align::Center)
             .build();
@@ -194,8 +220,40 @@ impl MeetingCard {
         action_buttons_box.append(&decline_button);
 
         hbox.append(&action_buttons_box);
+        root_box.append(&hbox);
 
-        frame.set_child(Some(&hbox));
+        let description_label = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
+            .selectable(true)
+            .css_classes(["meeting-description-inline-body"])
+            .build();
+
+        let description_scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .min_content_height(72)
+            .max_content_height(220)
+            .child(&description_label)
+            .build();
+        description_scroll.add_css_class("meeting-description-inline-scroll");
+
+        let description_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        description_box.add_css_class("meeting-description-inline");
+        description_box.set_margin_top(0);
+        description_box.set_margin_bottom(10);
+        description_box.set_margin_start(14);
+        description_box.set_margin_end(14);
+        description_box.append(&description_scroll);
+
+        let description_revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SlideDown)
+            .transition_duration(170)
+            .reveal_child(false)
+            .child(&description_box)
+            .build();
+        root_box.append(&description_revealer);
+        frame.set_child(Some(&root_box));
 
         Self {
             widget: frame,
@@ -203,11 +261,55 @@ impl MeetingCard {
             dismiss_button,
             decline_button,
             delete_button,
+            description_revealer,
+            description_label,
         }
+    }
+
+    pub fn set_description_text(&self, description: Option<&str>) {
+        let text = normalise_description(description)
+            .unwrap_or_else(|| "No description provided for this event.".to_string());
+        self.description_label.set_label(&text);
     }
 
     /// Returns the GTK widget for this card.
     pub fn widget(&self) -> &gtk::Frame {
         &self.widget
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalise_description;
+
+    #[test]
+    fn normalise_description_preserves_text() {
+        assert_eq!(
+            normalise_description(Some("Weekly sync")),
+            Some("Weekly sync".to_string())
+        );
+    }
+
+    #[test]
+    fn normalise_description_trims_text() {
+        assert_eq!(
+            normalise_description(Some("  Weekly sync  ")),
+            Some("Weekly sync".to_string())
+        );
+    }
+
+    #[test]
+    fn normalise_description_empty_becomes_none() {
+        assert_eq!(normalise_description(Some("")), None);
+    }
+
+    #[test]
+    fn normalise_description_whitespace_becomes_none() {
+        assert_eq!(normalise_description(Some("   ")), None);
+    }
+
+    #[test]
+    fn normalise_description_none_stays_none() {
+        assert_eq!(normalise_description(None), None);
     }
 }

@@ -61,7 +61,7 @@ window.nm-window {
 }
 
 .meeting-card:hover {
-    box-shadow: 0 2px 8px alpha(black, 0.08);
+    box-shadow: 0 2px 8px alpha(@window_fg_color, 0.08);
 }
 
 .meeting-card-video {
@@ -80,6 +80,23 @@ window.nm-window {
 
 .meeting-card-calendar:hover {
     border-color: alpha(@green_3, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+    .meeting-card-video {
+        background-color: alpha(@blue_5, 0.1);
+        border-color: alpha(@blue_5, 0.2);
+    }
+    .meeting-card-video:hover {
+        border-color: alpha(@blue_5, 0.3);
+    }
+    .meeting-card-calendar {
+        background-color: alpha(@green_5, 0.08);
+        border-color: alpha(@green_5, 0.15);
+    }
+    .meeting-card-calendar:hover {
+        border-color: alpha(@green_5, 0.25);
+    }
 }
 
 .meeting-card-ongoing {
@@ -119,11 +136,11 @@ window.nm-window {
 .meeting-card-title {
     font-weight: 700;
     font-size: 1rem;
-    color: alpha(black, 0.85);
+    color: @window_fg_color;
 }
 
 .meeting-card-time {
-    color: alpha(black, 0.6);
+    color: alpha(@window_fg_color, 0.7);
     font-size: 0.9rem;
 }
 
@@ -162,6 +179,27 @@ window.nm-window {
     min-width: 28px;
     min-height: 28px;
     padding: 4px;
+}
+
+/* ===== Inline meeting description ===== */
+.meeting-card-expanded {
+    border-color: alpha(@accent_color, 0.45);
+}
+
+.meeting-description-inline {
+    min-width: 240px;
+}
+
+.meeting-description-inline-scroll {
+    border: 1px solid alpha(@borders, 0.35);
+    border-radius: 8px;
+    background-color: alpha(@card_bg_color, 0.5);
+}
+
+.meeting-description-inline-body {
+    color: @window_fg_color;
+    padding: 8px 10px;
+    font-size: 0.9rem;
 }
 
 /* ===== Sidebar actions ===== */
