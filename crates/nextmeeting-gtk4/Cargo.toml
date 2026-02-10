@@ -15,6 +15,7 @@ nextmeeting-core = { path = "../nextmeeting-core" }
 nextmeeting-protocol = { path = "../nextmeeting-protocol" }
 nextmeeting-server = { path = "../nextmeeting-server" }
 
+open = "5"
 chrono.workspace = true
 regex.workspace = true
 serde.workspace = true

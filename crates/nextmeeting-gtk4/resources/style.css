@@ -210,6 +210,16 @@ window.nm-window {
     min-height: 28px;
 }
 
+.detail-panel-actions {
+    padding: 4px 0;
+}
+
+.detail-panel-action {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 4px;
+}
+
 .detail-panel-content {
     /* scrolled content area */
 }

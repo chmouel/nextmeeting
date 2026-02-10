@@ -1737,6 +1737,7 @@ dependencies = [
  "nextmeeting-core",
  "nextmeeting-protocol",
  "nextmeeting-server",
+ "open",
  "regex",
  "serde",
  "serde_json",

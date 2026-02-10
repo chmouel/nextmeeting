@@ -10,6 +10,18 @@ use nextmeeting_core::{MeetingView, ResponseStatus};
 use crate::utils::format_time_range;
 use crate::widgets::meeting_card::{linkify_for_pango, normalise_description};
 
+/// Context needed to perform actions on the currently displayed meeting.
+#[derive(Debug, Clone)]
+pub struct MeetingActionContext {
+    pub event_id: String,
+    pub provider_name: String,
+    pub calendar_id: String,
+    pub calendar_url: Option<String>,
+    pub primary_link_url: Option<String>,
+    pub title: String,
+    pub is_dismissed: bool,
+}
+
 /// A slide-in panel that shows full meeting details.
 #[derive(Clone)]
 pub struct DetailPanel {
@@ -25,11 +37,19 @@ pub struct DetailPanel {
     attendees_header: gtk::Label,
     attendees_list: gtk::Box,
     selected_meeting_id: Rc<RefCell<Option<String>>>,
+    action_context: Rc<RefCell<Option<MeetingActionContext>>>,
+    join_button: gtk::Button,
+    dismiss_button: gtk::Button,
+    decline_button: gtk::Button,
+    delete_button: gtk::Button,
+    calendar_button: gtk::Button,
 }
 
 impl DetailPanel {
     pub fn new() -> Self {
         let selected_meeting_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+        let action_context: Rc<RefCell<Option<MeetingActionContext>>> =
+            Rc::new(RefCell::new(None));
 
         // Outer container with fixed width
         let panel_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -67,6 +87,52 @@ impl DetailPanel {
         sep.set_margin_start(16);
         sep.set_margin_end(16);
         panel_box.append(&sep);
+
+        // === Action buttons row ===
+        let actions_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        actions_box.add_css_class("detail-panel-actions");
+        actions_box.set_margin_start(16);
+        actions_box.set_margin_end(16);
+        actions_box.set_margin_top(8);
+        actions_box.set_margin_bottom(4);
+
+        let join_button = gtk::Button::builder()
+            .icon_name("call-start-symbolic")
+            .tooltip_text("Join meeting")
+            .css_classes(["suggested-action", "circular", "detail-panel-action"])
+            .build();
+
+        let dismiss_button = gtk::Button::builder()
+            .icon_name("window-close-symbolic")
+            .tooltip_text("Dismiss this event")
+            .css_classes(["flat", "circular", "detail-panel-action"])
+            .build();
+
+        let decline_button = gtk::Button::builder()
+            .icon_name("call-stop-symbolic")
+            .tooltip_text("Decline this event")
+            .css_classes(["flat", "circular", "detail-panel-action"])
+            .build();
+
+        let calendar_button = gtk::Button::builder()
+            .icon_name("document-edit-symbolic")
+            .tooltip_text("Edit calendar event")
+            .css_classes(["flat", "circular", "detail-panel-action"])
+            .build();
+
+        let delete_button = gtk::Button::builder()
+            .icon_name("user-trash-symbolic")
+            .tooltip_text("Delete this event")
+            .css_classes(["destructive-action", "circular", "detail-panel-action"])
+            .build();
+
+        actions_box.append(&join_button);
+        actions_box.append(&dismiss_button);
+        actions_box.append(&decline_button);
+        actions_box.append(&calendar_button);
+        actions_box.append(&delete_button);
+
+        panel_box.append(&actions_box);
 
         // === Scrolled content ===
         let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
@@ -172,11 +238,17 @@ impl DetailPanel {
             attendees_header,
             attendees_list,
             selected_meeting_id,
+            action_context,
+            join_button,
+            dismiss_button,
+            decline_button,
+            delete_button,
+            calendar_button,
         }
     }
 
     /// Shows the panel with the given meeting's details.
-    pub fn show_meeting(&self, meeting: &MeetingView) {
+    pub fn show_meeting(&self, meeting: &MeetingView, is_dismissed: bool) {
         // Title
         self.title_label.set_label(&meeting.title);
 
@@ -279,6 +351,39 @@ impl DetailPanel {
             self.attendees_header.set_visible(false);
         }
 
+        // Update action buttons state
+        let has_link = meeting.primary_link.is_some();
+        self.join_button.set_visible(has_link);
+        self.calendar_button.set_sensitive(meeting.calendar_url.is_some());
+        if !meeting.calendar_url.is_some() {
+            self.calendar_button
+                .set_tooltip_text(Some("No calendar event URL available"));
+        } else {
+            self.calendar_button
+                .set_tooltip_text(Some("Edit calendar event"));
+        }
+
+        if is_dismissed {
+            self.dismiss_button.set_icon_name("edit-undo-symbolic");
+            self.dismiss_button
+                .set_tooltip_text(Some("Restore this event"));
+        } else {
+            self.dismiss_button.set_icon_name("window-close-symbolic");
+            self.dismiss_button
+                .set_tooltip_text(Some("Dismiss this event"));
+        }
+
+        // Store action context
+        *self.action_context.borrow_mut() = Some(MeetingActionContext {
+            event_id: meeting.id.clone(),
+            provider_name: meeting.provider_name.clone(),
+            calendar_id: meeting.calendar_id.clone(),
+            calendar_url: meeting.calendar_url.clone(),
+            primary_link_url: meeting.primary_link.as_ref().map(|l| l.url.clone()),
+            title: meeting.title.clone(),
+            is_dismissed,
+        });
+
         // Store ID and reveal
         *self.selected_meeting_id.borrow_mut() = Some(meeting.id.clone());
         self.revealer.set_reveal_child(true);
@@ -288,6 +393,7 @@ impl DetailPanel {
     pub fn hide(&self) {
         self.revealer.set_reveal_child(false);
         *self.selected_meeting_id.borrow_mut() = None;
+        *self.action_context.borrow_mut() = None;
     }
 
     /// Returns the currently displayed meeting ID, if any.
@@ -298,5 +404,30 @@ impl DetailPanel {
     /// Returns a reference to the close button.
     pub fn close_button(&self) -> &gtk::Button {
         &self.close_button
+    }
+
+    /// Returns the current action context.
+    pub fn action_context(&self) -> Rc<RefCell<Option<MeetingActionContext>>> {
+        self.action_context.clone()
+    }
+
+    pub fn join_button(&self) -> &gtk::Button {
+        &self.join_button
+    }
+
+    pub fn dismiss_button(&self) -> &gtk::Button {
+        &self.dismiss_button
+    }
+
+    pub fn decline_button(&self) -> &gtk::Button {
+        &self.decline_button
+    }
+
+    pub fn delete_button(&self) -> &gtk::Button {
+        &self.delete_button
+    }
+
+    pub fn calendar_button(&self) -> &gtk::Button {
+        &self.calendar_button
     }
 }

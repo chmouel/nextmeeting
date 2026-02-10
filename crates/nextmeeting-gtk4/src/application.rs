@@ -288,6 +288,35 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         ui_tx.clone(),
     );
 
+    // Ctrl+Q quit with confirmation dialog
+    {
+        let quit_action = gtk::gio::SimpleAction::new("quit-confirmed", None);
+        let window = widgets.window.clone();
+        let app_for_quit = app.clone();
+        quit_action.connect_activate(move |_, _| {
+            let dialog = adw::AlertDialog::builder()
+                .heading("Quit NextMeeting?")
+                .body("The application will stop running in the background.")
+                .default_response("cancel")
+                .close_response("cancel")
+                .build();
+            dialog.add_response("cancel", "Cancel");
+            dialog.add_response("quit", "Quit");
+            dialog.set_response_appearance("quit", adw::ResponseAppearance::Destructive);
+
+            let app_clone = app_for_quit.clone();
+            dialog.connect_response(None, move |_, response| {
+                if response == "quit" {
+                    app_clone.quit();
+                }
+            });
+
+            dialog.present(Some(&window));
+        });
+        app.add_action(&quit_action);
+        app.set_accels_for_action("app.quit-confirmed", &["<Control>q"]);
+    }
+
     let (tray_tx, tray_rx) = mpsc::channel::<TrayCommand>();
     let tray_manager = TrayManager::new(runtime.clone(), tray_tx);
     tray_manager.start();
@@ -507,6 +536,258 @@ fn connect_actions(
             });
         });
     }
+
+    // === Detail panel buttons (connected once) ===
+
+    // Close button
+    {
+        let detail_panel = widgets.detail_panel.clone();
+        widgets
+            .detail_panel
+            .close_button()
+            .connect_clicked(move |_| {
+                detail_panel.hide();
+            });
+    }
+
+    // Join button
+    {
+        let action_ctx = widgets.detail_panel.action_context();
+        let ui_tx = ui_tx.clone();
+        widgets
+            .detail_panel
+            .join_button()
+            .connect_clicked(move |_| {
+                let ctx = action_ctx.borrow();
+                if let Some(ref ctx) = *ctx {
+                    if let Some(ref url) = ctx.primary_link_url {
+                        match open::that(url) {
+                            Ok(()) => {
+                                let _ = ui_tx
+                                    .send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
+                            }
+                            Err(err) => {
+                                let _ = ui_tx.send(UiEvent::ActionFailed(err.to_string()));
+                            }
+                        }
+                    }
+                }
+            });
+    }
+
+    // Dismiss button
+    {
+        let action_ctx = widgets.detail_panel.action_context();
+        let detail_panel = widgets.detail_panel.clone();
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        widgets
+            .detail_panel
+            .dismiss_button()
+            .connect_clicked(move |_| {
+                let ctx = action_ctx.borrow().clone();
+                if let Some(ctx) = ctx {
+                    let runtime = runtime.clone();
+                    let app_runtime = app_runtime.clone();
+                    let ui_tx = ui_tx.clone();
+                    let detail_panel = detail_panel.clone();
+                    runtime.spawn(async move {
+                        let mut guard = app_runtime.lock().await;
+                        if ctx.is_dismissed {
+                            guard.undismiss_event(&ctx.event_id);
+                        } else {
+                            guard.dismiss_event(&ctx.event_id);
+                        }
+                        if guard.refresh().await.is_ok() {
+                            let meetings = guard.state.meetings().to_vec();
+                            let show_dismissed = guard.show_dismissed();
+                            let dismissed_ids = guard.dismissed_ids().clone();
+                            let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                                meetings,
+                                show_dismissed,
+                                dismissed_ids,
+                            });
+                        }
+                        let msg = if ctx.is_dismissed {
+                            "Event restored"
+                        } else {
+                            "Event dismissed"
+                        };
+                        let _ = ui_tx.send(UiEvent::ActionSucceeded(msg.to_string()));
+                    });
+                    // Hide panel immediately on the GTK thread
+                    detail_panel.hide();
+                }
+            });
+    }
+
+    // Decline button
+    {
+        let action_ctx = widgets.detail_panel.action_context();
+        let detail_panel = widgets.detail_panel.clone();
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        widgets
+            .detail_panel
+            .decline_button()
+            .connect_clicked(move |_| {
+                let ctx = action_ctx.borrow().clone();
+                if let Some(ctx) = ctx {
+                    let runtime = runtime.clone();
+                    let app_runtime = app_runtime.clone();
+                    let ui_tx = ui_tx.clone();
+                    runtime.spawn(async move {
+                        let mut guard = app_runtime.lock().await;
+                        match guard
+                            .mutate_event(
+                                &ctx.provider_name,
+                                &ctx.calendar_id,
+                                &ctx.event_id,
+                                EventMutationAction::Decline,
+                            )
+                            .await
+                        {
+                            Ok(()) => {
+                                let meetings = guard.state.meetings().to_vec();
+                                let show_dismissed = guard.show_dismissed();
+                                let dismissed_ids = guard.dismissed_ids().clone();
+                                let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                                    meetings,
+                                    show_dismissed,
+                                    dismissed_ids,
+                                });
+                                let _ = ui_tx
+                                    .send(UiEvent::ActionSucceeded("Event declined".to_string()));
+                            }
+                            Err(err) => {
+                                let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                            }
+                        }
+                    });
+                    detail_panel.hide();
+                }
+            });
+    }
+
+    // Delete button (with confirmation)
+    {
+        let action_ctx = widgets.detail_panel.action_context();
+        let detail_panel = widgets.detail_panel.clone();
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        let window = widgets.window.clone();
+        widgets
+            .detail_panel
+            .delete_button()
+            .connect_clicked(move |_| {
+                let ctx = action_ctx.borrow().clone();
+                if let Some(ctx) = ctx {
+                    let runtime = runtime.clone();
+                    let app_runtime = app_runtime.clone();
+                    let ui_tx = ui_tx.clone();
+                    let detail_panel = detail_panel.clone();
+
+                    let dialog = adw::AlertDialog::builder()
+                        .heading("Delete Event?")
+                        .body(format!(
+                            "Are you sure you want to delete \"{}\"? This cannot be undone.",
+                            ctx.title
+                        ))
+                        .default_response("cancel")
+                        .close_response("cancel")
+                        .build();
+                    dialog.add_response("cancel", "Cancel");
+                    dialog.add_response("delete", "Delete");
+                    dialog
+                        .set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+
+                    dialog.connect_response(None, move |_, response| {
+                        if response == "delete" {
+                            let runtime = runtime.clone();
+                            let app_runtime = app_runtime.clone();
+                            let ui_tx = ui_tx.clone();
+                            let ctx = ctx.clone();
+                            runtime.spawn(async move {
+                                let mut guard = app_runtime.lock().await;
+                                match guard
+                                    .mutate_event(
+                                        &ctx.provider_name,
+                                        &ctx.calendar_id,
+                                        &ctx.event_id,
+                                        EventMutationAction::Delete,
+                                    )
+                                    .await
+                                {
+                                    Ok(()) => {
+                                        let meetings = guard.state.meetings().to_vec();
+                                        let show_dismissed = guard.show_dismissed();
+                                        let dismissed_ids = guard.dismissed_ids().clone();
+                                        let _ = ui_tx.send(UiEvent::MeetingsLoaded {
+                                            meetings,
+                                            show_dismissed,
+                                            dismissed_ids,
+                                        });
+                                        let _ = ui_tx.send(UiEvent::ActionSucceeded(
+                                            "Event deleted".to_string(),
+                                        ));
+                                    }
+                                    Err(err) => {
+                                        let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                                    }
+                                }
+                            });
+                            detail_panel.hide();
+                        }
+                    });
+
+                    dialog.present(Some(&window));
+                }
+            });
+    }
+
+    // Calendar button
+    {
+        let action_ctx = widgets.detail_panel.action_context();
+        let runtime = runtime.clone();
+        let app_runtime = app_runtime.clone();
+        let ui_tx = ui_tx.clone();
+        widgets
+            .detail_panel
+            .calendar_button()
+            .connect_clicked(move |_| {
+                let ctx = action_ctx.borrow().clone();
+                if let Some(ctx) = ctx {
+                    let runtime = runtime.clone();
+                    let app_runtime = app_runtime.clone();
+                    let ui_tx = ui_tx.clone();
+                    runtime.spawn(async move {
+                        match ctx.calendar_url {
+                            Some(url) => {
+                                let guard = app_runtime.lock().await;
+                                match guard.edit_calendar_event_url(&url, &ctx.event_id) {
+                                    Ok(()) => {
+                                        let _ = ui_tx.send(UiEvent::ActionSucceeded(
+                                            "Opened calendar event editor".to_string(),
+                                        ));
+                                    }
+                                    Err(err) => {
+                                        let _ = ui_tx.send(UiEvent::ActionFailed(err));
+                                    }
+                                }
+                            }
+                            None => {
+                                let _ = ui_tx.send(UiEvent::ActionFailed(
+                                    "No calendar event URL for this meeting".to_string(),
+                                ));
+                            }
+                        }
+                    });
+                }
+            });
+    }
 }
 
 fn trigger_refresh(
@@ -583,25 +864,14 @@ fn render_meetings(
         return;
     }
 
-    // Connect close button for detail panel
-    {
-        let detail_panel = widgets.detail_panel.clone();
-        widgets
-            .detail_panel
-            .close_button()
-            .connect_clicked(move |_| {
-                detail_panel.hide();
-            });
-    }
-
-    // Find the next upcoming meeting for the JOIN NOW button
-    let next_meeting_id = find_next_meeting(meetings);
+    // Find meetings that should get the JOIN NOW button
+    let primary_ids = find_primary_meetings(meetings);
 
     const SOON_THRESHOLD_MINUTES: i64 = 5;
     let now = Local::now();
 
     for meeting in meetings {
-        let is_primary = next_meeting_id.as_ref() == Some(&meeting.id);
+        let is_primary = primary_ids.contains(&meeting.id);
         let has_link = meeting.primary_link.is_some();
         let always_show_actions = is_primary;
         let is_dismissed = dismissed_ids.contains(&meeting.id);
@@ -611,13 +881,16 @@ fn render_meetings(
             && !meeting.is_all_day
             && minutes_until > 0
             && minutes_until <= SOON_THRESHOLD_MINUTES;
+        let show_join_button = is_primary && has_link;
+        let show_card_actions = is_primary;
         let card = MeetingCard::new(
             meeting,
-            has_link,
+            show_join_button,
             is_primary,
             always_show_actions,
             is_dismissed,
             is_soon,
+            show_card_actions,
         );
 
         // Click handler: toggle detail panel
@@ -625,6 +898,7 @@ fn render_meetings(
             let card_widget = card.widget.clone();
             let detail_panel = widgets.detail_panel.clone();
             let meeting_clone = meeting.clone();
+            let card_is_dismissed = is_dismissed;
             let click = gtk::GestureClick::new();
             click.set_button(gtk::gdk::BUTTON_PRIMARY);
             click.connect_released(move |gesture, _, x, y| {
@@ -645,7 +919,7 @@ fn render_meetings(
                 if detail_panel.current_meeting_id().as_ref() == Some(&meeting_clone.id) {
                     detail_panel.hide();
                 } else {
-                    detail_panel.show_meeting(&meeting_clone);
+                    detail_panel.show_meeting(&meeting_clone, card_is_dismissed);
                 }
             });
             card.widget.add_controller(click);
@@ -653,27 +927,22 @@ fn render_meetings(
 
         // Connect join button if present
         if let Some(ref join_btn) = card.join_button {
-            let runtime = runtime.clone();
-            let app_runtime = app_runtime.clone();
-            let ui_tx = ui_tx.clone();
-            join_btn.connect_clicked(move |_| {
-                runtime.spawn({
-                    let app_runtime = app_runtime.clone();
-                    let ui_tx = ui_tx.clone();
-                    async move {
-                        let guard = app_runtime.lock().await;
-                        match guard.open_next_meeting() {
-                            Ok(()) => {
-                                let _ = ui_tx
-                                    .send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
-                            }
-                            Err(err) => {
-                                let _ = ui_tx.send(UiEvent::ActionFailed(err));
-                            }
+            if let Some(ref link) = meeting.primary_link {
+                let url = link.url.clone();
+                let ui_tx = ui_tx.clone();
+                join_btn.connect_clicked(move |_| {
+                    match open::that(&url) {
+                        Ok(()) => {
+                            let _ = ui_tx
+                                .send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
+                        }
+                        Err(err) => {
+                            let _ = ui_tx
+                                .send(UiEvent::ActionFailed(err.to_string()));
                         }
                     }
                 });
-            });
+            }
         }
 
         // Connect dismiss button (toggles between dismiss and undismiss)
@@ -882,41 +1151,43 @@ fn render_meetings(
     }
 }
 
-/// Find the ID of the next upcoming meeting that should get the JOIN NOW button.
-/// Priority: imminent (within 5 min) > next upcoming with link > ongoing with link > first with link.
-fn find_next_meeting(meetings: &[nextmeeting_core::MeetingView]) -> Option<String> {
+/// Find the IDs of meetings that should get the JOIN NOW button.
+/// Priority: all ongoing with link > imminent (within 5 min) > next upcoming with link > first with link.
+fn find_primary_meetings(meetings: &[nextmeeting_core::MeetingView]) -> HashSet<String> {
     let now = chrono::Local::now();
 
-    // First: meeting starting within 5 minutes (imminent, not yet started)
+    // First: all ongoing meetings with a link
+    let ongoing: HashSet<String> = meetings
+        .iter()
+        .filter(|m| m.start_local <= now && now < m.end_local && m.primary_link.is_some())
+        .map(|m| m.id.clone())
+        .collect();
+    if !ongoing.is_empty() {
+        return ongoing;
+    }
+
+    // Second: imminent meeting starting within 5 minutes (not yet started)
     for meeting in meetings {
         let mins_until = meeting.minutes_until_start(now);
-        let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
-        if !is_ongoing && (0..=5).contains(&mins_until) {
-            return Some(meeting.id.clone());
+        if meeting.start_local > now && (0..=5).contains(&mins_until) && meeting.primary_link.is_some() {
+            return HashSet::from([meeting.id.clone()]);
         }
     }
 
-    // Second: next upcoming meeting with a link (hasn't started yet, soonest first)
+    // Third: next upcoming meeting with a link (hasn't started yet, soonest first)
     if let Some(m) = meetings
         .iter()
         .find(|m| m.start_local > now && m.primary_link.is_some())
     {
-        return Some(m.id.clone());
-    }
-
-    // Fallback: ongoing meeting with a link
-    if let Some(m) = meetings
-        .iter()
-        .find(|m| m.start_local <= now && now < m.end_local && m.primary_link.is_some())
-    {
-        return Some(m.id.clone());
+        return HashSet::from([m.id.clone()]);
     }
 
     // Last resort: first meeting with a link
     meetings
         .iter()
         .find(|m| m.primary_link.is_some())
-        .map(|m| m.id.clone())
+        .map(|m| HashSet::from([m.id.clone()]))
+        .unwrap_or_default()
 }
 
 fn update_snooze_button(

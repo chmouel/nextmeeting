@@ -187,6 +187,7 @@ impl MeetingCard {
     /// * `always_show_actions` - Whether to always show action buttons (vs only on hover)
     /// * `is_dismissed` - Whether the meeting is dismissed (shown with muted styling when viewing dismissed)
     /// * `is_soon` - Whether the meeting starts within 5 minutes (shown with warning styling)
+    /// * `show_card_actions` - Whether to add action buttons to the card widget tree
     pub fn new(
         meeting: &MeetingView,
         show_join_button: bool,
@@ -194,6 +195,7 @@ impl MeetingCard {
         always_show_actions: bool,
         is_dismissed: bool,
         is_soon: bool,
+        show_card_actions: bool,
     ) -> Self {
         let is_video = meeting
             .primary_link
@@ -408,12 +410,14 @@ impl MeetingCard {
             .sensitive(meeting.calendar_url.is_some())
             .build();
 
-        action_buttons_box.append(&delete_button);
-        action_buttons_box.append(&dismiss_button);
-        action_buttons_box.append(&decline_button);
-        action_buttons_box.append(&calendar_button);
+        if show_card_actions {
+            action_buttons_box.append(&delete_button);
+            action_buttons_box.append(&dismiss_button);
+            action_buttons_box.append(&decline_button);
+            action_buttons_box.append(&calendar_button);
 
-        hbox.append(&action_buttons_box);
+            hbox.append(&action_buttons_box);
+        }
         root_box.append(&hbox);
 
         frame.set_child(Some(&root_box));
