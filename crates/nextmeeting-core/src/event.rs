@@ -480,14 +480,24 @@ impl MeetingView {
     ///
     /// Returns negative values if the meeting has already started.
     pub fn minutes_until_start(&self, now: DateTime<Local>) -> i64 {
-        (self.start_local - now).num_minutes()
+        let secs = (self.start_local - now).num_seconds();
+        if secs > 0 {
+            (secs + 59) / 60
+        } else {
+            secs / 60
+        }
     }
 
     /// Returns minutes until the meeting ends from the given time.
     ///
     /// Returns negative values if the meeting has already ended.
     pub fn minutes_until_end(&self, now: DateTime<Local>) -> i64 {
-        (self.end_local - now).num_minutes()
+        let secs = (self.end_local - now).num_seconds();
+        if secs > 0 {
+            (secs + 59) / 60
+        } else {
+            secs / 60
+        }
     }
 
     /// Returns the duration of the meeting in minutes.
@@ -778,6 +788,41 @@ mod tests {
 
             assert_eq!(view.minutes_until_start(now_local), 15);
             assert_eq!(view.minutes_until_end(now_local), 45);
+        }
+
+        #[test]
+        fn minutes_until_rounds_up_fractional_seconds() {
+            let event = sample_event(); // starts 10:00, ends 10:30
+            // 09:58:50 → 70 seconds before start → should ceil to 2 minutes
+            let now = utc(2025, 2, 5, 9, 58, 50);
+            let view = MeetingView::from_event(&event, now);
+            let now_local = now.with_timezone(&Local);
+
+            assert_eq!(view.minutes_until_start(now_local), 2);
+            assert_eq!(view.minutes_until_end(now_local), 32);
+        }
+
+        #[test]
+        fn minutes_until_exact_boundary_unchanged() {
+            let event = sample_event(); // starts 10:00, ends 10:30
+            // Exactly 1 minute before start → stays 1
+            let now = utc(2025, 2, 5, 9, 59, 0);
+            let view = MeetingView::from_event(&event, now);
+            let now_local = now.with_timezone(&Local);
+
+            assert_eq!(view.minutes_until_start(now_local), 1);
+            assert_eq!(view.minutes_until_end(now_local), 31);
+        }
+
+        #[test]
+        fn minutes_until_end_negative_truncates() {
+            let event = sample_event(); // ends 10:30
+            // 10:31:10 → 70 seconds past end → should truncate to -1
+            let now = utc(2025, 2, 5, 10, 31, 10);
+            let view = MeetingView::from_event(&event, now);
+            let now_local = now.with_timezone(&Local);
+
+            assert_eq!(view.minutes_until_end(now_local), -1);
         }
 
         #[test]

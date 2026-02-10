@@ -590,7 +590,8 @@ impl OutputFormatter {
         waybar_markup: bool,
     ) -> String {
         let delta = date - now;
-        let total_minutes = delta.num_minutes();
+        let secs = delta.num_seconds();
+        let total_minutes = if secs > 0 { (secs + 59) / 60 } else { secs / 60 };
         let days = total_minutes.div_euclid(24 * 60);
         let hours = total_minutes.rem_euclid(24 * 60).div_euclid(60);
         let minutes = total_minutes.rem_euclid(60);
@@ -999,6 +1000,27 @@ mod tests {
             assert_eq!(
                 formatter.format_time_until(now + chrono::Duration::minutes(1), now, false),
                 "In 1 minute"
+            );
+        }
+
+        #[test]
+        fn format_time_until_rounds_up_fractional_seconds() {
+            let formatter = OutputFormatter::with_defaults();
+            let now = local_from_utc(utc(2025, 2, 5, 10, 0, 0));
+            // 70 seconds from now → should show "In 2 minutes" (ceiling)
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::seconds(70), now, false),
+                "In 2 minutes"
+            );
+            // 1 second from now → should show "In 1 minute" (ceiling)
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::seconds(1), now, false),
+                "In 1 minute"
+            );
+            // 61 seconds from now → should show "In 2 minutes" (ceiling)
+            assert_eq!(
+                formatter.format_time_until(now + chrono::Duration::seconds(61), now, false),
+                "In 2 minutes"
             );
         }
 
