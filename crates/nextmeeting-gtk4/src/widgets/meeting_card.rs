@@ -170,6 +170,7 @@ impl MeetingCard {
     pub fn new(
         meeting: &MeetingView,
         show_join_button: bool,
+        is_primary: bool,
         always_show_actions: bool,
         is_dismissed: bool,
         is_soon: bool,
@@ -308,10 +309,20 @@ impl MeetingCard {
                 ])
                 .valign(gtk::Align::Center)
                 .build();
+
+            // Add conditional visibility class
+            if is_primary {
+                btn.add_css_class("meeting-card-join-primary");
+            } else {
+                btn.add_css_class("meeting-card-join-secondary");
+            }
+
             if is_soon {
                 btn.add_css_class("meeting-card-join-soon");
             }
-            hbox.append(&btn);
+
+            // Add to action_buttons_box (leftmost position)
+            action_buttons_box.prepend(&btn);
             Some(btn)
         } else {
             None

@@ -589,8 +589,9 @@ fn render_meetings(
     let now = Local::now();
 
     for meeting in meetings {
-        let show_join = next_meeting_id.as_ref() == Some(&meeting.id);
-        let always_show_actions = show_join;
+        let is_primary = next_meeting_id.as_ref() == Some(&meeting.id);
+        let has_link = meeting.primary_link.is_some();
+        let always_show_actions = is_primary;
         let is_dismissed = dismissed_ids.contains(&meeting.id);
         let minutes_until = meeting.minutes_until_start(now);
         let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
@@ -600,7 +601,8 @@ fn render_meetings(
             && minutes_until <= SOON_THRESHOLD_MINUTES;
         let card = MeetingCard::new(
             meeting,
-            show_join,
+            has_link,
+            is_primary,
             always_show_actions,
             is_dismissed,
             is_soon,

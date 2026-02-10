@@ -155,6 +155,13 @@ window.nm-window {
     padding: 6px 16px;
 }
 
+/* Primary JOIN NOW button - always visible */
+.meeting-card-join-primary {
+    opacity: 1 !important;
+}
+
+/* Secondary JOIN NOW buttons follow hover pattern (inherits from .meeting-card-actions) */
+
 .meeting-card-join-soon {
     animation: pulse-join 1s ease-in-out infinite;
 }
