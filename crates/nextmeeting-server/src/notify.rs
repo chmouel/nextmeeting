@@ -372,7 +372,7 @@ impl NotifyEngine {
         #[cfg(target_os = "linux")]
         notification.urgency(urgency);
 
-        match notification.show() {
+        match show_notification(&notification).await {
             Ok(_) => {
                 info!(
                     title = %meeting.title,
@@ -444,7 +444,7 @@ impl NotifyEngine {
         #[cfg(target_os = "linux")]
         notification.urgency(urgency);
 
-        match notification.show() {
+        match show_notification(&notification).await {
             Ok(_) => {
                 info!(
                     title = %meeting.title,
@@ -545,7 +545,7 @@ impl NotifyEngine {
             notification.icon(icon);
         }
 
-        match notification.show() {
+        match show_notification(&notification).await {
             Ok(_) => {
                 info!("Morning agenda notification sent");
                 state.mark_sent(date_hash);
@@ -580,6 +580,18 @@ impl NotifyEngine {
     pub async fn cleanup(&self) {
         self.state.write().await.cleanup_old_hashes(1000);
     }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+async fn show_notification(
+    notification: &Notification,
+) -> Result<notify_rust::NotificationHandle, notify_rust::error::Error> {
+    notification.show_async().await
+}
+
+#[cfg(any(not(unix), target_os = "macos"))]
+async fn show_notification(notification: &Notification) -> Result<(), notify_rust::error::Error> {
+    notification.show()
 }
 
 /// Parses an urgency string into a notify-rust Urgency value.
@@ -740,6 +752,18 @@ mod tests {
 
         let sent = engine.check_and_notify(&[meeting]).await;
         assert_eq!(sent, 0);
+    }
+
+    #[tokio::test]
+    async fn notification_delivery_path_does_not_panic_in_tokio_runtime() {
+        let mut notification = Notification::new();
+        notification
+            .appname("nextmeeting-test")
+            .summary("runtime-check")
+            .body("runtime-check")
+            .timeout(Duration::from_secs(1));
+
+        let _ = show_notification(&notification).await;
     }
 
     #[test]
