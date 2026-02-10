@@ -28,6 +28,21 @@ pub enum ResponseStatus {
     Unknown,
 }
 
+/// An attendee of a calendar event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Attendee {
+    /// The attendee's display name.
+    pub display_name: String,
+    /// The attendee's email address.
+    pub email: String,
+    /// Whether this attendee is the organizer.
+    pub organizer: bool,
+    /// Whether this attendee is optional.
+    pub optional: bool,
+    /// The attendee's response status.
+    pub response_status: ResponseStatus,
+}
+
 /// The kind of meeting link.
 ///
 /// This enum represents the various video conferencing services that can be
@@ -277,6 +292,9 @@ pub struct NormalizedEvent {
     pub user_response_status: ResponseStatus,
     /// Number of non-self attendees (for filtering solo events).
     pub other_attendee_count: usize,
+    /// Non-self, non-resource attendees.
+    #[serde(default)]
+    pub attendees: Vec<Attendee>,
 }
 
 impl NormalizedEvent {
@@ -302,6 +320,7 @@ impl NormalizedEvent {
             is_recurring_instance: false,
             user_response_status: ResponseStatus::Unknown,
             other_attendee_count: 0,
+            attendees: Vec::new(),
         }
     }
 
@@ -399,6 +418,12 @@ impl NormalizedEvent {
         self.other_attendee_count = count;
         self
     }
+
+    /// Builder method to set attendees.
+    pub fn with_attendees(mut self, attendees: Vec<Attendee>) -> Self {
+        self.attendees = attendees;
+        self
+    }
 }
 
 /// A display-ready view of a meeting.
@@ -438,6 +463,9 @@ pub struct MeetingView {
     pub location: Option<String>,
     /// The event description, if available.
     pub description: Option<String>,
+    /// Non-self, non-resource attendees.
+    #[serde(default)]
+    pub attendees: Vec<Attendee>,
 }
 
 impl MeetingView {
@@ -473,6 +501,7 @@ impl MeetingView {
             other_attendee_count: event.other_attendee_count,
             location: event.raw_location.clone(),
             description: event.raw_description.clone(),
+            attendees: event.attendees.clone(),
         }
     }
 

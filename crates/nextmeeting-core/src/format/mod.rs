@@ -591,7 +591,11 @@ impl OutputFormatter {
     ) -> String {
         let delta = date - now;
         let secs = delta.num_seconds();
-        let total_minutes = if secs > 0 { (secs + 59) / 60 } else { secs / 60 };
+        let total_minutes = if secs > 0 {
+            (secs + 59) / 60
+        } else {
+            secs / 60
+        };
         let days = total_minutes.div_euclid(24 * 60);
         let hours = total_minutes.rem_euclid(24 * 60).div_euclid(60);
         let minutes = total_minutes.rem_euclid(60);

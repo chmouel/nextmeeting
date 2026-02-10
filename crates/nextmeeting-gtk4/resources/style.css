@@ -188,25 +188,87 @@ window.nm-window {
     padding: 4px;
 }
 
-/* ===== Inline meeting description ===== */
-.meeting-card-expanded {
-    border-color: alpha(@accent_color, 0.45);
+/* ===== Detail panel ===== */
+.detail-panel {
+    background-color: @card_bg_color;
+    border-left: 1px solid alpha(@borders, 0.3);
+    border-radius: 0 12px 12px 0;
 }
 
-.meeting-description-inline {
-    min-width: 240px;
+.detail-panel-header {
+    /* header row with title + close */
 }
 
-.meeting-description-inline-scroll {
-    border: 1px solid alpha(@borders, 0.35);
-    border-radius: 8px;
-    background-color: alpha(@card_bg_color, 0.5);
-}
-
-.meeting-description-inline-body {
+.detail-panel-title {
+    font-size: 1.15rem;
+    font-weight: 800;
     color: @window_fg_color;
-    padding: 8px 10px;
+}
+
+.detail-panel-close {
+    min-width: 28px;
+    min-height: 28px;
+}
+
+.detail-panel-content {
+    /* scrolled content area */
+}
+
+.detail-section {
+    /* icon + text row */
+}
+
+.detail-section-icon {
+    opacity: 0.6;
+    margin-top: 2px;
+}
+
+.detail-section-header {
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: @dim_label_color;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.detail-description-text {
     font-size: 0.9rem;
+    color: @window_fg_color;
+}
+
+/* Attendee rows */
+.attendee-row {
+    padding: 3px 0;
+}
+
+.attendee-name {
+    font-size: 0.9rem;
+}
+
+.attendee-badge {
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background-color: alpha(@accent_bg_color, 0.15);
+    color: @accent_color;
+    font-weight: 600;
+}
+
+.attendee-accepted {
+    color: @success_color;
+}
+
+.attendee-declined {
+    color: @error_color;
+}
+
+.attendee-tentative {
+    color: @warning_color;
+}
+
+.attendee-pending {
+    opacity: 0.5;
 }
 
 /* ===== Sidebar actions ===== */

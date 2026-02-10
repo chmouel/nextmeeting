@@ -554,10 +554,11 @@ fn render_meetings(
     app_runtime: Arc<Mutex<AppRuntime>>,
     ui_tx: mpsc::Sender<UiEvent>,
 ) {
-    // Clear existing cards
+    // Clear existing cards and hide detail panel on refresh
     while let Some(child) = widgets.meeting_cards_container.first_child() {
         widgets.meeting_cards_container.remove(&child);
     }
+    widgets.detail_panel.hide();
 
     if meetings.is_empty() {
         // Empty state
@@ -580,6 +581,17 @@ fn render_meetings(
         empty_box.append(&label);
         widgets.meeting_cards_container.append(&empty_box);
         return;
+    }
+
+    // Connect close button for detail panel
+    {
+        let detail_panel = widgets.detail_panel.clone();
+        widgets
+            .detail_panel
+            .close_button()
+            .connect_clicked(move |_| {
+                detail_panel.hide();
+            });
     }
 
     // Find the next upcoming meeting for the JOIN NOW button
@@ -607,12 +619,12 @@ fn render_meetings(
             is_dismissed,
             is_soon,
         );
-        card.set_description_text(meeting.description.as_deref());
 
+        // Click handler: toggle detail panel
         {
             let card_widget = card.widget.clone();
-            let description_revealer = card.description_revealer.clone();
-            let frame = card.widget.clone();
+            let detail_panel = widgets.detail_panel.clone();
+            let meeting_clone = meeting.clone();
             let click = gtk::GestureClick::new();
             click.set_button(gtk::gdk::BUTTON_PRIMARY);
             click.connect_released(move |gesture, _, x, y| {
@@ -629,12 +641,11 @@ fn render_meetings(
                     return;
                 }
 
-                let show = !description_revealer.reveals_child();
-                description_revealer.set_reveal_child(show);
-                if show {
-                    frame.add_css_class("meeting-card-expanded");
+                // Toggle: if already showing this meeting, hide; otherwise show
+                if detail_panel.current_meeting_id().as_ref() == Some(&meeting_clone.id) {
+                    detail_panel.hide();
                 } else {
-                    frame.remove_css_class("meeting-card-expanded");
+                    detail_panel.show_meeting(&meeting_clone);
                 }
             });
             card.widget.add_controller(click);

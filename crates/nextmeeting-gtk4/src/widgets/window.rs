@@ -3,6 +3,8 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
+use super::detail_panel::DetailPanel;
+
 #[derive(Clone)]
 pub struct UiWidgets {
     pub window: adw::ApplicationWindow,
@@ -13,13 +15,14 @@ pub struct UiWidgets {
     pub snooze_button: gtk::Button,
     pub calendar_button: gtk::Button,
     pub clear_dismissals_button: gtk::Button,
+    pub detail_panel: DetailPanel,
 }
 
 pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("NextMeeting")
-        .default_width(700)
+        .default_width(750)
         .default_height(640)
         .build();
     window.add_css_class("nm-window");
@@ -125,6 +128,9 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     left_sidebar.append(&refresh_button);
     left_sidebar.append(&clear_dismissals_button);
 
+    // ===== DETAIL PANEL =====
+    let detail_panel = DetailPanel::new();
+
     // ===== MAIN CONTAINER =====
     let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     main_container.add_css_class("main-container");
@@ -135,15 +141,15 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
     main_container.append(&left_sidebar);
     main_container.append(&left_column);
 
-    let clamp = adw::Clamp::builder()
-        .maximum_size(900)
-        .tightening_threshold(600)
-        .child(&main_container)
-        .build();
+    // Outer box: main content + detail panel
+    let outer_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    main_container.set_hexpand(true);
+    outer_box.append(&main_container);
+    outer_box.append(&detail_panel.revealer);
 
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&clamp));
+    toolbar.set_content(Some(&outer_box));
 
     // Wrap in toast overlay for notifications
     let toast_overlay = adw::ToastOverlay::new();
@@ -160,5 +166,6 @@ pub fn build(app: &adw::Application, snooze_minutes: u32) -> UiWidgets {
         snooze_button,
         calendar_button,
         clear_dismissals_button,
+        detail_panel,
     }
 }

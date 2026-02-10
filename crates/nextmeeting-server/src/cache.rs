@@ -293,6 +293,7 @@ mod tests {
             other_attendee_count: 0,
             location: None,
             description: None,
+            attendees: vec![],
         }
     }
 

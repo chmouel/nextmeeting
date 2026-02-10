@@ -612,6 +612,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
             MeetingView {
                 id: "2".to_string(),
@@ -629,6 +630,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
             MeetingView {
                 id: "3".to_string(),
@@ -646,6 +648,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
         ];
 
@@ -819,6 +822,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
             MeetingView {
                 id: "2".to_string(),
@@ -836,6 +840,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
         ];
 
@@ -875,6 +880,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
             MeetingView {
                 id: "2".to_string(),
@@ -892,6 +898,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
         ];
 
@@ -923,6 +930,7 @@ mod tests {
             other_attendee_count: 0,
             location: None,
             description: None,
+            attendees: vec![],
         }];
 
         let mut state = ServerState::new();
@@ -956,6 +964,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
             MeetingView {
                 id: "2".to_string(),
@@ -973,6 +982,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
             MeetingView {
                 id: "3".to_string(),
@@ -990,6 +1000,7 @@ mod tests {
                 other_attendee_count: 0,
                 location: None,
                 description: None,
+                attendees: vec![],
             },
         ];
 

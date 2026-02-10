@@ -6,7 +6,7 @@ pub mod links;
 pub mod time;
 pub mod tracing;
 
-pub use event::{EventLink, LinkKind, MeetingView, NormalizedEvent, ResponseStatus};
+pub use event::{Attendee, EventLink, LinkKind, MeetingView, NormalizedEvent, ResponseStatus};
 pub use format::{
     FormatOptions, FormattedMeeting, JsonMeeting, JsonOutput, OutputFormat, OutputFormatter,
     TimeFormat, UrgencyClass, WaybarOutput, bulletize, ellipsis, html_escape, make_hyperlink,

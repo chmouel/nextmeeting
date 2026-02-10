@@ -1,8 +1,11 @@
 //! Meeting card widget for the NextMeeting GTK4 UI.
 
+use std::sync::LazyLock;
+
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use regex::Regex;
 
 use chrono::Local;
 use nextmeeting_core::MeetingView;
@@ -17,8 +20,6 @@ pub struct MeetingCard {
     pub dismiss_button: gtk::Button,
     pub decline_button: gtk::Button,
     pub delete_button: gtk::Button,
-    pub description_revealer: gtk::Revealer,
-    pub description_label: gtk::Label,
 }
 
 pub fn normalise_description(description: Option<&str>) -> Option<String> {
@@ -156,6 +157,25 @@ fn collapse_text_whitespace(input: &str) -> String {
     }
 
     output.trim().to_string()
+}
+
+/// Converts plain text into Pango markup with clickable `<a>` links for URLs.
+pub fn linkify_for_pango(text: &str) -> String {
+    static URL_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"https?://[^\s<>"'\)\]]+"#).unwrap());
+
+    let mut result = String::with_capacity(text.len() * 2);
+    let mut last_end = 0;
+
+    for m in URL_RE.find_iter(text) {
+        result.push_str(&gtk::glib::markup_escape_text(&text[last_end..m.start()]));
+        let escaped_url = gtk::glib::markup_escape_text(m.as_str());
+        result.push_str(&format!("<a href=\"{escaped_url}\">{escaped_url}</a>"));
+        last_end = m.end();
+    }
+    result.push_str(&gtk::glib::markup_escape_text(&text[last_end..]));
+
+    result
 }
 
 impl MeetingCard {
@@ -396,37 +416,6 @@ impl MeetingCard {
         hbox.append(&action_buttons_box);
         root_box.append(&hbox);
 
-        let description_label = gtk::Label::builder()
-            .xalign(0.0)
-            .wrap(true)
-            .wrap_mode(gtk::pango::WrapMode::WordChar)
-            .selectable(true)
-            .css_classes(["meeting-description-inline-body"])
-            .build();
-
-        let description_scroll = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .min_content_height(72)
-            .max_content_height(220)
-            .child(&description_label)
-            .build();
-        description_scroll.add_css_class("meeting-description-inline-scroll");
-
-        let description_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        description_box.add_css_class("meeting-description-inline");
-        description_box.set_margin_top(0);
-        description_box.set_margin_bottom(10);
-        description_box.set_margin_start(14);
-        description_box.set_margin_end(14);
-        description_box.append(&description_scroll);
-
-        let description_revealer = gtk::Revealer::builder()
-            .transition_type(gtk::RevealerTransitionType::SlideDown)
-            .transition_duration(170)
-            .reveal_child(false)
-            .child(&description_box)
-            .build();
-        root_box.append(&description_revealer);
         frame.set_child(Some(&root_box));
 
         Self {
@@ -436,15 +425,7 @@ impl MeetingCard {
             dismiss_button,
             decline_button,
             delete_button,
-            description_revealer,
-            description_label,
         }
-    }
-
-    pub fn set_description_text(&self, description: Option<&str>) {
-        let text = normalise_description(description)
-            .unwrap_or_else(|| "No description provided for this event.".to_string());
-        self.description_label.set_label(&text);
     }
 
     /// Returns the GTK widget for this card.
@@ -455,7 +436,7 @@ impl MeetingCard {
 
 #[cfg(test)]
 mod tests {
-    use super::normalise_description;
+    use super::{linkify_for_pango, normalise_description};
 
     #[test]
     fn normalise_description_preserves_text() {
@@ -515,5 +496,57 @@ mod tests {
     #[test]
     fn normalise_description_html_only_becomes_none() {
         assert_eq!(normalise_description(Some("<p>   </p>")), None);
+    }
+
+    #[test]
+    fn linkify_no_urls() {
+        assert_eq!(linkify_for_pango("plain text"), "plain text");
+    }
+
+    #[test]
+    fn linkify_single_url() {
+        assert_eq!(
+            linkify_for_pango("Visit https://example.com for info"),
+            "Visit <a href=\"https://example.com\">https://example.com</a> for info"
+        );
+    }
+
+    #[test]
+    fn linkify_multiple_urls() {
+        let input = "See https://a.com and http://b.com end";
+        let result = linkify_for_pango(input);
+        assert_eq!(
+            result,
+            "See <a href=\"https://a.com\">https://a.com</a> and <a href=\"http://b.com\">http://b.com</a> end"
+        );
+    }
+
+    #[test]
+    fn linkify_escapes_special_chars() {
+        assert_eq!(linkify_for_pango("A & B < C"), "A &amp; B &lt; C");
+    }
+
+    #[test]
+    fn linkify_url_with_ampersand() {
+        assert_eq!(
+            linkify_for_pango("Go to https://example.com/q?a=1&b=2 now"),
+            "Go to <a href=\"https://example.com/q?a=1&amp;b=2\">https://example.com/q?a=1&amp;b=2</a> now"
+        );
+    }
+
+    #[test]
+    fn linkify_url_at_start() {
+        assert_eq!(
+            linkify_for_pango("https://start.com is here"),
+            "<a href=\"https://start.com\">https://start.com</a> is here"
+        );
+    }
+
+    #[test]
+    fn linkify_url_at_end() {
+        assert_eq!(
+            linkify_for_pango("Link: https://end.com"),
+            "Link: <a href=\"https://end.com\">https://end.com</a>"
+        );
     }
 }

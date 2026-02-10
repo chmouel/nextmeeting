@@ -9,7 +9,9 @@
 //! 2. Extracts and normalizes meeting links from description, location, and conference data
 //! 3. Builds the final [`NormalizedEvent`] with all relevant fields
 
-use nextmeeting_core::{EventLink, EventTime, LinkKind, NormalizedEvent, extract_links_from_text};
+use nextmeeting_core::{
+    Attendee, EventLink, EventTime, LinkKind, NormalizedEvent, extract_links_from_text,
+};
 
 use crate::raw_event::{RawConferenceData, RawEvent, RawEventTime, ResponseStatus};
 
@@ -49,13 +51,28 @@ pub fn normalize_event(raw: &RawEvent) -> NormalizedEvent {
         .filter(|a| !a.is_self && !a.resource)
         .count();
 
+    // Build attendee list (excluding self and resources)
+    let attendees: Vec<Attendee> = raw
+        .attendees
+        .iter()
+        .filter(|a| !a.is_self && !a.resource)
+        .map(|a| Attendee {
+            display_name: a.display_name.clone().unwrap_or_else(|| a.email.clone()),
+            email: a.email.clone(),
+            organizer: a.organizer,
+            optional: a.optional,
+            response_status: a.response_status,
+        })
+        .collect();
+
     // Build the normalized event
     let mut event =
         NormalizedEvent::new(&raw.id, raw.effective_title(), start, end, &raw.calendar_id)
             .with_recurring(raw.is_recurring_instance)
             .with_links(links)
             .with_user_response_status(user_response_status)
-            .with_other_attendee_count(other_attendee_count);
+            .with_other_attendee_count(other_attendee_count)
+            .with_attendees(attendees);
 
     // Set optional fields
     if let Some(ref tz) = raw.timezone {
