@@ -372,17 +372,20 @@ impl RequestHandler {
             }
             Request::Snooze { minutes } => {
                 debug!(minutes = *minutes, "Handling Snooze request");
-                let mut state = self.state.write().await;
-                if *minutes == 0 {
-                    state.clear_snooze();
-                    // Also clear snooze on the notify engine if present
-                    if let Some(ref engine) = self.notify_engine {
-                        engine.clear_snooze().await;
+                {
+                    let mut state = self.state.write().await;
+                    if *minutes == 0 {
+                        state.clear_snooze();
+                    } else {
+                        state.snooze(*minutes);
                     }
-                } else {
-                    state.snooze(*minutes);
-                    // Also snooze the notify engine if present
-                    if let Some(ref engine) = self.notify_engine {
+                }
+                // Update notify engine outside the ServerState lock to avoid
+                // lock ordering issues (engine acquires NotifyState write lock)
+                if let Some(ref engine) = self.notify_engine {
+                    if *minutes == 0 {
+                        engine.clear_snooze().await;
+                    } else {
                         engine.snooze(*minutes).await;
                     }
                 }

@@ -402,9 +402,7 @@ impl Scheduler {
         let start = std::time::Instant::now();
         debug!("Starting calendar sync");
 
-        let result = AssertUnwindSafe(sync_fn())
-            .catch_unwind()
-            .await;
+        let result = AssertUnwindSafe(sync_fn()).catch_unwind().await;
 
         match result {
             Ok(Ok(())) => {
@@ -441,7 +439,10 @@ impl Scheduler {
                     sync_duration_ms = duration.as_millis(),
                     "Sync panicked — scheduler continues"
                 );
-                self.state.write().await.record_failure(format!("panic: {}", panic_msg));
+                self.state
+                    .write()
+                    .await
+                    .record_failure(format!("panic: {}", panic_msg));
             }
         }
     }
@@ -704,7 +705,10 @@ mod tests {
         // Verify expected_wake is set during normal operation
         {
             let current_state = state.read().await;
-            assert!(current_state.expected_wake.is_some(), "expected_wake should be set");
+            assert!(
+                current_state.expected_wake.is_some(),
+                "expected_wake should be set"
+            );
         }
 
         // Wait for next sync cycle
@@ -713,7 +717,10 @@ mod tests {
         // Verify expected_wake is updated for next cycle
         {
             let current_state = state.read().await;
-            assert!(current_state.expected_wake.is_some(), "expected_wake should still be set");
+            assert!(
+                current_state.expected_wake.is_some(),
+                "expected_wake should still be set"
+            );
         }
 
         handle.stop().await.unwrap();
@@ -752,16 +759,25 @@ mod tests {
         // Verify the panic was recorded as a failure
         {
             let s = state.read().await;
-            assert!(s.consecutive_failures > 0, "panic should be recorded as a failure");
+            assert!(
+                s.consecutive_failures > 0,
+                "panic should be recorded as a failure"
+            );
             assert!(s.last_error.as_ref().unwrap().contains("panic:"));
         }
 
         // Trigger a manual sync — scheduler should still be alive
-        handle.sync_now().await.expect("scheduler channel should still be open");
+        handle
+            .sync_now()
+            .await
+            .expect("scheduler channel should still be open");
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         // Second sync should succeed
-        assert!(sync_count.load(Ordering::SeqCst) >= 2, "scheduler should continue after panic");
+        assert!(
+            sync_count.load(Ordering::SeqCst) >= 2,
+            "scheduler should continue after panic"
+        );
 
         // Verify recovery
         {

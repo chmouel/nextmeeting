@@ -220,6 +220,11 @@ pub struct ServerSettings {
 
     /// Connection timeout in seconds.
     pub timeout: u64,
+
+    /// Whether to automatically start the server if it's not running.
+    /// Set to false when using systemd or another service manager.
+    /// Defaults to true.
+    pub auto_start: bool,
 }
 
 impl Default for ServerSettings {
@@ -227,6 +232,7 @@ impl Default for ServerSettings {
         Self {
             socket_path: None,
             timeout: 5,
+            auto_start: true,
         }
     }
 }

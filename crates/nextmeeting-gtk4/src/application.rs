@@ -560,17 +560,18 @@ fn connect_actions(
             .connect_clicked(move |_| {
                 let ctx = action_ctx.borrow();
                 if let Some(ref ctx) = *ctx
-                    && let Some(ref url) = ctx.primary_link_url {
-                        match open::that(url) {
-                            Ok(()) => {
-                                let _ = ui_tx
-                                    .send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
-                            }
-                            Err(err) => {
-                                let _ = ui_tx.send(UiEvent::ActionFailed(err.to_string()));
-                            }
+                    && let Some(ref url) = ctx.primary_link_url
+                {
+                    match open::that(url) {
+                        Ok(()) => {
+                            let _ =
+                                ui_tx.send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
+                        }
+                        Err(err) => {
+                            let _ = ui_tx.send(UiEvent::ActionFailed(err.to_string()));
                         }
                     }
+                }
             });
     }
 
@@ -700,8 +701,7 @@ fn connect_actions(
                         .build();
                     dialog.add_response("cancel", "Cancel");
                     dialog.add_response("delete", "Delete");
-                    dialog
-                        .set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+                    dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
 
                     dialog.connect_response(None, move |_, response| {
                         if response == "delete" {
@@ -926,22 +926,19 @@ fn render_meetings(
 
         // Connect join button if present
         if let Some(ref join_btn) = card.join_button
-            && let Some(ref link) = meeting.primary_link {
-                let url = link.url.clone();
-                let ui_tx = ui_tx.clone();
-                join_btn.connect_clicked(move |_| {
-                    match open::that(&url) {
-                        Ok(()) => {
-                            let _ = ui_tx
-                                .send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
-                        }
-                        Err(err) => {
-                            let _ = ui_tx
-                                .send(UiEvent::ActionFailed(err.to_string()));
-                        }
-                    }
-                });
-            }
+            && let Some(ref link) = meeting.primary_link
+        {
+            let url = link.url.clone();
+            let ui_tx = ui_tx.clone();
+            join_btn.connect_clicked(move |_| match open::that(&url) {
+                Ok(()) => {
+                    let _ = ui_tx.send(UiEvent::ActionSucceeded("Opened meeting".to_string()));
+                }
+                Err(err) => {
+                    let _ = ui_tx.send(UiEvent::ActionFailed(err.to_string()));
+                }
+            });
+        }
 
         // Connect dismiss button (toggles between dismiss and undismiss)
         {
@@ -1167,7 +1164,10 @@ fn find_primary_meetings(meetings: &[nextmeeting_core::MeetingView]) -> HashSet<
     // Second: imminent meeting starting within 5 minutes (not yet started)
     for meeting in meetings {
         let mins_until = meeting.minutes_until_start(now);
-        if meeting.start_local > now && (0..=5).contains(&mins_until) && meeting.primary_link.is_some() {
+        if meeting.start_local > now
+            && (0..=5).contains(&mins_until)
+            && meeting.primary_link.is_some()
+        {
             return HashSet::from([meeting.id.clone()]);
         }
     }

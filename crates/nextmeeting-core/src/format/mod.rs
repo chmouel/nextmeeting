@@ -693,7 +693,8 @@ impl OutputFormatter {
         let suffix = if is_ongoing { " to go" } else { "" };
 
         if minutes < 60 {
-            return format!("{} minutes{}", minutes, suffix);
+            let unit = if minutes == 1 { "minute" } else { "minutes" };
+            return format!("{} {}{}", minutes, unit, suffix);
         }
 
         let hours = minutes / 60;

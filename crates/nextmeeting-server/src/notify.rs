@@ -15,7 +15,7 @@ use notify_rust::Notification;
 #[cfg(target_os = "linux")]
 use notify_rust::Urgency;
 use sha2::{Digest, Sha256};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, error, info};
 
 use nextmeeting_core::MeetingView;
@@ -179,6 +179,11 @@ impl NotifyState {
         self.sent_notifications.insert(hash);
     }
 
+    /// Removes a notification hash so it can be retried.
+    pub fn remove_sent(&mut self, hash: &str) {
+        self.sent_notifications.remove(hash);
+    }
+
     /// Clears old notification hashes to prevent unbounded growth.
     /// Called periodically to remove hashes older than the retention period.
     pub fn cleanup_old_hashes(&mut self, max_size: usize) {
@@ -232,10 +237,14 @@ fn notification_hash_with_kind(
     hex::encode(result)
 }
 
+/// Maximum number of concurrent OS threads for D-Bus notification calls.
+const MAX_NOTIFICATION_THREADS: usize = 3;
+
 /// The notification engine that sends desktop notifications.
 pub struct NotifyEngine {
     config: NotifyConfig,
     state: SharedNotifyState,
+    notification_semaphore: Arc<Semaphore>,
 }
 
 impl NotifyEngine {
@@ -244,12 +253,17 @@ impl NotifyEngine {
         Self {
             config,
             state: new_notify_state(),
+            notification_semaphore: Arc::new(Semaphore::new(MAX_NOTIFICATION_THREADS)),
         }
     }
 
     /// Creates a new notification engine with shared state.
     pub fn with_state(config: NotifyConfig, state: SharedNotifyState) -> Self {
-        Self { config, state }
+        Self {
+            config,
+            state,
+            notification_semaphore: Arc::new(Semaphore::new(MAX_NOTIFICATION_THREADS)),
+        }
     }
 
     /// Returns the shared state.
@@ -291,12 +305,21 @@ impl NotifyEngine {
                         NotificationKind::StartsSoon,
                     );
 
-                    let mut state = self.state.write().await;
-                    if !state.was_sent(&hash)
-                        && self.send_notification(meeting, notify_minutes).await
-                    {
-                        state.mark_sent(hash);
-                        sent_count += 1;
+                    let should_send = {
+                        let mut state = self.state.write().await;
+                        if state.was_sent(&hash) {
+                            false
+                        } else {
+                            state.mark_sent(hash.clone());
+                            true
+                        }
+                    };
+                    if should_send {
+                        if self.send_notification(meeting, notify_minutes).await {
+                            sent_count += 1;
+                        } else {
+                            self.state.write().await.remove_sent(&hash);
+                        }
                     }
                 }
             }
@@ -312,14 +335,24 @@ impl NotifyEngine {
 
                 let minutes_left = meeting.minutes_until_end(now).max(0) as u32;
 
-                let mut state = self.state.write().await;
-                if !state.was_sent(&hash)
-                    && self
+                let should_send = {
+                    let mut state = self.state.write().await;
+                    if state.was_sent(&hash) {
+                        false
+                    } else {
+                        state.mark_sent(hash.clone());
+                        true
+                    }
+                };
+                if should_send {
+                    if self
                         .send_end_warning_notification(meeting, minutes_left)
                         .await
-                {
-                    state.mark_sent(hash);
-                    sent_count += 1;
+                    {
+                        sent_count += 1;
+                    } else {
+                        self.state.write().await.remove_sent(&hash);
+                    }
                 }
             }
         }
@@ -372,7 +405,7 @@ impl NotifyEngine {
         #[cfg(target_os = "linux")]
         notification.urgency(urgency);
 
-        match show_notification(&notification).await {
+        match show_notification(&notification, &self.notification_semaphore).await {
             Ok(_) => {
                 info!(
                     title = %meeting.title,
@@ -444,7 +477,7 @@ impl NotifyEngine {
         #[cfg(target_os = "linux")]
         notification.urgency(urgency);
 
-        match show_notification(&notification).await {
+        match show_notification(&notification, &self.notification_semaphore).await {
             Ok(_) => {
                 info!(
                     title = %meeting.title,
@@ -506,10 +539,18 @@ impl NotifyEngine {
             return;
         }
 
-        // Deduplicate by date
+        // Deduplicate by date — atomic check-and-mark under a single write lock
         let date_hash = format!("morning-agenda-{}", now.format("%Y-%m-%d"));
-        let mut state = self.state.write().await;
-        if state.was_sent(&date_hash) {
+        let should_send = {
+            let mut state = self.state.write().await;
+            if state.was_sent(&date_hash) {
+                false
+            } else {
+                state.mark_sent(date_hash.clone());
+                true
+            }
+        };
+        if !should_send {
             return;
         }
 
@@ -521,7 +562,6 @@ impl NotifyEngine {
             .collect();
 
         if today_meetings.is_empty() {
-            state.mark_sent(date_hash);
             return;
         }
 
@@ -545,13 +585,13 @@ impl NotifyEngine {
             notification.icon(icon);
         }
 
-        match show_notification(&notification).await {
+        match show_notification(&notification, &self.notification_semaphore).await {
             Ok(_) => {
                 info!("Morning agenda notification sent");
-                state.mark_sent(date_hash);
             }
             Err(e) => {
                 error!(error = %e, "Failed to send morning agenda notification");
+                self.state.write().await.remove_sent(&date_hash);
             }
         }
     }
@@ -584,19 +624,36 @@ impl NotifyEngine {
 
 /// Sends a notification via D-Bus.
 ///
-/// Uses `spawn_blocking` to run the synchronous `show()` method on a dedicated
-/// blocking thread. This avoids panics when `zbus/tokio` and `zbus/async-io`
-/// features are both active due to Cargo feature unification — `zbus::block_on`
-/// creates a nested tokio runtime which panics inside an existing async context.
+/// Spawns a plain OS thread (not a Tokio blocking task) to run the synchronous
+/// `show()` method, communicating the result back via a `oneshot` channel.
+/// This avoids two problems:
+/// 1. Panics when `zbus/tokio` and `zbus/async-io` features are both active due
+///    to Cargo feature unification — `zbus::block_on` creates a nested tokio
+///    runtime which panics inside an existing async context.
+/// 2. Stuck D-Bus calls (e.g. unresponsive session bus) no longer consume Tokio
+///    blocking pool threads — they run on plain OS threads that are abandoned on
+///    timeout without affecting the Tokio runtime.
 async fn show_notification(
     notification: &Notification,
-) -> Result<(), notify_rust::error::Error> {
+    semaphore: &Arc<Semaphore>,
+) -> Result<(), String> {
+    let permit = semaphore
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "too many in-flight notification threads".to_string())?;
     let notification = notification.clone();
-    tokio::task::spawn_blocking(move || {
-        notification.show().map(|_| ())
-    })
-    .await
-    .expect("notification task panicked")
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let result = notification.show().map(|_| ());
+        let _ = tx.send(result);
+        drop(permit);
+    });
+    match tokio::time::timeout(Duration::from_secs(10), rx).await {
+        Ok(Ok(Ok(()))) => Ok(()),
+        Ok(Ok(Err(e))) => Err(e.to_string()),
+        Ok(Err(_)) => Err("notification thread panicked".to_string()),
+        Err(_) => Err("notification D-Bus call timed out after 10s".to_string()),
+    }
 }
 
 /// Parses an urgency string into a notify-rust Urgency value.
@@ -768,7 +825,8 @@ mod tests {
             .body("runtime-check")
             .timeout(Duration::from_secs(1));
 
-        let _ = show_notification(&notification).await;
+        let semaphore = Arc::new(Semaphore::new(3));
+        let _ = show_notification(&notification, &semaphore).await;
     }
 
     #[test]

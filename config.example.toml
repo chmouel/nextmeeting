@@ -62,6 +62,7 @@ minutes_before = [5, 1] # Minutes before to notify
 [server]
 socket_path = "/tmp/nextmeeting.sock" # Path to server socket
 timeout = 5                           # Connection timeout in seconds
+auto_start = true                     # Set to false when using systemd to manage the server
 
 # debug = false
 # google_domain = "example.com"        # Google Workspace domain (for calendar URLs)

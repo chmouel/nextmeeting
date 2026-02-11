@@ -188,11 +188,17 @@ async fn fetch_meetings(
     let response = match client.send(request.clone()).await {
         Ok(resp) => resp,
         Err(ClientError::Connection(_)) => {
-            info!("server not running, attempting auto-spawn");
-            auto_spawn_server(cli, client).await?;
+            if config.server.auto_start {
+                info!("server not running, attempting auto-spawn");
+                auto_spawn_server(cli, client).await?;
 
-            // Retry after spawn
-            client.send(request).await?
+                // Retry after spawn
+                client.send(request).await?
+            } else {
+                return Err(ClientError::Connection(
+                    "server is not running (auto_start is disabled, start it manually or via systemd)".into(),
+                ));
+            }
         }
         Err(e) => return Err(e),
     };

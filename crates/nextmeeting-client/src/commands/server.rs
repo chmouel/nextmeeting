@@ -101,10 +101,17 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
                 async move {
                     let result = sync_all_providers(&providers, &state).await;
 
-                    // After sync, run notifications on the updated meetings
-                    let meetings = state.read().await.get_meetings(None);
-                    engine.check_and_notify(&meetings).await;
-                    engine.check_morning_agenda(&meetings).await;
+                    // Spawn notifications as a separate task so a stuck
+                    // D-Bus call can never block the scheduler loop.
+                    // Individual show_notification calls already have a 10s
+                    // timeout and the semaphore caps in-flight threads, so
+                    // no outer timeout is needed.
+                    let notify_state = state.clone();
+                    tokio::spawn(async move {
+                        let meetings = notify_state.read().await.get_meetings(None);
+                        engine.check_and_notify(&meetings).await;
+                        engine.check_morning_agenda(&meetings).await;
+                    });
 
                     result
                 }

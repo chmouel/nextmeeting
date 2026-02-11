@@ -521,12 +521,7 @@ impl MeetingView {
     ///
     /// Returns negative values if the meeting has already ended.
     pub fn minutes_until_end(&self, now: DateTime<Local>) -> i64 {
-        let secs = (self.end_local - now).num_seconds();
-        if secs > 0 {
-            (secs + 59) / 60
-        } else {
-            secs / 60
-        }
+        (self.end_local - now).num_seconds() / 60
     }
 
     /// Returns the duration of the meeting in minutes.
@@ -828,7 +823,7 @@ mod tests {
             let now_local = now.with_timezone(&Local);
 
             assert_eq!(view.minutes_until_start(now_local), 2);
-            assert_eq!(view.minutes_until_end(now_local), 32);
+            assert_eq!(view.minutes_until_end(now_local), 31);
         }
 
         #[test]

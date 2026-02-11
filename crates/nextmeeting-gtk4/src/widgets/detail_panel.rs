@@ -54,8 +54,7 @@ impl Default for DetailPanel {
 impl DetailPanel {
     pub fn new() -> Self {
         let selected_meeting_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
-        let action_context: Rc<RefCell<Option<MeetingActionContext>>> =
-            Rc::new(RefCell::new(None));
+        let action_context: Rc<RefCell<Option<MeetingActionContext>>> = Rc::new(RefCell::new(None));
 
         // Outer container with fixed width
         let panel_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -360,7 +359,8 @@ impl DetailPanel {
         // Update action buttons state
         let has_link = meeting.primary_link.is_some();
         self.join_button.set_visible(has_link);
-        self.calendar_button.set_sensitive(meeting.calendar_url.is_some());
+        self.calendar_button
+            .set_sensitive(meeting.calendar_url.is_some());
         if meeting.calendar_url.is_none() {
             self.calendar_button
                 .set_tooltip_text(Some("No calendar event URL available"));
