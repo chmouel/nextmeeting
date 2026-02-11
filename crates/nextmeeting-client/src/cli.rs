@@ -137,11 +137,10 @@ impl Cli {
         }
 
         // 4. Environment variable
-        if let Ok(level_str) = std::env::var("NEXTMEETING_DEBUG_LEVEL") {
-            if let Ok(level) = level_str.parse::<u8>() {
+        if let Ok(level_str) = std::env::var("NEXTMEETING_DEBUG_LEVEL")
+            && let Ok(level) = level_str.parse::<u8>() {
                 return DebugLevel::from_u8(level);
             }
-        }
 
         // 5. Config file
         config.effective_debug_level()

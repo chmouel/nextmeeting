@@ -45,6 +45,12 @@ pub struct DetailPanel {
     calendar_button: gtk::Button,
 }
 
+impl Default for DetailPanel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DetailPanel {
     pub fn new() -> Self {
         let selected_meeting_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
@@ -355,7 +361,7 @@ impl DetailPanel {
         let has_link = meeting.primary_link.is_some();
         self.join_button.set_visible(has_link);
         self.calendar_button.set_sensitive(meeting.calendar_url.is_some());
-        if !meeting.calendar_url.is_some() {
+        if meeting.calendar_url.is_none() {
             self.calendar_button
                 .set_tooltip_text(Some("No calendar event URL available"));
         } else {

@@ -559,8 +559,8 @@ fn connect_actions(
             .join_button()
             .connect_clicked(move |_| {
                 let ctx = action_ctx.borrow();
-                if let Some(ref ctx) = *ctx {
-                    if let Some(ref url) = ctx.primary_link_url {
+                if let Some(ref ctx) = *ctx
+                    && let Some(ref url) = ctx.primary_link_url {
                         match open::that(url) {
                             Ok(()) => {
                                 let _ = ui_tx
@@ -571,7 +571,6 @@ fn connect_actions(
                             }
                         }
                     }
-                }
             });
     }
 
@@ -926,8 +925,8 @@ fn render_meetings(
         }
 
         // Connect join button if present
-        if let Some(ref join_btn) = card.join_button {
-            if let Some(ref link) = meeting.primary_link {
+        if let Some(ref join_btn) = card.join_button
+            && let Some(ref link) = meeting.primary_link {
                 let url = link.url.clone();
                 let ui_tx = ui_tx.clone();
                 join_btn.connect_clicked(move |_| {
@@ -943,7 +942,6 @@ fn render_meetings(
                     }
                 });
             }
-        }
 
         // Connect dismiss button (toggles between dismiss and undismiss)
         {

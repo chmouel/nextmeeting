@@ -15,6 +15,10 @@ use tokio::sync::{RwLock, mpsc};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
+/// Threshold for detecting system sleep/wake via wall-clock time jumps.
+/// If actual wake time differs from expected by more than this, we assume system slept.
+const TIME_JUMP_THRESHOLD_SECS: i64 = 60;
+
 /// Scheduler configuration.
 #[derive(Debug, Clone)]
 pub struct SchedulerConfig {
@@ -147,6 +151,8 @@ pub struct SchedulerState {
     pub last_error: Option<String>,
     /// Last manual refresh time (for cooldown).
     pub last_refresh: Option<Instant>,
+    /// Expected wake time for time-jump detection (system sleep/wake).
+    pub expected_wake: Option<DateTime<Utc>>,
 }
 
 impl Default for SchedulerState {
@@ -165,6 +171,7 @@ impl SchedulerState {
             last_attempt: None,
             last_error: None,
             last_refresh: None,
+            expected_wake: None,
         }
     }
 
@@ -270,14 +277,39 @@ impl Scheduler {
             let delay = self.calculate_next_delay().await;
             debug!(delay_secs = delay.as_secs(), "Scheduling next sync");
 
+            // Record expected wake time for time-jump detection
+            let expected_wake = Utc::now() + chrono::Duration::from_std(delay).unwrap_or_default();
+            self.state.write().await.expected_wake = Some(expected_wake);
+
             tokio::select! {
                 _ = tokio::time::sleep(delay) => {
+                    // Check for time jump (system sleep/wake)
+                    let now = Utc::now();
                     let state = self.state.read().await;
-                    if state.paused {
+                    let expected = state.expected_wake;
+                    let paused = state.paused;
+                    drop(state);
+
+                    if let Some(expected) = expected {
+                        let time_diff = (now - expected).num_seconds().abs();
+                        if time_diff > TIME_JUMP_THRESHOLD_SECS {
+                            info!(
+                                expected_wake = %expected,
+                                actual_wake = %now,
+                                diff_secs = time_diff,
+                                "Detected system sleep/wake, triggering immediate sync"
+                            );
+                            // Clear expected_wake and proceed to sync
+                            self.state.write().await.expected_wake = None;
+                            self.do_sync(&sync_fn).await;
+                            continue;
+                        }
+                    }
+
+                    if paused {
                         debug!("Scheduler paused, skipping sync");
                         continue;
                     }
-                    drop(state);
 
                     self.do_sync(&sync_fn).await;
                 }
@@ -351,6 +383,9 @@ impl Scheduler {
         F: Fn() -> Fut,
         Fut: std::future::Future<Output = Result<(), String>>,
     {
+        use std::panic::AssertUnwindSafe;
+
+        use futures_util::FutureExt;
         use tracing::Span;
 
         let state = self.state.read().await;
@@ -367,8 +402,12 @@ impl Scheduler {
         let start = std::time::Instant::now();
         debug!("Starting calendar sync");
 
-        match sync_fn().await {
-            Ok(()) => {
+        let result = AssertUnwindSafe(sync_fn())
+            .catch_unwind()
+            .await;
+
+        match result {
+            Ok(Ok(())) => {
                 let duration = start.elapsed();
                 info!(
                     sync_duration_ms = duration.as_millis(),
@@ -379,7 +418,7 @@ impl Scheduler {
                 }
                 self.state.write().await.record_success();
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let duration = start.elapsed();
                 warn!(
                     error = %e,
@@ -387,6 +426,22 @@ impl Scheduler {
                     "Sync failed"
                 );
                 self.state.write().await.record_failure(e);
+            }
+            Err(panic_info) => {
+                let duration = start.elapsed();
+                let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                    (*s).to_string()
+                } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic".to_string()
+                };
+                error!(
+                    error = %panic_msg,
+                    sync_duration_ms = duration.as_millis(),
+                    "Sync panicked — scheduler continues"
+                );
+                self.state.write().await.record_failure(format!("panic: {}", panic_msg));
             }
         }
     }
@@ -450,6 +505,7 @@ impl Clone for SchedulerState {
             last_attempt: self.last_attempt,
             last_error: self.last_error.clone(),
             last_refresh: self.last_refresh,
+            expected_wake: self.expected_wake,
         }
     }
 }
@@ -614,6 +670,104 @@ mod tests {
         // Should have recovered after 3 failures
         assert!(fail_count.load(Ordering::SeqCst) >= 3);
         drop(current_state);
+
+        handle.stop().await.unwrap();
+        scheduler_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn scheduler_detects_time_jump() {
+        // This test verifies that expected_wake is set and can be used for time-jump detection
+        let config = SchedulerConfig::new(Duration::from_millis(100));
+        let scheduler = Scheduler::new(config);
+        let state = scheduler.state();
+        let handle = scheduler.handle();
+
+        let sync_count = Arc::new(AtomicU32::new(0));
+        let sync_count_clone = sync_count.clone();
+
+        let scheduler_task = tokio::spawn(async move {
+            scheduler
+                .run(move || {
+                    let count = sync_count_clone.clone();
+                    async move {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        Ok(())
+                    }
+                })
+                .await;
+        });
+
+        // Wait for initial sync
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Verify expected_wake is set during normal operation
+        {
+            let current_state = state.read().await;
+            assert!(current_state.expected_wake.is_some(), "expected_wake should be set");
+        }
+
+        // Wait for next sync cycle
+        tokio::time::sleep(Duration::from_millis(120)).await;
+
+        // Verify expected_wake is updated for next cycle
+        {
+            let current_state = state.read().await;
+            assert!(current_state.expected_wake.is_some(), "expected_wake should still be set");
+        }
+
+        handle.stop().await.unwrap();
+        scheduler_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn scheduler_survives_sync_panic() {
+        let config = SchedulerConfig::new(Duration::from_secs(60));
+        let scheduler = Scheduler::new(config);
+        let state = scheduler.state();
+        let handle = scheduler.handle();
+
+        let sync_count = Arc::new(AtomicU32::new(0));
+        let sync_count_clone = sync_count.clone();
+
+        let scheduler_task = tokio::spawn(async move {
+            scheduler
+                .run(move || {
+                    let count = sync_count_clone.clone();
+                    async move {
+                        let n = count.fetch_add(1, Ordering::SeqCst);
+                        if n == 0 {
+                            panic!("simulated sync panic");
+                        }
+                        Ok(())
+                    }
+                })
+                .await;
+        });
+
+        // Wait for initial sync (which panics)
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(sync_count.load(Ordering::SeqCst) >= 1);
+
+        // Verify the panic was recorded as a failure
+        {
+            let s = state.read().await;
+            assert!(s.consecutive_failures > 0, "panic should be recorded as a failure");
+            assert!(s.last_error.as_ref().unwrap().contains("panic:"));
+        }
+
+        // Trigger a manual sync — scheduler should still be alive
+        handle.sync_now().await.expect("scheduler channel should still be open");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Second sync should succeed
+        assert!(sync_count.load(Ordering::SeqCst) >= 2, "scheduler should continue after panic");
+
+        // Verify recovery
+        {
+            let s = state.read().await;
+            assert_eq!(s.consecutive_failures, 0, "should have recovered");
+        }
 
         handle.stop().await.unwrap();
         scheduler_task.await.unwrap();

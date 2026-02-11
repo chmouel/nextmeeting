@@ -1787,6 +1787,7 @@ name = "nextmeeting-server"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "futures-util",
  "libc",
  "nextmeeting-core",
  "nextmeeting-protocol",

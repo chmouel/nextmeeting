@@ -582,16 +582,21 @@ impl NotifyEngine {
     }
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
+/// Sends a notification via D-Bus.
+///
+/// Uses `spawn_blocking` to run the synchronous `show()` method on a dedicated
+/// blocking thread. This avoids panics when `zbus/tokio` and `zbus/async-io`
+/// features are both active due to Cargo feature unification — `zbus::block_on`
+/// creates a nested tokio runtime which panics inside an existing async context.
 async fn show_notification(
     notification: &Notification,
-) -> Result<notify_rust::NotificationHandle, notify_rust::error::Error> {
-    notification.show_async().await
-}
-
-#[cfg(any(not(unix), target_os = "macos"))]
-async fn show_notification(notification: &Notification) -> Result<(), notify_rust::error::Error> {
-    notification.show()
+) -> Result<(), notify_rust::error::Error> {
+    let notification = notification.clone();
+    tokio::task::spawn_blocking(move || {
+        notification.show().map(|_| ())
+    })
+    .await
+    .expect("notification task panicked")
 }
 
 /// Parses an urgency string into a notify-rust Urgency value.

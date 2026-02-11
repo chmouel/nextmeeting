@@ -7,6 +7,7 @@ description = "Daemon: scheduler, cache, notifications"
 
 [dependencies]
 chrono.workspace = true
+futures-util = "0.3"
 nextmeeting-core = { path = "../nextmeeting-core" }
 nextmeeting-protocol = { path = "../nextmeeting-protocol" }
 notify-rust.workspace = true
