@@ -240,7 +240,8 @@ class MeetingFormatter:
         time_format_pref = getattr(self.args, "time_format", "24h")
 
         if date.day != self.today.day:
-            if deltad.days == 0:
+            tomorrow = self.today.date() + datetime.timedelta(days=1)
+            if date.date() == tomorrow:
                 s = "Tomorrow"
             else:
                 s = f"{date.strftime('%a %d')}"
