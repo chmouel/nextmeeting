@@ -32,7 +32,3 @@ mod xml;
 
 pub use config::CalDavConfig;
 pub use provider::CalDavProvider;
-
-// Re-export for testing
-#[cfg(test)]
-pub(crate) use auth::DigestAuth;

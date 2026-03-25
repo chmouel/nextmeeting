@@ -3,7 +3,7 @@
 //! All settings live in a single `config.toml` file at
 //! `~/.config/nextmeeting/config.toml` by default.
 //!
-//! Credential values (`client_id`, `client_secret`) support secret references:
+//! Credential values (`client_id`, `client_secret`, `username`, `password`) support secret references:
 //! - `pass::path/in/store` — resolved via `pass show`
 //! - `env::VAR_NAME` — resolved from the environment
 //! - plain text — used as-is
@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ClientConfig {
+    /// CalDAV provider settings.
+    #[cfg(feature = "caldav")]
+    pub caldav: Option<CalDavSettings>,
+
     /// Google Calendar settings.
     #[cfg(feature = "google")]
     pub google: Option<GoogleSettings>,
@@ -307,6 +311,115 @@ impl ClientConfig {
 }
 
 // ---------------------------------------------------------------------------
+// CalDavSettings (in config.toml, including credentials)
+// ---------------------------------------------------------------------------
+
+/// CalDAV provider settings.
+#[cfg(feature = "caldav")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CalDavSettings {
+    /// Base URL of the CalDAV server (principal or calendar collection).
+    pub url: Option<String>,
+
+    /// Username for authentication.
+    pub username: Option<String>,
+
+    /// Password for authentication.
+    pub password: Option<String>,
+
+    /// Optional calendar name/path hint.
+    pub calendar_hint: Option<String>,
+
+    /// Hours to look behind for ongoing events.
+    pub lookbehind_hours: Option<u32>,
+
+    /// Hours to look ahead for upcoming events.
+    pub lookahead_hours: Option<u32>,
+
+    /// Disable TLS verification (for testing or self-signed setups).
+    pub insecure_tls: bool,
+}
+
+#[cfg(feature = "caldav")]
+impl CalDavSettings {
+    /// Validates the CalDAV configuration.
+    pub fn validate(&self) -> Result<(), String> {
+        match (&self.username, &self.password) {
+            (Some(_), Some(_)) | (None, None) => {}
+            (Some(_), None) => {
+                return Err("caldav.password must be set when caldav.username is present".into());
+            }
+            (None, Some(_)) => {
+                return Err("caldav.username must be set when caldav.password is present".into());
+            }
+        }
+
+        if matches!(self.lookbehind_hours, Some(0)) {
+            return Err("caldav.lookbehind_hours must be greater than zero".into());
+        }
+
+        if matches!(self.lookahead_hours, Some(0)) {
+            return Err("caldav.lookahead_hours must be greater than zero".into());
+        }
+
+        if let Some(ref url) = self.url {
+            nextmeeting_providers::caldav::CalDavConfig::new(url)
+                .map_err(|e| format!("invalid caldav.url '{}': {}", url, e))?;
+        }
+
+        Ok(())
+    }
+
+    /// Converts the client configuration to a provider configuration.
+    pub fn to_provider_config(
+        &self,
+    ) -> Result<nextmeeting_providers::caldav::CalDavConfig, String> {
+        use nextmeeting_providers::caldav::CalDavConfig;
+
+        let url = self.url.as_deref().ok_or_else(|| {
+            format!(
+                "CalDAV URL is not configured. Add to {}:\n  \
+                 [caldav]\n  \
+                 url = \"https://caldav.example.com/calendars/user/\"\n  \
+                 username = \"env::NEXTMEETING_CALDAV_USER\"\n  \
+                 password = \"env::NEXTMEETING_CALDAV_PASSWORD\"",
+                ClientConfig::default_path().display()
+            )
+        })?;
+
+        let mut config =
+            CalDavConfig::new(url).map_err(|e| format!("invalid caldav.url '{}': {}", url, e))?;
+
+        if let (Some(username), Some(password)) = (&self.username, &self.password) {
+            let resolved_username = crate::secret::resolve(username)
+                .map_err(|e| format!("failed to resolve caldav.username: {}", e))?;
+            let resolved_password = crate::secret::resolve(password)
+                .map_err(|e| format!("failed to resolve caldav.password: {}", e))?;
+            config = config.with_credentials(resolved_username, resolved_password);
+        }
+
+        if let Some(ref hint) = self.calendar_hint {
+            config = config.with_calendar_hint(hint);
+        }
+
+        if let Some(hours) = self.lookbehind_hours {
+            config = config.with_lookbehind_hours(hours);
+        }
+
+        if let Some(hours) = self.lookahead_hours {
+            config = config.with_lookahead_hours(hours);
+        }
+
+        if self.insecure_tls {
+            config = config.with_insecure_tls();
+        }
+
+        Ok(config)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // GoogleSettings (in config.toml, including credentials)
 // ---------------------------------------------------------------------------
 
@@ -339,6 +452,9 @@ pub struct GoogleAccountSettings {
 
     /// OAuth client secret (supports `pass::` and `env::` prefixes).
     pub client_secret: Option<String>,
+
+    /// Path to the downloaded Google OAuth credentials JSON file.
+    pub credentials_file: Option<PathBuf>,
 
     /// Google Workspace domain (optional).
     pub domain: Option<String>,
@@ -395,6 +511,22 @@ impl GoogleSettings {
                     token_path.display()
                 ));
             }
+
+            let inline_count =
+                account.client_id.is_some() as u8 + account.client_secret.is_some() as u8;
+            if account.credentials_file.is_some() && inline_count > 0 {
+                return Err(format!(
+                    "Google account '{}' mixes credentials_file with client_id/client_secret; choose one style",
+                    account.name
+                ));
+            }
+
+            if account.credentials_file.is_none() && inline_count == 1 {
+                return Err(format!(
+                    "Google account '{}' must set both client_id and client_secret",
+                    account.name
+                ));
+            }
         }
 
         Ok(())
@@ -439,22 +571,33 @@ impl GoogleAccountSettings {
         Ok(config)
     }
 
-    /// Resolves Google OAuth credentials from inline fields.
+    /// Resolves Google OAuth credentials from a credentials file or inline fields.
     ///
-    /// Both `client_id` and `client_secret` must be set. Each value is passed
+    /// If `credentials_file` is set, it takes precedence and is read directly.
+    /// Otherwise both `client_id` and `client_secret` must be set. Each value is passed
     /// through `secret::resolve()` to expand `pass::` and `env::` references.
     pub(crate) fn resolve_credentials(
         &self,
     ) -> Result<nextmeeting_providers::google::OAuthCredentials, String> {
         use nextmeeting_providers::google::OAuthCredentials;
 
+        if let Some(ref credentials_file) = self.credentials_file {
+            return OAuthCredentials::from_file(credentials_file).map_err(|e| {
+                format!(
+                    "failed to load credentials_file {}: {}",
+                    credentials_file.display(),
+                    e
+                )
+            });
+        }
+
         let raw_id = self.client_id.as_deref().ok_or_else(|| {
             format!(
                 "Google credentials not found for account '{}'. Add to {}:\n  \
                  [[google.accounts]]\n  \
                  name = \"{}\"\n  \
-                 client_id = \"YOUR_ID.apps.googleusercontent.com\"\n  \
-                 client_secret = \"YOUR_SECRET\"\n\n  \
+                 credentials_file = \"/path/to/client_secret_<id>.json\"\n\n  \
+                 Or run: nextmeeting auth google --guide\n  \
                  Or run: nextmeeting auth google --account {} --credentials-file <path>",
                 self.name,
                 ClientConfig::default_path().display(),
@@ -489,6 +632,7 @@ mod tests {
             name: name.to_string(),
             client_id: Some("test-id.apps.googleusercontent.com".to_string()),
             client_secret: Some("test-secret".to_string()),
+            credentials_file: None,
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
@@ -514,6 +658,7 @@ mod tests {
             name: "test".to_string(),
             client_id: Some("env::_NM_TEST_CLIENT_ID".to_string()),
             client_secret: Some("env::_NM_TEST_CLIENT_SECRET".to_string()),
+            credentials_file: None,
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
@@ -534,6 +679,7 @@ mod tests {
             name: "test".to_string(),
             client_id: None,
             client_secret: Some("secret".to_string()),
+            credentials_file: None,
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
@@ -549,6 +695,7 @@ mod tests {
             name: "test".to_string(),
             client_id: Some("id.apps.googleusercontent.com".to_string()),
             client_secret: None,
+            credentials_file: None,
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
@@ -564,6 +711,7 @@ mod tests {
             name: "work".to_string(),
             client_id: Some("test.apps.googleusercontent.com".to_string()),
             client_secret: Some("test-secret".to_string()),
+            credentials_file: None,
             domain: Some("example.com".to_string()),
             calendar_ids: vec!["cal1".to_string(), "cal2".to_string()],
             token_path: None,
@@ -687,6 +835,76 @@ client_secret = "env::_NM_TOML_TEST_SECRET"
             accounts: vec![test_account("work"), test_account("personal")],
         };
         assert!(settings.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_mixed_credentials_sources() {
+        let mut account = test_account("work");
+        account.credentials_file = Some(PathBuf::from("/tmp/client-secret.json"));
+
+        let settings = GoogleSettings {
+            accounts: vec![account],
+        };
+
+        let err = settings.validate().unwrap_err();
+        assert!(err.contains("choose one style"));
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "caldav")]
+mod caldav_tests {
+    use super::*;
+
+    #[test]
+    fn caldav_to_provider_config_with_env_credentials() {
+        unsafe {
+            std::env::set_var("_NM_CALDAV_USER", "alice");
+            std::env::set_var("_NM_CALDAV_PASS", "secret");
+        }
+
+        let settings = CalDavSettings {
+            url: Some("https://caldav.example.com/calendars/alice/".to_string()),
+            username: Some("env::_NM_CALDAV_USER".to_string()),
+            password: Some("env::_NM_CALDAV_PASS".to_string()),
+            calendar_hint: Some("work".to_string()),
+            lookbehind_hours: Some(6),
+            lookahead_hours: Some(72),
+            insecure_tls: true,
+        };
+
+        let config = settings.to_provider_config().unwrap();
+        assert_eq!(
+            config.url.as_str(),
+            "https://caldav.example.com/calendars/alice/"
+        );
+        assert_eq!(config.username.as_deref(), Some("alice"));
+        assert_eq!(config.password.as_deref(), Some("secret"));
+        assert_eq!(config.calendar_hint.as_deref(), Some("work"));
+        assert_eq!(config.lookbehind_hours, 6);
+        assert_eq!(config.lookahead_hours, 72);
+        assert!(!config.verify_tls);
+
+        unsafe {
+            std::env::remove_var("_NM_CALDAV_USER");
+            std::env::remove_var("_NM_CALDAV_PASS");
+        }
+    }
+
+    #[test]
+    fn caldav_validate_rejects_partial_credentials() {
+        let settings = CalDavSettings {
+            url: Some("https://caldav.example.com/".to_string()),
+            username: Some("alice".to_string()),
+            password: None,
+            calendar_hint: None,
+            lookbehind_hours: None,
+            lookahead_hours: None,
+            insecure_tls: false,
+        };
+
+        let err = settings.validate().unwrap_err();
+        assert!(err.contains("password"));
     }
 }
 

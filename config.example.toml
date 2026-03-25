@@ -1,5 +1,5 @@
-# Credential values (`client_id`, `client_secret`) support secret references
-# so you don't have to store secrets in cleartext:
+# Credential values (`client_id`, `client_secret`, `username`, `password`)
+# support secret references so you don't have to store secrets in cleartext:
 #
 # | Prefix       | Behaviour                                         |
 # |--------------|----------------------------------------------------|
@@ -8,8 +8,9 @@
 # | *(none)*     | Used as plain text                                  |
 [[google.accounts]]
 name = "work"
-client_id = "YOUR_CLIENT_ID.apps.googleusercontent.com"
-client_secret = "YOUR_CLIENT_SECRET"
+credentials_file = "/path/to/client_secret_<id>.json"
+# client_id = "env::NEXTMEETING_GOOGLE_CLIENT_ID"
+# client_secret = "env::NEXTMEETING_GOOGLE_CLIENT_SECRET"
 # domain = "example.com"              # Google Workspace domain (per-account)
 calendar_ids = ["primary"]
 # token_path = "~/.config/nextmeeting/google-tokens-work.json"
@@ -17,9 +18,17 @@ calendar_ids = ["primary"]
 # Add more accounts as needed:
 # [[google.accounts]]
 # name = "personal"
-# client_id = "OTHER_CLIENT_ID.apps.googleusercontent.com"
-# client_secret = "OTHER_CLIENT_SECRET"
+# credentials_file = "/path/to/other-client-secret.json"
 # calendar_ids = ["primary"]
+
+[caldav]
+url = "https://caldav.example.com/calendars/chmouel/"
+username = "env::NEXTMEETING_CALDAV_USER"
+password = "env::NEXTMEETING_CALDAV_PASSWORD"
+# calendar_hint = "work"
+# lookbehind_hours = 12
+# lookahead_hours = 48
+# insecure_tls = false
 
 # Display timing notes:
 # - Near-term meetings are shown as relative text (`In 15 minutes`).

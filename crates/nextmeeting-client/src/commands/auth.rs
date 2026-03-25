@@ -9,6 +9,30 @@ use crate::error::ClientResult;
 
 use nextmeeting_providers::CalendarProvider;
 
+/// Prints a step-by-step Google Calendar setup guide for first-time users.
+pub fn print_google_setup_guide() {
+    println!("Google Calendar setup guide");
+    println!();
+    println!("1. Open Google Cloud Console and create or select a project.");
+    println!("2. Enable the Google Calendar API for that project.");
+    println!("3. Create an OAuth client ID of type 'Desktop app'.");
+    println!("4. Download the OAuth credentials JSON file.");
+    println!("5. Run one of these commands:");
+    println!();
+    println!("   nextmeeting auth google --credentials-file /path/to/client_secret_<id>.json");
+    println!(
+        "   nextmeeting auth google --account work --credentials-file /path/to/client_secret_<id>.json"
+    );
+    println!();
+    println!(
+        "The credentials file path will be saved in {}.",
+        ClientConfig::default_path().display()
+    );
+    println!("Tokens are stored separately in ~/.local/share/nextmeeting/.");
+    println!();
+    println!("After authentication, run `nextmeeting` to show your next meeting.");
+}
+
 /// Run the Google authentication flow.
 ///
 /// Resolves credentials from CLI flags, a `--credentials-file`, or
@@ -113,6 +137,27 @@ struct ResolvedAccount {
     final_domain: Option<String>,
     token_path: Option<PathBuf>,
     source: CredentialSource,
+    persistence: Option<CredentialPersistence>,
+}
+
+/// How Google credentials should be persisted in config.toml.
+#[derive(Debug, Clone, PartialEq)]
+enum CredentialPersistence {
+    /// Save a reference to the downloaded OAuth credentials JSON file.
+    CredentialsFile(PathBuf),
+    /// Save inline client ID and client secret values.
+    Inline {
+        client_id: String,
+        client_secret: String,
+    },
+}
+
+/// Resolved credentials coming from CLI flags.
+#[derive(Debug)]
+struct ResolvedCliCredentials {
+    client_id: String,
+    client_secret: String,
+    persistence: CredentialPersistence,
 }
 
 /// Resolves the target account, credentials, and domain for the auth flow.
@@ -136,16 +181,17 @@ fn resolve_target_account(
     if has_cli_creds {
         let account_name = cli_account.unwrap_or("default");
 
-        let (id, secret) =
+        let resolved_cli =
             resolve_cli_credentials(cli_client_id, cli_client_secret, cli_credentials_file)?;
 
         return Ok(ResolvedAccount {
             account_name: account_name.to_string(),
-            final_client_id: id,
-            final_client_secret: secret,
+            final_client_id: resolved_cli.client_id,
+            final_client_secret: resolved_cli.client_secret,
             final_domain: cli_domain,
             token_path: None,
             source: CredentialSource::Cli,
+            persistence: Some(resolved_cli.persistence),
         });
     }
 
@@ -167,7 +213,10 @@ fn resolve_target_account(
                     if available.is_empty() {
                         crate::error::ClientError::Config(format!(
                             "account '{}' not found in config. No accounts are configured.\n  \
-                             Use --client-id/--client-secret or --credentials-file to set up a new account.",
+                             Run `nextmeeting auth google --guide` for setup help.\n  \
+                             Quick start:\n  \
+                             nextmeeting auth google --account {} --credentials-file /path/to/client_secret_<id>.json",
+                            name,
                             name
                         ))
                     } else {
@@ -185,10 +234,12 @@ fn resolve_target_account(
                 0 => {
                     let config_path = ClientConfig::default_path();
                     return Err(crate::error::ClientError::Config(format!(
-                        "no Google accounts configured. Provide credentials via:\n  \
-                         - --account <name> --credentials-file <path>\n  \
-                         - --account <name> --client-id <id> --client-secret <secret>\n  \
-                         - Add a [[google.accounts]] entry in {}",
+                        "no Google accounts configured.\n  \
+                         Run `nextmeeting auth google --guide` for the full setup.\n  \
+                         Quick start:\n  \
+                         - nextmeeting auth google --credentials-file /path/to/client_secret_<id>.json\n  \
+                         - nextmeeting auth google --account work --credentials-file /path/to/client_secret_<id>.json\n  \
+                         - Or add a [[google.accounts]] entry in {}",
                         config_path.display()
                     )));
                 }
@@ -224,6 +275,7 @@ fn resolve_target_account(
         final_domain,
         token_path: target_account.token_path.clone(),
         source: CredentialSource::Config,
+        persistence: None,
     })
 }
 
@@ -232,12 +284,19 @@ fn resolve_cli_credentials(
     cli_client_id: Option<String>,
     cli_client_secret: Option<String>,
     cli_credentials_file: Option<PathBuf>,
-) -> ClientResult<(String, String)> {
+) -> ClientResult<ResolvedCliCredentials> {
     use nextmeeting_providers::google::OAuthCredentials;
 
     // CLI client_id + client_secret
     if let (Some(id), Some(secret)) = (&cli_client_id, &cli_client_secret) {
-        return Ok((id.clone(), secret.clone()));
+        return Ok(ResolvedCliCredentials {
+            client_id: id.clone(),
+            client_secret: secret.clone(),
+            persistence: CredentialPersistence::Inline {
+                client_id: id.clone(),
+                client_secret: secret.clone(),
+            },
+        });
     }
 
     // CLI credentials file
@@ -249,7 +308,11 @@ fn resolve_cli_credentials(
                 e
             ))
         })?;
-        return Ok((creds.client_id, creds.client_secret));
+        return Ok(ResolvedCliCredentials {
+            client_id: creds.client_id,
+            client_secret: creds.client_secret,
+            persistence: CredentialPersistence::CredentialsFile(path.clone()),
+        });
     }
 
     // Partial CLI args
@@ -312,8 +375,7 @@ fn save_credentials_to_config(resolved: &ResolvedAccount) {
             && name == resolved.account_name
         {
             // Update existing account
-            table["client_id"] = toml_edit::value(&resolved.final_client_id);
-            table["client_secret"] = toml_edit::value(&resolved.final_client_secret);
+            apply_credentials(table, resolved.persistence.as_ref().unwrap());
             if let Some(ref domain) = resolved.final_domain {
                 table["domain"] = toml_edit::value(domain.as_str());
             }
@@ -331,8 +393,7 @@ fn save_credentials_to_config(resolved: &ResolvedAccount) {
         // Create new account entry
         let mut table = toml_edit::Table::new();
         table["name"] = toml_edit::value(&resolved.account_name);
-        table["client_id"] = toml_edit::value(&resolved.final_client_id);
-        table["client_secret"] = toml_edit::value(&resolved.final_client_secret);
+        apply_credentials(&mut table, resolved.persistence.as_ref().unwrap());
         if let Some(ref domain) = resolved.final_domain {
             table["domain"] = toml_edit::value(domain.as_str());
         }
@@ -369,6 +430,24 @@ fn save_credentials_to_config(resolved: &ResolvedAccount) {
     }
 }
 
+fn apply_credentials(table: &mut toml_edit::Table, persistence: &CredentialPersistence) {
+    match persistence {
+        CredentialPersistence::CredentialsFile(path) => {
+            table.remove("client_id");
+            table.remove("client_secret");
+            table["credentials_file"] = toml_edit::value(path.to_string_lossy().to_string());
+        }
+        CredentialPersistence::Inline {
+            client_id,
+            client_secret,
+        } => {
+            table.remove("credentials_file");
+            table["client_id"] = toml_edit::value(client_id);
+            table["client_secret"] = toml_edit::value(client_secret);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,6 +458,7 @@ mod tests {
             name: name.to_string(),
             client_id: Some(format!("{}-id.apps.googleusercontent.com", name)),
             client_secret: Some(format!("{}-secret", name)),
+            credentials_file: None,
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
@@ -412,6 +492,13 @@ mod tests {
         );
         assert_eq!(resolved.final_client_secret, "cli-secret");
         assert_eq!(resolved.source, CredentialSource::Cli);
+        assert_eq!(
+            resolved.persistence,
+            Some(CredentialPersistence::Inline {
+                client_id: "cli-id.apps.googleusercontent.com".to_string(),
+                client_secret: "cli-secret".to_string(),
+            })
+        );
     }
 
     #[test]
@@ -540,8 +627,14 @@ mod tests {
         .unwrap();
 
         let config = ClientConfig::default();
-        let result =
-            resolve_target_account(Some("work"), None, None, Some(creds_path), None, &config);
+        let result = resolve_target_account(
+            Some("work"),
+            None,
+            None,
+            Some(creds_path.clone()),
+            None,
+            &config,
+        );
         assert!(result.is_ok());
         let resolved = result.unwrap();
         assert_eq!(resolved.account_name, "work");
@@ -551,6 +644,10 @@ mod tests {
         );
         assert_eq!(resolved.final_client_secret, "file-secret");
         assert_eq!(resolved.source, CredentialSource::Cli);
+        assert_eq!(
+            resolved.persistence,
+            Some(CredentialPersistence::CredentialsFile(creds_path))
+        );
     }
 
     #[test]
@@ -562,6 +659,7 @@ mod tests {
             final_domain: None,
             token_path: None,
             source: CredentialSource::Config,
+            persistence: None,
         };
         // This just verifies the no-op path doesn't panic
         save_credentials_to_config(&resolved);

@@ -136,8 +136,10 @@ fn golden_tty_single_upcoming() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false; // Disable hyperlinks for readable snapshots
+    let options = FormatOptions {
+        hyperlinks: false, // Disable hyperlinks for readable snapshots
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -151,8 +153,10 @@ fn golden_tty_soon_meeting() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 3, "Urgent Sync")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -166,8 +170,10 @@ fn golden_tty_ongoing() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![ongoing_meeting(now_utc, "Sprint Review")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -181,8 +187,10 @@ fn golden_tty_all_day() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![all_day_meeting(now_utc, "Company Holiday")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -200,8 +208,10 @@ fn golden_tty_multiple_meetings() {
         sample_meeting(now_utc, 120, "Design Review"),
     ];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -219,9 +229,11 @@ fn golden_tty_title_truncation() {
         "Very Long Meeting Title That Should Be Truncated",
     )];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.max_title_length = Some(20);
+    let options = FormatOptions {
+        hyperlinks: false,
+        max_title_length: Some(20),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -235,8 +247,10 @@ fn golden_tty_with_hyperlinks() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = true;
+    let options = FormatOptions {
+        hyperlinks: true,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -303,8 +317,10 @@ fn golden_waybar_ending_soon() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![ongoing_meeting_ending_in(now_utc, "Sprint Review", 4)];
 
-    let mut options = FormatOptions::default();
-    options.end_warning_minutes = Some(5);
+    let options = FormatOptions {
+        end_warning_minutes: Some(5),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
 
@@ -351,8 +367,10 @@ fn golden_waybar_tooltip_limit() {
         sample_meeting(now_utc, 135, "Meeting 5"),
     ];
 
-    let mut options = FormatOptions::default();
-    options.tooltip_limit = Some(3);
+    let options = FormatOptions {
+        tooltip_limit: Some(3),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
 
@@ -439,10 +457,12 @@ fn golden_time_format_12h() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Afternoon Meeting")];
 
-    let mut options = FormatOptions::default();
-    options.time_format = TimeFormat::H12;
-    options.show_relative_time = false;
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        time_format: TimeFormat::H12,
+        show_relative_time: false,
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -456,9 +476,11 @@ fn golden_absolute_time() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.show_relative_time = false;
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        show_relative_time: false,
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -472,10 +494,12 @@ fn golden_custom_hour_separator() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.show_relative_time = false;
-    options.hour_separator = "h".to_string();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        show_relative_time: false,
+        hour_separator: "h".to_string(),
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -493,8 +517,10 @@ fn golden_meeting_starting_now() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 0, "Starting Now")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -508,8 +534,10 @@ fn golden_meeting_hours_away() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 150, "Later Today")]; // 2h 30m
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -523,8 +551,10 @@ fn golden_meeting_exactly_one_hour() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 60, "In One Hour")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -550,8 +580,10 @@ fn golden_special_characters_in_title() {
 
     let meetings = vec![MeetingView::from_event(&event, now_utc)];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
+    let options = FormatOptions {
+        hyperlinks: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -569,9 +601,11 @@ fn golden_custom_format_template() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.custom_format = Some("{when} | {title}".to_string());
+    let options = FormatOptions {
+        hyperlinks: false,
+        custom_format: Some("{when} | {title}".to_string()),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -585,12 +619,14 @@ fn golden_custom_format_all_placeholders() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.custom_format = Some(
-        "{title} @ {start_time} - {end_time} ({minutes_until}m) all_day={is_all_day} ongoing={is_ongoing}"
-            .to_string(),
-    );
+    let options = FormatOptions {
+        hyperlinks: false,
+        custom_format: Some(
+            "{title} @ {start_time} - {end_time} ({minutes_until}m) all_day={is_all_day} ongoing={is_ongoing}"
+                .to_string(),
+        ),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -608,9 +644,11 @@ fn golden_privacy_mode_tty() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Secret Meeting")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.privacy = true;
+    let options = FormatOptions {
+        hyperlinks: false,
+        privacy: true,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -624,10 +662,12 @@ fn golden_privacy_custom_title() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Secret Meeting")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.privacy = true;
-    options.privacy_title = "Meeting".to_string();
+    let options = FormatOptions {
+        hyperlinks: false,
+        privacy: true,
+        privacy_title: "Meeting".to_string(),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -641,9 +681,11 @@ fn golden_privacy_waybar() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Secret Meeting")];
 
-    let mut options = FormatOptions::default();
-    options.privacy = true;
-    options.privacy_title = "Busy".to_string();
+    let options = FormatOptions {
+        privacy: true,
+        privacy_title: "Busy".to_string(),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
@@ -661,9 +703,11 @@ fn golden_waybar_soon_with_colors() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 3, "Urgent Call")]; // 3 min = soon
 
-    let mut options = FormatOptions::default();
-    options.notify_min_color = Some("#ff0000".to_string());
-    options.notify_min_color_foreground = Some("#ffffff".to_string());
+    let options = FormatOptions {
+        notify_min_color: Some("#ff0000".to_string()),
+        notify_min_color_foreground: Some("#ffffff".to_string()),
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
@@ -677,8 +721,10 @@ fn golden_waybar_hide_all_day() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![all_day_meeting(now_utc, "Holiday")];
 
-    let mut options = FormatOptions::default();
-    options.waybar_show_all_day = false;
+    let options = FormatOptions {
+        waybar_show_all_day: false,
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
@@ -696,9 +742,11 @@ fn golden_until_offset_within_threshold() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 15, "Team Standup")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.until_offset_minutes = Some(30); // 30 min threshold, meeting is 15 min away -> show countdown
+    let options = FormatOptions {
+        hyperlinks: false,
+        until_offset_minutes: Some(30), // 30 min threshold, meeting is 15 min away -> show countdown
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);
@@ -712,9 +760,11 @@ fn golden_until_offset_beyond_threshold() {
     let now_local = local_from_utc(now_utc);
     let meetings = vec![sample_meeting(now_utc, 90, "Later Meeting")];
 
-    let mut options = FormatOptions::default();
-    options.hyperlinks = false;
-    options.until_offset_minutes = Some(30); // 30 min threshold, meeting is 90 min away -> show absolute time
+    let options = FormatOptions {
+        hyperlinks: false,
+        until_offset_minutes: Some(30), // 30 min threshold, meeting is 90 min away -> show absolute time
+        ..FormatOptions::default()
+    };
     let formatter = OutputFormatter::new(options);
 
     let output = formatter.format_tty_at(&meetings, now_local);

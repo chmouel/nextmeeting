@@ -46,8 +46,9 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         let config_path = ClientConfig::default_path();
         return Err(ClientError::Config(format!(
             "no calendar providers configured. To fix this, either:\n  \
-             1. Run: nextmeeting auth google --credentials-file <path-to-google-credentials.json>\n  \
-             2. Add a [[google.accounts]] entry in {}",
+             1. Run: nextmeeting auth google --guide\n  \
+             2. Run: nextmeeting auth google --credentials-file /path/to/client_secret_<id>.json\n  \
+             3. Add a [caldav] or [[google.accounts]] section in {}",
             config_path.display()
         )));
     }
@@ -189,6 +190,23 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
 /// Builds calendar providers from client configuration.
 fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarProvider>>> {
     let mut providers: Vec<Box<dyn CalendarProvider>> = Vec::new();
+
+    #[cfg(feature = "caldav")]
+    {
+        if let Some(ref caldav_settings) = config.caldav {
+            caldav_settings
+                .validate()
+                .map_err(|e| ClientError::Config(format!("invalid CalDAV configuration: {}", e)))?;
+
+            let caldav_config = caldav_settings
+                .to_provider_config()
+                .map_err(|e| ClientError::Config(format!("invalid CalDAV configuration: {}", e)))?;
+
+            let provider = nextmeeting_providers::caldav::CalDavProvider::new(caldav_config)?;
+            info!("CalDAV provider initialised");
+            providers.push(Box::new(provider));
+        }
+    }
 
     #[cfg(feature = "google")]
     {

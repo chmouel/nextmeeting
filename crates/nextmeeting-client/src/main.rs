@@ -74,12 +74,18 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
             #[cfg(feature = "google")]
             AuthProvider::Google {
                 account,
+                guide,
                 client_id,
                 client_secret,
                 credentials_file,
                 domain,
                 force,
             } => {
+                if guide {
+                    nextmeeting_client::commands::auth::print_google_setup_guide();
+                    return Ok(());
+                }
+
                 nextmeeting_client::commands::auth::google(
                     account,
                     client_id,

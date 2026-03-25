@@ -19,6 +19,9 @@ the terminal or Waybar, and to run quick meeting actions.
 
 ### From source
 
+No packaged binaries are published yet. The supported installation path is from
+source.
+
 Install the CLI:
 
 ```sh
@@ -33,27 +36,50 @@ cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
 
 ## Quick Start
 
-1. Authenticate a Google account:
+### Google Calendar
+
+```sh
+nextmeeting auth google --guide
+```
+
+The easiest Google path is:
+
+1. Create a Google OAuth client of type `Desktop app`.
+2. Download the credentials JSON file.
+3. Run:
 
 ```sh
 nextmeeting auth google --account work \
-  --client-id <YOUR_CLIENT_ID> \
-  --client-secret <YOUR_CLIENT_SECRET>
+  --credentials-file /path/to/client_secret_<id>.json
 ```
 
-1. Show the next meeting:
+### CalDAV
+
+Add a CalDAV section to `~/.config/nextmeeting/config.toml`:
+
+```toml
+[caldav]
+url = "https://caldav.example.com/calendars/chmouel/"
+username = "env::NEXTMEETING_CALDAV_USER"
+password = "env::NEXTMEETING_CALDAV_PASSWORD"
+calendar_hint = "work"
+```
+
+### Run It
+
+Show the next meeting:
 
 ```sh
 nextmeeting
 ```
 
-1. Use Waybar output:
+Use Waybar output:
 
 ```sh
 nextmeeting --waybar
 ```
 
-1. Launch the GTK desktop UI:
+Launch the GTK desktop UI:
 
 ```sh
 cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
@@ -92,7 +118,20 @@ Default configuration path:
 
 `~/.config/nextmeeting/config.toml`
 
-Use `config.example.toml` as a template.
+Use `config.example.toml` as a template. Validate the resulting file with:
+
+```sh
+nextmeeting config validate
+```
+
+Google credentials may be supplied in either of these forms:
+
+- `credentials_file = "/path/to/client_secret_<id>.json"` for the downloaded
+  Google OAuth Desktop App JSON
+- `client_id` and `client_secret` values, including `env::` and `pass::`
+  references
+
+CalDAV credentials also support `env::` and `pass::` references.
 
 ## Environment Variables
 

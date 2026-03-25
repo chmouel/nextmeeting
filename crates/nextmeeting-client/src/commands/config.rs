@@ -16,6 +16,19 @@ pub fn dump(config: &ClientConfig) -> ClientResult<()> {
 
 /// Validate the configuration.
 pub fn validate(config: &ClientConfig) -> ClientResult<()> {
+    #[cfg(feature = "caldav")]
+    if let Some(ref caldav) = config.caldav {
+        caldav.validate().map_err(|e| {
+            crate::error::ClientError::Config(format!("invalid CalDAV configuration: {}", e))
+        })?;
+
+        caldav.to_provider_config().map_err(|e| {
+            crate::error::ClientError::Config(format!("invalid CalDAV configuration: {}", e))
+        })?;
+
+        println!("CalDAV configuration is valid.");
+    }
+
     // Validate Google settings if present
     #[cfg(feature = "google")]
     if let Some(ref google) = config.google {
@@ -34,7 +47,10 @@ pub fn validate(config: &ClientConfig) -> ClientResult<()> {
             }
 
             // Validate credentials if present
-            if account.client_id.is_some() || account.client_secret.is_some() {
+            if account.credentials_file.is_some()
+                || account.client_id.is_some()
+                || account.client_secret.is_some()
+            {
                 account.resolve_credentials().map_err(|e| {
                     crate::error::ClientError::Config(format!(
                         "invalid Google credentials for account '{}': {}",

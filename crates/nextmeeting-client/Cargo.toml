@@ -10,7 +10,8 @@ name = "nextmeeting"
 path = "src/main.rs"
 
 [features]
-default = ["google"]
+default = ["google", "caldav"]
+caldav = ["nextmeeting-providers/caldav"]
 google = ["nextmeeting-providers/google"]
 
 [dependencies]

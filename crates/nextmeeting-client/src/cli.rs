@@ -180,6 +180,10 @@ pub enum AuthProvider {
         #[arg(long, short)]
         account: Option<String>,
 
+        /// Print a step-by-step setup guide for Google Calendar authentication
+        #[arg(long)]
+        guide: bool,
+
         /// OAuth client ID (from Google Cloud Console)
         #[arg(long, env = "GOOGLE_CLIENT_ID")]
         client_id: Option<String>,

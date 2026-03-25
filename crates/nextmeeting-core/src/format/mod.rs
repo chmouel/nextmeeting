@@ -1031,8 +1031,10 @@ mod tests {
 
         #[test]
         fn format_time_until_hours() {
-            let mut opts = FormatOptions::default();
-            opts.until_offset_minutes = Some(999);
+            let opts = FormatOptions {
+                until_offset_minutes: Some(999),
+                ..FormatOptions::default()
+            };
             let formatter = OutputFormatter::new(opts);
             let now = local_from_utc(utc(2025, 2, 5, 10, 0, 0));
             assert_eq!(
@@ -1079,8 +1081,10 @@ mod tests {
 
         #[test]
         fn truncate_title_with_max_length() {
-            let mut opts = FormatOptions::default();
-            opts.max_title_length = Some(10);
+            let opts = FormatOptions {
+                max_title_length: Some(10),
+                ..FormatOptions::default()
+            };
             let formatter = OutputFormatter::new(opts);
 
             assert_eq!(formatter.truncate_title("Short").as_ref(), "Short");
@@ -1143,8 +1147,10 @@ mod tests {
             let now_utc = utc(2025, 2, 5, 10, 0, 0);
             let now_local = local_from_utc(now_utc);
             let meeting = ongoing_meeting_ending_in(now_utc, 4);
-            let mut opts = FormatOptions::default();
-            opts.end_warning_minutes = Some(5);
+            let opts = FormatOptions {
+                end_warning_minutes: Some(5),
+                ..FormatOptions::default()
+            };
             let formatter = OutputFormatter::new(opts);
 
             let output = formatter.format_waybar_at(&[meeting], "No meetings", now_local);
@@ -1203,8 +1209,10 @@ mod tests {
                 .map(|i| sample_meeting(now_utc, (i + 1) * 30))
                 .collect();
 
-            let mut opts = FormatOptions::default();
-            opts.tooltip_limit = Some(2);
+            let opts = FormatOptions {
+                tooltip_limit: Some(2),
+                ..FormatOptions::default()
+            };
             let formatter = OutputFormatter::new(opts);
 
             let output = formatter.format_waybar_at(&meetings, "No meetings", now_local);
@@ -1216,9 +1224,11 @@ mod tests {
 
         #[test]
         fn time_format_12h() {
-            let mut opts = FormatOptions::default();
-            opts.time_format = TimeFormat::H12;
-            opts.show_relative_time = false;
+            let opts = FormatOptions {
+                time_format: TimeFormat::H12,
+                show_relative_time: false,
+                ..FormatOptions::default()
+            };
             let formatter = OutputFormatter::new(opts);
 
             let now = utc(2025, 2, 5, 10, 0, 0);
