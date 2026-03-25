@@ -14,7 +14,6 @@ use tokio::sync::Mutex;
 use chrono::{DateTime, Local, Utc};
 
 use crate::config::GtkConfig;
-use crate::tray::{TrayCommand, manager::TrayManager};
 use crate::widgets::meeting_card::MeetingCard;
 use crate::widgets::window::{UiWidgets, build as build_window};
 
@@ -217,7 +216,14 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         guard.snooze_minutes()
     });
     let widgets = Rc::new(build_window(app, snooze_minutes));
-    widgets.window.set_hide_on_close(true);
+
+    {
+        let app_for_close = app.clone();
+        widgets.window.connect_close_request(move |_| {
+            app_for_close.quit();
+            glib::Propagation::Proceed
+        });
+    }
 
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("../resources/style.css"));
@@ -296,7 +302,7 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         quit_action.connect_activate(move |_, _| {
             let dialog = adw::AlertDialog::builder()
                 .heading("Quit NextMeeting?")
-                .body("The application will stop running in the background.")
+                .body("The application will close.")
                 .default_response("cancel")
                 .close_response("cancel")
                 .build();
@@ -315,44 +321,6 @@ fn build_ui(app: &adw::Application, runtime: Arc<Runtime>, app_runtime: Arc<Mute
         });
         app.add_action(&quit_action);
         app.set_accels_for_action("app.quit-confirmed", &["<Control>q"]);
-    }
-
-    let (tray_tx, tray_rx) = mpsc::channel::<TrayCommand>();
-    let tray_manager = TrayManager::new(runtime.clone(), tray_tx);
-    tray_manager.start();
-
-    {
-        let widgets_for_tray = widgets.clone();
-        let runtime_for_tray = runtime.clone();
-        let app_runtime_for_tray = app_runtime.clone();
-        let ui_tx_for_tray = ui_tx.clone();
-        let app_for_tray = app.clone();
-
-        glib::source::timeout_add_local(Duration::from_millis(200), move || {
-            while let Ok(cmd) = tray_rx.try_recv() {
-                match cmd {
-                    TrayCommand::ToggleWindow => {
-                        if widgets_for_tray.window.is_visible() {
-                            widgets_for_tray.window.set_visible(false);
-                        } else {
-                            widgets_for_tray.window.present();
-                        }
-                    }
-                    TrayCommand::Refresh => {
-                        trigger_refresh(
-                            runtime_for_tray.clone(),
-                            app_runtime_for_tray.clone(),
-                            ui_tx_for_tray.clone(),
-                        );
-                    }
-                    TrayCommand::Quit => {
-                        app_for_tray.quit();
-                    }
-                }
-            }
-
-            glib::ControlFlow::Continue
-        });
     }
 
     // Periodic snooze status check (every 30 seconds)
@@ -875,7 +843,7 @@ fn render_meetings(
         let always_show_actions = is_primary;
         let is_dismissed = dismissed_ids.contains(&meeting.id);
         let minutes_until = meeting.minutes_until_start(now);
-        let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
+        let is_ongoing = !meeting.is_all_day && meeting.is_active_at(now);
         let is_soon = !is_ongoing
             && !meeting.is_all_day
             && minutes_until > 0
@@ -1154,7 +1122,7 @@ fn find_primary_meetings(meetings: &[nextmeeting_core::MeetingView]) -> HashSet<
     // First: all ongoing meetings with a link
     let ongoing: HashSet<String> = meetings
         .iter()
-        .filter(|m| m.start_local <= now && now < m.end_local && m.primary_link.is_some())
+        .filter(|m| !m.is_all_day && m.is_active_at(now) && m.primary_link.is_some())
         .map(|m| m.id.clone())
         .collect();
     if !ongoing.is_empty() {

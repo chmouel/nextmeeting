@@ -434,9 +434,9 @@ impl OutputFormatter {
         let date = meeting.start_local;
 
         if meeting.is_all_day {
-            if date.date_naive() == now.date_naive() {
+            if meeting.occurs_on_date(now.date_naive()) {
                 return "All day".to_string();
-            } else if date.date_naive() == now.date_naive() + chrono::Duration::days(1) {
+            } else if meeting.occurs_on_date(now.date_naive() + chrono::Duration::days(1)) {
                 return "Tomorrow (all day)".to_string();
             } else {
                 return date.format("%a %d (all day)").to_string();
@@ -510,7 +510,7 @@ impl OutputFormatter {
             return UrgencyClass::AllDay;
         }
 
-        if meeting.start_local <= now && now < meeting.end_local {
+        if meeting.is_active_at(now) {
             if self.is_meeting_ending_soon(meeting, now) {
                 return UrgencyClass::EndingSoon;
             }
@@ -532,7 +532,7 @@ impl OutputFormatter {
             _ => return false,
         };
 
-        if !(meeting.start_local <= now && now < meeting.end_local) {
+        if !meeting.is_active_at(now) {
             return false;
         }
 
@@ -551,7 +551,7 @@ impl OutputFormatter {
             return "All day".to_string();
         }
 
-        if meeting.start_local <= now && now < meeting.end_local {
+        if meeting.is_active_at(now) {
             let minutes_left = meeting.minutes_until_end(now);
             return self.format_time_remaining(minutes_left, true);
         }
@@ -1171,6 +1171,28 @@ mod tests {
             assert!(!json_meeting.is_all_day);
             assert!(!json_meeting.is_ongoing);
             assert_eq!(json_meeting.urgency, UrgencyClass::Upcoming);
+        }
+
+        #[test]
+        fn tooltip_time_for_active_multiday_all_day_event() {
+            let now_local = Local.with_ymd_and_hms(2025, 2, 6, 12, 0, 0).unwrap();
+            let now_utc = now_local.with_timezone(&Utc);
+            let meeting = MeetingView::from_event(
+                &NormalizedEvent::new(
+                    "evt-all-day",
+                    "Conference",
+                    EventTime::from_date(now_local.date_naive() - chrono::Duration::days(1)),
+                    EventTime::from_date(now_local.date_naive() + chrono::Duration::days(1)),
+                    "primary",
+                ),
+                now_utc,
+            );
+            let formatter = OutputFormatter::with_defaults();
+
+            assert_eq!(
+                formatter.format_tooltip_time(&meeting, now_local),
+                "All day"
+            );
         }
 
         #[test]

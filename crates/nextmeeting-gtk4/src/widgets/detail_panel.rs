@@ -259,7 +259,11 @@ impl DetailPanel {
 
         // Time
         let date_str = meeting.start_local.format("%A, %B %-d").to_string();
-        let time_str = format_time_range(meeting.start_local, meeting.end_local);
+        let time_str = if meeting.is_all_day {
+            "All day".to_string()
+        } else {
+            format_time_range(meeting.start_local, meeting.end_local)
+        };
         self.time_label
             .set_label(&format!("{} \u{2022} {}", time_str, date_str));
 

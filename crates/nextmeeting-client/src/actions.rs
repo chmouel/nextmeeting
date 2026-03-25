@@ -1,6 +1,6 @@
 //! Meeting actions: open URLs, copy to clipboard, snooze.
 
-use nextmeeting_core::MeetingView;
+use nextmeeting_core::{MeetingView, extract_links_from_text};
 use nextmeeting_protocol::{Request, Response};
 use tracing::{debug, info};
 
@@ -146,10 +146,15 @@ pub fn open_meeting_url_with(meetings: &[MeetingView], command: &str) -> ClientR
         .as_ref()
         .ok_or_else(|| ClientError::Action("next meeting has no meeting URL".into()))?;
 
+    if command.trim().is_empty() {
+        return Err(ClientError::Action("custom open command is empty".into()));
+    }
+
     info!(url = %link.url, command = %command, "opening meeting URL with custom command");
 
-    std::process::Command::new(command)
-        .arg(&link.url)
+    std::process::Command::new("sh")
+        .arg("-lc")
+        .arg(build_shell_open_command(command, &link.url))
         .spawn()
         .map_err(|e| ClientError::Action(format!("failed to run '{}': {}", command, e)))?;
 
@@ -327,12 +332,18 @@ fn extract_passcode(url: &str) -> Option<String> {
 
 /// Finds the first URL in the given text.
 fn find_url_in_text(text: &str) -> Option<String> {
-    for word in text.split_whitespace() {
-        if word.starts_with("https://") || word.starts_with("http://") {
-            return Some(word.to_string());
-        }
-    }
-    None
+    extract_links_from_text(text)
+        .into_iter()
+        .next()
+        .map(|link| link.url)
+}
+
+fn build_shell_open_command(command: &str, url: &str) -> String {
+    format!("{command} {}", shell_single_quote(url))
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r#"'\''"#))
 }
 
 /// Returns the first non-all-day meeting, or the first meeting.
@@ -413,6 +424,14 @@ mod tests {
     }
 
     #[test]
+    fn find_url_in_text_strips_trailing_punctuation() {
+        assert_eq!(
+            find_url_in_text("Join at https://meet.google.com/abc)."),
+            Some("https://meet.google.com/abc".to_string())
+        );
+    }
+
+    #[test]
     fn find_url_in_text_none() {
         assert_eq!(find_url_in_text("no url here"), None);
     }
@@ -451,5 +470,13 @@ mod tests {
     fn calendar_edit_url_keeps_non_google_url() {
         let url = "https://example.com/event/123";
         assert_eq!(calendar_edit_url(url, "event456", None), url.to_string());
+    }
+
+    #[test]
+    fn build_shell_open_command_quotes_url() {
+        assert_eq!(
+            build_shell_open_command("open -a Safari", "https://example.com/a?b=c&d=e"),
+            "open -a Safari 'https://example.com/a?b=c&d=e'"
+        );
     }
 }

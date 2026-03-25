@@ -39,7 +39,7 @@ expression: output
       "time_display": "All day",
       "is_all_day": true,
       "is_ongoing": true,
-      "minutes_until": -600,
+      "minutes_until": -660,
       "urgency": "all_day"
     }
   ],

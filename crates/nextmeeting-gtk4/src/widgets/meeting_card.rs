@@ -211,7 +211,7 @@ impl MeetingCard {
             frame.add_css_class("meeting-card-calendar");
         }
         let now = Local::now();
-        let is_ongoing = meeting.start_local <= now && now < meeting.end_local;
+        let is_ongoing = !meeting.is_all_day && meeting.is_active_at(now);
         if is_ongoing {
             frame.add_css_class("meeting-card-ongoing");
         } else if is_soon && !is_dismissed {
@@ -263,7 +263,9 @@ impl MeetingCard {
         center_box.append(&title_label);
 
         // Time and service line
-        let time_text = if is_ongoing {
+        let time_text = if meeting.is_all_day {
+            "All day".to_string()
+        } else if is_ongoing {
             let minutes_left = meeting.minutes_until_end(now);
             let time_remaining = if minutes_left <= 0 {
                 "Ending".to_string()

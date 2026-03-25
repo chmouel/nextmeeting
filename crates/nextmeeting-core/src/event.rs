@@ -6,7 +6,7 @@
 //! - [`LinkKind`]: The type of meeting link (Zoom, Meet, Teams, etc.)
 //! - [`MeetingView`]: A display-ready view of a meeting for output formatting
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local, LocalResult, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::time::EventTime;
@@ -354,9 +354,17 @@ impl NormalizedEvent {
 
     /// Checks if the event is currently ongoing at the given time.
     pub fn is_ongoing_at(&self, now: DateTime<Utc>) -> bool {
-        let start = self.start.to_utc_datetime();
-        let end = self.end.to_utc_datetime();
-        start <= now && now < end
+        match (&self.start, &self.end) {
+            (EventTime::AllDay(start), EventTime::AllDay(end)) => {
+                let today = now.with_timezone(&Local).date_naive();
+                *start <= today && today < *end
+            }
+            _ => {
+                let start = self.start.to_utc_datetime();
+                let end = self.end.to_utc_datetime();
+                start <= now && now < end
+            }
+        }
     }
 
     /// Returns the duration of the event in minutes.
@@ -468,6 +476,30 @@ pub struct MeetingView {
     pub attendees: Vec<Attendee>,
 }
 
+fn first_local_datetime_on_date<Tz: TimeZone>(tz: &Tz, date: NaiveDate) -> DateTime<Tz> {
+    for hour in 0..24 {
+        let naive = date.and_hms_opt(hour, 0, 0).expect("valid time");
+        match tz.from_local_datetime(&naive) {
+            LocalResult::Single(dt) => return dt,
+            LocalResult::Ambiguous(dt, _) => return dt,
+            LocalResult::None => continue,
+        }
+    }
+
+    tz.from_utc_datetime(&date.and_hms_opt(0, 0, 0).expect("valid time"))
+}
+
+fn all_day_date_bounds<Tz: TimeZone>(
+    start: NaiveDate,
+    end: NaiveDate,
+    tz: &Tz,
+) -> (DateTime<Tz>, DateTime<Tz>) {
+    (
+        first_local_datetime_on_date(tz, start),
+        first_local_datetime_on_date(tz, end),
+    )
+}
+
 impl MeetingView {
     /// Creates a MeetingView from a NormalizedEvent.
     ///
@@ -482,17 +514,30 @@ impl MeetingView {
         provider_name: impl Into<String>,
         now: DateTime<Utc>,
     ) -> Self {
-        let start_utc = event.start.to_utc_datetime();
-        let end_utc = event.end.to_utc_datetime();
+        let now_local = now.with_timezone(&Local);
+        let (start_local, end_local, is_ongoing) = match (&event.start, &event.end) {
+            (EventTime::AllDay(start), EventTime::AllDay(end)) => {
+                let (start_local, end_local) = all_day_date_bounds(*start, *end, &Local);
+                let today = now_local.date_naive();
+                let is_ongoing = *start <= today && today < *end;
+                (start_local, end_local, is_ongoing)
+            }
+            _ => {
+                let start_local = event.start.to_utc_datetime().with_timezone(&Local);
+                let end_local = event.end.to_utc_datetime().with_timezone(&Local);
+                let is_ongoing = start_local <= now_local && now_local < end_local;
+                (start_local, end_local, is_ongoing)
+            }
+        };
 
         Self {
             id: event.id.clone(),
             provider_name: provider_name.into(),
             title: event.title.clone(),
-            start_local: start_utc.with_timezone(&Local),
-            end_local: end_utc.with_timezone(&Local),
+            start_local,
+            end_local,
             is_all_day: event.is_all_day(),
-            is_ongoing: event.is_ongoing_at(now),
+            is_ongoing,
             primary_link: event.primary_link().cloned(),
             secondary_links: event.secondary_links().into_iter().cloned().collect(),
             calendar_url: event.calendar_url.clone(),
@@ -528,6 +573,25 @@ impl MeetingView {
     pub fn duration_minutes(&self) -> i64 {
         (self.end_local - self.start_local).num_minutes()
     }
+
+    /// Returns true if the meeting is active at the given local time.
+    pub fn is_active_at(&self, now: DateTime<Local>) -> bool {
+        self.start_local <= now && now < self.end_local
+    }
+
+    /// Returns true if the meeting has already ended at the given local time.
+    pub fn has_ended_at(&self, now: DateTime<Local>) -> bool {
+        self.end_local <= now
+    }
+
+    /// Returns true if the meeting should be shown on the given local date.
+    pub fn occurs_on_date(&self, date: NaiveDate) -> bool {
+        if self.is_all_day {
+            self.start_local.date_naive() <= date && date < self.end_local.date_naive()
+        } else {
+            self.start_local.date_naive() == date
+        }
+    }
 }
 
 fn default_provider_name() -> String {
@@ -537,7 +601,7 @@ fn default_provider_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{NaiveDate, TimeZone};
+    use chrono::{FixedOffset, NaiveDate, TimeZone};
 
     fn utc(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> DateTime<Utc> {
         Utc.with_ymd_and_hms(y, m, d, h, min, s).unwrap()
@@ -863,6 +927,35 @@ mod tests {
 
             assert!(view.is_all_day);
             assert!(view.is_ongoing); // During the all-day event
+        }
+
+        #[test]
+        fn all_day_bounds_keep_calendar_date_in_negative_offset() {
+            let tz = FixedOffset::west_opt(8 * 3600).unwrap();
+            let start = date(2025, 2, 5);
+            let end = date(2025, 2, 6);
+
+            let (start_local, end_local) = all_day_date_bounds(start, end, &tz);
+
+            assert_eq!(start_local.date_naive(), start);
+            assert_eq!(end_local.date_naive(), end);
+        }
+
+        #[test]
+        fn all_day_occurs_on_each_day_of_range() {
+            let event = NormalizedEvent::new(
+                "evt-789",
+                "Conference",
+                EventTime::from_date(date(2025, 2, 5)),
+                EventTime::from_date(date(2025, 2, 7)),
+                "primary",
+            );
+            let now = utc(2025, 2, 5, 12, 0, 0);
+            let view = MeetingView::from_event(&event, now);
+
+            assert!(view.occurs_on_date(date(2025, 2, 5)));
+            assert!(view.occurs_on_date(date(2025, 2, 6)));
+            assert!(!view.occurs_on_date(date(2025, 2, 7)));
         }
 
         #[test]

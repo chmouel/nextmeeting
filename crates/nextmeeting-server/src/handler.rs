@@ -87,8 +87,8 @@ impl ServerState {
         let now = chrono::Local::now();
         let mut meetings: Vec<_> = self.meetings.to_vec();
 
-        // Filter out non-all-day meetings that have already ended
-        meetings.retain(|m| m.is_all_day || m.end_local > now);
+        // Filter out meetings that have already ended, including all-day events.
+        meetings.retain(|m| !m.has_ended_at(now));
 
         if let Some(filter) = filter {
             // Apply skip_all_day filter
@@ -121,7 +121,7 @@ impl ServerState {
             // Apply today_only filter
             if filter.today_only {
                 let today = chrono::Local::now().date_naive();
-                meetings.retain(|m| m.start_local.date_naive() == today);
+                meetings.retain(|m| m.occurs_on_date(today));
             }
 
             // Apply response status filters
@@ -682,6 +682,93 @@ mod tests {
         // Limit
         let filter = MeetingsFilter::new().limit(1);
         assert_eq!(state.get_meetings(Some(&filter)).len(), 1);
+    }
+
+    #[test]
+    fn server_state_filters_out_finished_all_day_events() {
+        let now = Local::now();
+        let finished_start = now - chrono::Duration::days(2);
+        let finished_end = now - chrono::Duration::days(1);
+
+        let mut state = ServerState::new();
+        state.set_meetings(vec![
+            MeetingView {
+                id: "finished-all-day".to_string(),
+                provider_name: "unknown".to_string(),
+                title: "Yesterday".to_string(),
+                start_local: finished_start,
+                end_local: finished_end,
+                is_all_day: true,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+                location: None,
+                description: None,
+                attendees: vec![],
+            },
+            MeetingView {
+                id: "timed".to_string(),
+                provider_name: "unknown".to_string(),
+                title: "Upcoming".to_string(),
+                start_local: now + chrono::Duration::hours(1),
+                end_local: now + chrono::Duration::hours(2),
+                is_all_day: false,
+                is_ongoing: false,
+                primary_link: None,
+                secondary_links: vec![],
+                calendar_url: None,
+                calendar_id: "primary".to_string(),
+                user_response_status: ResponseStatus::Unknown,
+                other_attendee_count: 0,
+                location: None,
+                description: None,
+                attendees: vec![],
+            },
+        ]);
+
+        let result = state.get_meetings(None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "timed");
+    }
+
+    #[test]
+    fn today_only_keeps_multi_day_all_day_events() {
+        let today_start = Local::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .expect("valid local day start")
+            .and_local_timezone(Local)
+            .earliest()
+            .unwrap();
+
+        let mut state = ServerState::new();
+        state.set_meetings(vec![MeetingView {
+            id: "multi-day".to_string(),
+            provider_name: "unknown".to_string(),
+            title: "Conference".to_string(),
+            start_local: today_start - chrono::Duration::days(1),
+            end_local: today_start + chrono::Duration::days(1),
+            is_all_day: true,
+            is_ongoing: true,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: ResponseStatus::Unknown,
+            other_attendee_count: 0,
+            location: None,
+            description: None,
+            attendees: vec![],
+        }]);
+
+        let filter = MeetingsFilter::new().today_only(true);
+        let result = state.get_meetings(Some(&filter));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "multi-day");
     }
 
     #[tokio::test]

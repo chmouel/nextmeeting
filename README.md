@@ -8,7 +8,7 @@ the terminal or Waybar, and to run quick meeting actions.
 
 - Google Calendar and CalDAV provider support.
 - Terminal, JSON, and Waybar outputs.
-- Native GTK4/libadwaita desktop UI (`nextmeeting-gtk`) with StatusNotifier tray integration.
+- Native GTK4/libadwaita desktop UI (`nextmeeting-gtk`).
 - GTK per-event actions: edit event in calendar, local dismiss, plus calendar-backed decline/delete (Google provider).
 - Automatic meeting-link detection (Zoom, Meet, Teams, Webex, Jitsi, and more).
 - Desktop notification scheduling with snooze support.
@@ -64,7 +64,7 @@ The daemon is started automatically when required.
 GTK lifecycle behaviour:
 
 - The app runs as a single instance; launching `nextmeeting-gtk` again presents the existing window.
-- Closing the titlebar window hides it to tray; use tray `Quit` to exit the app.
+- Closing the titlebar window closes the GTK application completely.
 
 In the GTK agenda list, use the row action menu to:
 

@@ -504,7 +504,7 @@ impl NotifyEngine {
             _ => return false,
         };
 
-        if !(meeting.start_local <= now && now < meeting.end_local) {
+        if !meeting.is_active_at(now) {
             return false;
         }
 
