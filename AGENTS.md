@@ -5,6 +5,9 @@ See README.md for project overview and goals, if needed.
 ## Building
 
 - Don't ever do commit unless you are being explicitely asked for it.
+- Keep Rust and native dependency requirements compatible with the GitHub Actions CI environment by default.
+- Do not raise the required Rust toolchain version, crate feature floor, or system library baseline without explicit user approval.
+- When updating Rust GUI dependencies such as GTK or libadwaita, verify that the versions and enabled features remain compatible with the packages installed by `.github/workflows/ci.yml`.
 - If you get asked to commit then use this rules:
   - Follow Conventional Commits 1.0.0.
   - 50 chars for title 70 chars for body.

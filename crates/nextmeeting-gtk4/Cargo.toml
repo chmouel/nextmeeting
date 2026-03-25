@@ -23,8 +23,8 @@ serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
-gtk4 = { version = "0.10.2", features = ["v4_20"] }
-libadwaita = { version = "0.8.0", features = ["v1_6", "gtk_v4_20"] }
+gtk4 = { version = "0.10.2", features = ["v4_14"] }
+libadwaita = { version = "0.8.0", features = ["v1_5"] }
 ksni = { version = "0.3.3", default-features = false, features = ["tokio"] }
 
 [build-dependencies]
