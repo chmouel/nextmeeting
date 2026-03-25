@@ -4,6 +4,7 @@
 //! Run with `cargo insta review` to update snapshots after intentional changes.
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
+use std::sync::Once;
 
 use crate::event::{EventLink, LinkKind, MeetingView, NormalizedEvent};
 use crate::format::{FormatOptions, OutputFormatter, TimeFormat};
@@ -14,6 +15,28 @@ fn utc(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(y, m, d, h, min, s).unwrap()
 }
 
+#[cfg(unix)]
+unsafe extern "C" {
+    fn tzset();
+}
+
+fn ensure_test_timezone() {
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        // Keep golden snapshots stable on CI and developer machines by forcing
+        // the same local timezone offset used when the snapshots were recorded.
+        unsafe {
+            std::env::set_var("TZ", "CET-1");
+        }
+
+        #[cfg(unix)]
+        unsafe {
+            tzset();
+        }
+    });
+}
+
 /// Create a date for all-day events.
 #[allow(dead_code)]
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -22,6 +45,7 @@ fn date(y: i32, m: u32, d: u32) -> NaiveDate {
 
 /// Convert UTC to local (for test assertions).
 fn local_from_utc(dt: DateTime<Utc>) -> DateTime<Local> {
+    ensure_test_timezone();
     dt.with_timezone(&Local)
 }
 
@@ -112,6 +136,7 @@ fn all_day_meeting(now: DateTime<Utc>, title: &str) -> MeetingView {
 /// The reference time for all golden tests: 2025-02-05 10:00:00 UTC.
 /// Using a fixed time ensures reproducible snapshots.
 fn reference_time() -> DateTime<Utc> {
+    ensure_test_timezone();
     utc(2025, 2, 5, 10, 0, 0)
 }
 
