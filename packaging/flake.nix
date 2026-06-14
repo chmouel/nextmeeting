@@ -10,13 +10,16 @@
       nixpkgs,
       flake-utils,
     }:
-    flake-utils.lib.eachDefaultSystem (
+    {
+      overlays.default = final: prev: {
+        nextmeeting = final.python3Packages.callPackage ./package.nix { };
+      };
+    }
+    // flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        projectData = builtins.fromTOML (builtins.readFile ../pyproject.toml);
-        python = pkgs.python3;
-        pythonEnv = python.withPackages (
+        pythonEnv = pkgs.python3.withPackages (
           ps: with ps; [
             python-dateutil
             caldav
@@ -25,30 +28,10 @@
       in
       {
         packages = {
-          nextmeeting = pkgs.python3Packages.buildPythonPackage {
-            pname = "nextmeeting";
-            version = projectData.project.version;
-            src = pkgs.lib.cleanSource ../.;
-            propagatedBuildInputs = [ pythonEnv ];
-            pythonImportsCheck = [ "nextmeeting" ];
-            format = "pyproject";
-            nativeBuildInputs = [ pkgs.python3Packages.hatchling ];
-            # Add development tools to the package
-            checkInputs = [
-              pkgs.ruff
-              pkgs.python3Packages.mypy
-            ];
-            # Configure wheel preferences for development tools
-            preBuildPhases = [ "preferWheelPhase" ];
-            preferWheelPhase = ''
-              export PIP_PREFER_BINARY=1
-            '';
-            meta = {
-              mainProgram = "nextmeeting";
-            };
-          };
+          nextmeeting = pkgs.python3Packages.callPackage ./package.nix { };
           default = self.packages.${system}.nextmeeting;
         };
+
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.uv
