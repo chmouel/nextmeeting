@@ -141,7 +141,37 @@ collections, pass `--caldav-calendar` with the specific collection URL. For
 basic-auth deployments the username and password flags are enough; for token
 auth just put the token in `--caldav-password`.
 
-The fetch window defaults to “12 hours back, 48 hours ahead”. Tune it with:
+#### Multiple calendars
+
+Fetch events from multiple calendars simultaneously by repeating the `--caldav-calendar` flag:
+
+```shell
+nextmeeting \
+  --caldav-url https://example.com/dav/calendars/user/ \
+  --caldav-username user \
+  --caldav-password secret \
+  --caldav-calendar work \
+  --caldav-calendar personal \
+  --caldav-calendar family
+```
+
+If you omit `--caldav-calendar` entirely, nextmeeting fetches from **all available calendars** on the server by default.
+
+Each calendar is queried in the same time window (controlled by `--caldav-lookahead-hours` and `--caldav-lookbehind-hours`). Events are aggregated and sorted chronologically. If a calendar fails to load, the tool continues with the other calendars and displays a warning (visible with `-v` or `--debug`).
+
+In your config file, use a TOML array:
+
+```toml
+[nextmeeting]
+caldav-url = "https://example.com/dav/calendars/user/"
+caldav-username = "user"
+caldav-password = "secret"
+caldav-calendar = ["work", "personal", "family"]
+```
+
+Calendar names are auto-detected from the CalDAV server's displayname property and can be displayed in custom formats using the `{calendar_name}` placeholder (see [Custom formatting](#custom-formatting)).
+
+The fetch window defaults to "12 hours back, 48 hours ahead". Tune it with:
 
 - `--caldav-lookbehind-hours` to include ongoing meetings that started up to N
   hours ago (default `12`).
@@ -218,7 +248,7 @@ It uses the same formatting and filters as other modes and respects
 
 You can customize how each line is rendered using templates. Available
 placeholders: `{when}`, `{title}`, `{start_time}`, `{end_time}`, `{meet_url}`,
-`{calendar_url}`, `{minutes_until}`, `{is_all_day}`, `{is_ongoing}`.
+`{calendar_url}`, `{calendar_name}`, `{minutes_until}`, `{is_all_day}`, `{is_ongoing}`.
 
 ```shell
 # Single-line formatting (TTY, Polybar, and Waybar text)
@@ -226,6 +256,9 @@ nextmeeting --format "{when} • {title}"
 
 # Waybar tooltip formatting (applies to the tooltip only)
 nextmeeting --waybar --tooltip-format "{start_time:%H:%M}-{end_time:%H:%M} · {title}"
+
+# Show calendar name for multi-calendar setups
+nextmeeting --format "{when} • {title} [{calendar_name}]"
 ```
 
 Use 12-hour timestamps for absolute times:
