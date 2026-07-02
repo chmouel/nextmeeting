@@ -1,6 +1,6 @@
 [Unit]
 Description=NextMeeting Server
-After=sway-session.target
+After=graphical-session.target
 
 [Service]
 Type=simple
@@ -9,4 +9,4 @@ Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=sway-session.target
+WantedBy=graphical-session.target
