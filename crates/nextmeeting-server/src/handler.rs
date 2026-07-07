@@ -3,6 +3,7 @@
 //! This module provides the request handler that routes incoming requests
 //! to the appropriate logic and produces responses.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::{future::Future, pin::Pin};
 
@@ -28,8 +29,10 @@ pub struct ServerState {
     start_time: DateTime<Utc>,
     /// Last successful sync time.
     last_sync: Option<DateTime<Utc>>,
-    /// Current cached meetings.
+    /// Current cached meetings (merged from all providers, sorted by start).
     meetings: Vec<MeetingView>,
+    /// Last-known-good meetings per provider.
+    provider_meetings: HashMap<String, Vec<MeetingView>>,
     /// Provider status.
     providers: Vec<ProviderStatus>,
     /// When notifications are snoozed until.
@@ -53,6 +56,7 @@ impl ServerState {
             start_time: Utc::now(),
             last_sync: None,
             meetings: Vec::new(),
+            provider_meetings: HashMap::new(),
             providers: Vec::new(),
             snoozed_until: None,
             shutdown_requested: false,
@@ -76,10 +80,41 @@ impl ServerState {
         }
     }
 
-    /// Updates the cached meetings.
+    /// Replaces all cached meetings at once.
+    ///
+    /// This discards any per-provider bookkeeping; prefer
+    /// [`set_provider_meetings`](Self::set_provider_meetings) during sync so a
+    /// failing or unchanged provider does not erase good data.
     pub fn set_meetings(&mut self, meetings: Vec<MeetingView>) {
+        self.provider_meetings.clear();
         self.meetings = meetings;
         self.last_sync = Some(Utc::now());
+    }
+
+    /// Updates the cached meetings for a single provider, preserving the
+    /// last-known-good meetings of every other provider.
+    pub fn set_provider_meetings(&mut self, provider: &str, meetings: Vec<MeetingView>) {
+        self.provider_meetings
+            .insert(provider.to_string(), meetings);
+        self.rebuild_merged_meetings();
+        self.last_sync = Some(Utc::now());
+    }
+
+    /// Marks a provider sync as completed without new data (e.g. not-modified),
+    /// keeping its last-known-good meetings.
+    pub fn touch_provider_sync(&mut self) {
+        self.last_sync = Some(Utc::now());
+    }
+
+    /// Rebuilds the merged, start-time-sorted meeting list from per-provider data.
+    fn rebuild_merged_meetings(&mut self) {
+        let mut merged: Vec<MeetingView> = self
+            .provider_meetings
+            .values()
+            .flat_map(|m| m.iter().cloned())
+            .collect();
+        merged.sort_by_key(|m| m.start_local);
+        self.meetings = merged;
     }
 
     /// Returns the cached meetings, optionally filtered.
@@ -264,6 +299,37 @@ impl ServerState {
         } else {
             self.providers.push(status);
         }
+    }
+
+    /// Returns the number of last-known-good meetings retained for a
+    /// provider (see [`set_provider_meetings`](Self::set_provider_meetings)).
+    pub fn provider_meeting_count(&self, provider: &str) -> usize {
+        self.provider_meetings
+            .get(provider)
+            .map(|m| m.len())
+            .unwrap_or(0)
+    }
+
+    /// Records a provider fetch failure.
+    ///
+    /// Preserves the provider's last successful fetch time and reports its
+    /// retained (last-known-good) meeting count, since a transient failure
+    /// does not clear that provider's meetings from state — the status
+    /// should reflect what is actually still being shown to the user.
+    pub fn set_provider_error(&mut self, name: &str, error: impl Into<String>) {
+        let event_count = self.provider_meeting_count(name);
+        let last_fetch = self
+            .providers
+            .iter()
+            .find(|p| p.name == name)
+            .and_then(|p| p.last_fetch);
+        self.set_provider_status(ProviderStatus {
+            name: name.to_string(),
+            healthy: false,
+            last_fetch,
+            error: Some(error.into()),
+            event_count,
+        });
     }
 }
 
@@ -589,6 +655,146 @@ mod tests {
 
         state.request_shutdown();
         assert!(state.shutdown_requested());
+    }
+
+    fn provider_meeting(id: &str, provider: &str, start_offset_mins: i64) -> MeetingView {
+        let start = Local::now() + chrono::Duration::minutes(start_offset_mins);
+        MeetingView {
+            id: id.to_string(),
+            provider_name: provider.to_string(),
+            title: format!("Meeting {}", id),
+            start_local: start,
+            end_local: start + chrono::Duration::hours(1),
+            is_all_day: false,
+            is_ongoing: false,
+            primary_link: None,
+            secondary_links: vec![],
+            calendar_url: None,
+            calendar_id: "primary".to_string(),
+            user_response_status: ResponseStatus::Unknown,
+            other_attendee_count: 0,
+            location: None,
+            description: None,
+            attendees: vec![],
+        }
+    }
+
+    #[test]
+    fn server_state_per_provider_updates_merge_and_sort() {
+        let mut state = ServerState::new();
+
+        state.set_provider_meetings(
+            "google:work",
+            vec![
+                provider_meeting("g2", "google:work", 120),
+                provider_meeting("g1", "google:work", 30),
+            ],
+        );
+        state.set_provider_meetings("caldav", vec![provider_meeting("c1", "caldav", 60)]);
+
+        let meetings = state.get_meetings(None);
+        let ids: Vec<&str> = meetings.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["g1", "c1", "g2"]); // merged and sorted by start
+        assert!(state.last_sync.is_some());
+    }
+
+    #[test]
+    fn server_state_provider_failure_keeps_last_known_good() {
+        let mut state = ServerState::new();
+
+        state.set_provider_meetings(
+            "google:work",
+            vec![provider_meeting("g1", "google:work", 30)],
+        );
+        state.set_provider_meetings("caldav", vec![provider_meeting("c1", "caldav", 60)]);
+
+        // caldav "fails" on the next sync: its meetings are not touched,
+        // while google delivers a fresh (empty) result.
+        state.set_provider_meetings("google:work", vec![]);
+
+        let meetings = state.get_meetings(None);
+        let ids: Vec<&str> = meetings.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, vec!["c1"]);
+    }
+
+    #[test]
+    fn server_state_touch_provider_sync_updates_last_sync_only() {
+        let mut state = ServerState::new();
+        state.set_provider_meetings("caldav", vec![provider_meeting("c1", "caldav", 60)]);
+
+        let before = state.get_meetings(None).len();
+        state.touch_provider_sync();
+
+        assert_eq!(state.get_meetings(None).len(), before);
+        assert!(state.last_sync.is_some());
+    }
+
+    #[test]
+    fn server_state_set_meetings_replaces_provider_state() {
+        let mut state = ServerState::new();
+        state.set_provider_meetings("caldav", vec![provider_meeting("c1", "caldav", 60)]);
+
+        state.set_meetings(vec![provider_meeting("x1", "other", 30)]);
+
+        let meetings = state.get_meetings(None);
+        assert_eq!(meetings.len(), 1);
+        assert_eq!(meetings[0].id, "x1");
+
+        // A later provider update must not resurrect stale merged data.
+        state.set_provider_meetings("caldav", vec![provider_meeting("c2", "caldav", 90)]);
+        let ids: Vec<String> = state
+            .get_meetings(None)
+            .iter()
+            .map(|m| m.id.clone())
+            .collect();
+        assert_eq!(ids, vec!["c2"]);
+    }
+
+    #[test]
+    fn server_state_provider_error_retains_meeting_count_and_last_fetch() {
+        let mut state = ServerState::new();
+        state.set_provider_meetings("caldav", vec![provider_meeting("c1", "caldav", 60)]);
+        state.set_provider_status(ProviderStatus {
+            name: "caldav".to_string(),
+            healthy: true,
+            last_fetch: Some(Utc::now()),
+            error: None,
+            event_count: 1,
+        });
+        let last_fetch_before = state
+            .providers
+            .iter()
+            .find(|p| p.name == "caldav")
+            .unwrap()
+            .last_fetch;
+
+        state.set_provider_error("caldav", "network error");
+
+        let status = state.providers.iter().find(|p| p.name == "caldav").unwrap();
+        assert!(!status.healthy);
+        assert_eq!(status.error.as_deref(), Some("network error"));
+        // The retained meeting count must reflect what's still shown, not 0.
+        assert_eq!(status.event_count, 1);
+        // The last successful fetch time must be preserved, not wiped.
+        assert_eq!(status.last_fetch, last_fetch_before);
+        assert!(status.last_fetch.is_some());
+
+        // The meetings themselves must still be present.
+        assert_eq!(state.get_meetings(None).len(), 1);
+    }
+
+    #[test]
+    fn server_state_provider_error_for_never_synced_provider_reports_zero() {
+        let mut state = ServerState::new();
+        state.set_provider_error("google:work", "auth failed");
+
+        let status = state
+            .providers
+            .iter()
+            .find(|p| p.name == "google:work")
+            .unwrap();
+        assert_eq!(status.event_count, 0);
+        assert!(status.last_fetch.is_none());
     }
 
     #[test]

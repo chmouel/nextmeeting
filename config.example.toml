@@ -75,6 +75,9 @@ minutes_before = [5, 1] # Minutes before to notify
 socket_path = "/tmp/nextmeeting.sock" # Path to server socket
 timeout = 5                           # Connection timeout in seconds
 auto_start = true                     # Set to false when using systemd to manage the server
+# sync_interval_secs = 300            # Interval between calendar syncs (minimum 30)
+# refresh_cooldown_secs = 30          # Cooldown after a manual refresh
+# notify_tick_secs = 30               # Interval between notification checks (minimum 5)
 
 # debug = false
 # google_domain = "example.com"        # Google Workspace domain (for calendar URLs)

@@ -90,6 +90,10 @@ impl SchedulerConfig {
     }
 
     /// Calculates backoff delay based on consecutive failures.
+    ///
+    /// The delay grows exponentially and is capped at `max_backoff`, so a
+    /// persistently failing provider is probed at a slow, steady cadence
+    /// rather than being abandoned.
     pub fn backoff_delay(&self, consecutive_failures: u32) -> Duration {
         if consecutive_failures == 0 {
             return Duration::ZERO;
@@ -98,11 +102,25 @@ impl SchedulerConfig {
         let base = self.initial_backoff.as_secs_f64();
         let multiplier = self
             .backoff_multiplier
-            .powi(consecutive_failures as i32 - 1);
+            .powi(consecutive_failures.min(64) as i32 - 1);
         let delay = base * multiplier;
         let max = self.max_backoff.as_secs_f64();
 
         Duration::from_secs_f64(delay.min(max))
+    }
+
+    /// Calculates backoff delay with jitter applied, to avoid synchronised
+    /// retries across instances (thundering herd). The result is re-clamped
+    /// to `max_backoff` so jitter can never push the effective delay past
+    /// the documented ceiling.
+    pub fn backoff_delay_with_jitter(&self, consecutive_failures: u32) -> Duration {
+        let base = self.backoff_delay(consecutive_failures);
+        if base.is_zero() {
+            return base;
+        }
+        let jitter = rand_jitter(base.as_secs_f64() * self.jitter_fraction);
+        let max = self.max_backoff.as_secs_f64();
+        Duration::from_secs_f64((base.as_secs_f64() + jitter).clamp(0.0, max))
     }
 }
 
@@ -353,9 +371,11 @@ impl Scheduler {
     async fn calculate_next_delay(&self) -> Duration {
         let state = self.state.read().await;
 
-        // If we have consecutive failures, use backoff
+        // If we have consecutive failures, use jittered backoff
         if state.consecutive_failures > 0 {
-            let backoff = self.config.backoff_delay(state.consecutive_failures);
+            let backoff = self
+                .config
+                .backoff_delay_with_jitter(state.consecutive_failures);
             debug!(
                 failures = state.consecutive_failures,
                 backoff_secs = backoff.as_secs(),
@@ -389,15 +409,19 @@ impl Scheduler {
         use tracing::Span;
 
         let state = self.state.read().await;
-        if state.consecutive_failures >= self.config.max_consecutive_failures {
-            error!(
-                failures = state.consecutive_failures,
-                max = self.config.max_consecutive_failures,
-                "Max consecutive failures reached, skipping sync"
-            );
-            return;
-        }
+        let failures = state.consecutive_failures;
         drop(state);
+
+        // Never give up permanently: past the failure ceiling we keep probing
+        // at the (capped) backoff cadence so the daemon can recover on its
+        // own, and manual refreshes always get through.
+        if failures >= self.config.max_consecutive_failures {
+            warn!(
+                failures = failures,
+                max = self.config.max_consecutive_failures,
+                "In degraded mode after repeated failures, probing sync"
+            );
+        }
 
         let start = std::time::Instant::now();
         debug!("Starting calendar sync");
@@ -585,6 +609,180 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(60));
         assert!(!state.in_cooldown(cooldown));
+    }
+
+    #[test]
+    fn config_backoff_delay_with_jitter_bounds() {
+        let config = SchedulerConfig::default().with_jitter(0.1).with_backoff(
+            Duration::from_secs(10),
+            Duration::from_secs(300),
+            2.0,
+        );
+
+        for failures in 1..=5 {
+            let base = config.backoff_delay(failures).as_secs_f64();
+            let jittered = config.backoff_delay_with_jitter(failures).as_secs_f64();
+            assert!(jittered >= base * 0.9 - f64::EPSILON);
+            assert!(jittered <= base * 1.1 + f64::EPSILON);
+        }
+
+        // No jitter when there is no backoff.
+        assert_eq!(config.backoff_delay_with_jitter(0), Duration::ZERO);
+    }
+
+    #[test]
+    fn config_backoff_delay_with_jitter_never_exceeds_max_backoff() {
+        // Once consecutive failures push the base delay up to the cap,
+        // jitter must not be able to push the result past it.
+        let config = SchedulerConfig::default().with_jitter(0.5).with_backoff(
+            Duration::from_secs(10),
+            Duration::from_secs(20),
+            2.0,
+        );
+
+        // failures=2 -> base already saturates at max_backoff (20s).
+        for _ in 0..50 {
+            let jittered = config.backoff_delay_with_jitter(2);
+            assert!(jittered <= Duration::from_secs(20));
+        }
+    }
+
+    #[test]
+    fn config_backoff_delay_large_failure_count_stays_capped() {
+        let config = SchedulerConfig::default().with_backoff(
+            Duration::from_secs(5),
+            Duration::from_secs(300),
+            2.0,
+        );
+
+        // Must not overflow or produce nonsense for very large counts.
+        assert_eq!(config.backoff_delay(1000), Duration::from_secs(300));
+    }
+
+    #[tokio::test]
+    async fn scheduler_probes_past_failure_ceiling_without_giving_up() {
+        // With max_consecutive_failures = 2, the old behaviour wedged the
+        // scheduler permanently after the 2nd failure. Now it keeps probing
+        // at the (capped) backoff cadence indefinitely.
+        let mut config = SchedulerConfig::new(Duration::from_secs(60)).with_backoff(
+            Duration::from_millis(5),
+            Duration::from_millis(10),
+            2.0,
+        );
+        config.max_consecutive_failures = 2;
+
+        let scheduler = Scheduler::new(config);
+        let state = scheduler.state();
+        let handle = scheduler.handle();
+
+        let call_count = Arc::new(AtomicU32::new(0));
+        let call_count_clone = call_count.clone();
+
+        // Always fails: proves the scheduler keeps calling sync_fn well past
+        // the failure ceiling instead of returning early forever.
+        let scheduler_task = tokio::spawn(async move {
+            scheduler
+                .run(move || {
+                    let count = call_count_clone.clone();
+                    async move {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        Err("always fails".to_string())
+                    }
+                })
+                .await;
+        });
+
+        // Give it time to accumulate well past max_consecutive_failures (2)
+        // purely through periodic probing.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        let failures = state.read().await.consecutive_failures;
+        assert!(
+            failures > 2,
+            "scheduler must keep probing past the failure ceiling, got {failures} failures"
+        );
+        let calls_after_probing = call_count.load(Ordering::SeqCst);
+        assert!(
+            calls_after_probing > 2,
+            "sync_fn must keep being invoked in degraded mode, got {calls_after_probing} calls"
+        );
+
+        handle.stop().await.unwrap();
+        scheduler_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn scheduler_forced_refresh_recovers_from_degraded_mode() {
+        // Pause the scheduler so periodic probing cannot itself cause a
+        // success — this isolates the forced-refresh path from ordinary
+        // recovery and eliminates any timing race between the two.
+        let mut config = SchedulerConfig::new(Duration::from_secs(60)).with_backoff(
+            Duration::from_millis(5),
+            Duration::from_millis(10),
+            2.0,
+        );
+        config.max_consecutive_failures = 2;
+
+        let scheduler = Scheduler::new(config);
+        let state = scheduler.state();
+        let handle = scheduler.handle();
+
+        let call_count = Arc::new(AtomicU32::new(0));
+        let call_count_clone = call_count.clone();
+        let allow_success = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let allow_success_clone = allow_success.clone();
+
+        let scheduler_task = tokio::spawn(async move {
+            scheduler
+                .run(move || {
+                    let count = call_count_clone.clone();
+                    let allow_success = allow_success_clone.clone();
+                    async move {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        if allow_success.load(Ordering::SeqCst) {
+                            Ok(())
+                        } else {
+                            Err("still failing".to_string())
+                        }
+                    }
+                })
+                .await;
+        });
+
+        // Drive it well past the failure ceiling via periodic probing alone.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(state.read().await.consecutive_failures > 2);
+
+        // Pause: periodic syncs must now stop entirely.
+        handle.pause().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(10)).await; // let in-flight sleep settle
+        let calls_while_pausing = call_count.load(Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            calls_while_pausing,
+            "no periodic sync should occur while paused"
+        );
+
+        // Only now allow success, and require a forced refresh — sent while
+        // still paused — to be the one that triggers it.
+        allow_success.store(true, std::sync::atomic::Ordering::SeqCst);
+        handle.refresh(true).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            calls_while_pausing + 1,
+            "forced refresh must be the sole cause of the next sync attempt"
+        );
+        assert_eq!(
+            state.read().await.consecutive_failures,
+            0,
+            "the forced refresh's success must reset the failure count"
+        );
+
+        handle.stop().await.unwrap();
+        scheduler_task.await.unwrap();
     }
 
     #[tokio::test]

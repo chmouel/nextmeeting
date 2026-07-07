@@ -229,6 +229,15 @@ pub struct ServerSettings {
     /// Set to false when using systemd or another service manager.
     /// Defaults to true.
     pub auto_start: bool,
+
+    /// Interval between calendar syncs in seconds (default: 300).
+    pub sync_interval_secs: Option<u64>,
+
+    /// Cooldown after a manual refresh in seconds (default: 30).
+    pub refresh_cooldown_secs: Option<u64>,
+
+    /// Interval between notification checks in seconds (default: 30).
+    pub notify_tick_secs: Option<u64>,
 }
 
 impl Default for ServerSettings {
@@ -237,7 +246,38 @@ impl Default for ServerSettings {
             socket_path: None,
             timeout: 5,
             auto_start: true,
+            sync_interval_secs: None,
+            refresh_cooldown_secs: None,
+            notify_tick_secs: None,
         }
+    }
+}
+
+impl ServerSettings {
+    /// Minimum permitted sync interval, to avoid hammering providers.
+    pub const MIN_SYNC_INTERVAL_SECS: u64 = 30;
+    /// Minimum permitted notification tick, to keep alerts timely without waste.
+    pub const MIN_NOTIFY_TICK_SECS: u64 = 5;
+
+    /// Validates scheduler-related settings.
+    pub fn validate_scheduling(&self) -> Result<(), String> {
+        if let Some(secs) = self.sync_interval_secs
+            && secs < Self::MIN_SYNC_INTERVAL_SECS
+        {
+            return Err(format!(
+                "server.sync_interval_secs must be at least {} seconds",
+                Self::MIN_SYNC_INTERVAL_SECS
+            ));
+        }
+        if let Some(secs) = self.notify_tick_secs
+            && secs < Self::MIN_NOTIFY_TICK_SECS
+        {
+            return Err(format!(
+                "server.notify_tick_secs must be at least {} seconds",
+                Self::MIN_NOTIFY_TICK_SECS
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -652,6 +692,48 @@ impl GoogleAccountSettings {
             .map_err(|e| format!("failed to resolve client_secret: {}", e))?;
 
         Ok(OAuthCredentials::new(resolved_id, resolved_secret))
+    }
+}
+
+#[cfg(test)]
+mod server_settings_tests {
+    use super::*;
+
+    #[test]
+    fn validate_scheduling_accepts_defaults() {
+        let settings = ServerSettings::default();
+        assert!(settings.validate_scheduling().is_ok());
+    }
+
+    #[test]
+    fn validate_scheduling_accepts_sensible_values() {
+        let settings = ServerSettings {
+            sync_interval_secs: Some(120),
+            refresh_cooldown_secs: Some(10),
+            notify_tick_secs: Some(15),
+            ..Default::default()
+        };
+        assert!(settings.validate_scheduling().is_ok());
+    }
+
+    #[test]
+    fn validate_scheduling_rejects_too_short_sync_interval() {
+        let settings = ServerSettings {
+            sync_interval_secs: Some(5),
+            ..Default::default()
+        };
+        let err = settings.validate_scheduling().unwrap_err();
+        assert!(err.contains("sync_interval_secs"));
+    }
+
+    #[test]
+    fn validate_scheduling_rejects_too_short_notify_tick() {
+        let settings = ServerSettings {
+            notify_tick_secs: Some(1),
+            ..Default::default()
+        };
+        let err = settings.validate_scheduling().unwrap_err();
+        assert!(err.contains("notify_tick_secs"));
     }
 }
 

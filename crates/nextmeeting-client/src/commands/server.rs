@@ -40,6 +40,11 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         .validate_end_warning()
         .map_err(|e| ClientError::Config(format!("invalid notifications configuration: {}", e)))?;
 
+    config
+        .server
+        .validate_scheduling()
+        .map_err(|e| ClientError::Config(format!("invalid server configuration: {}", e)))?;
+
     // 1. Build providers from config
     let providers = build_providers(config)?;
     if providers.is_empty() {
@@ -74,8 +79,8 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     // 4. Shared state
     let state = new_shared_state();
 
-    // 5. Scheduler
-    let scheduler = Scheduler::new(SchedulerConfig::default());
+    // 5. Scheduler (tunable via [server] in config.toml)
+    let scheduler = Scheduler::new(build_scheduler_config(config));
     let scheduler_handle = scheduler.handle();
 
     // Store the scheduler handle in server state so Request::Refresh works
@@ -88,36 +93,51 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     let notify_config = build_notify_config(config);
     let notify_engine = std::sync::Arc::new(NotifyEngine::new(notify_config));
 
-    // 7. Build the sync closure and spawn the scheduler
+    // 7. Build the sync closure and spawn the scheduler.
+    //
+    // The sync closure only fetches calendar data; notifications run on a
+    // dedicated ticker below so alert precision does not depend on the sync
+    // cadence. After each sync the ticker is woken immediately so fresh
+    // meetings are checked without waiting for the next tick.
     let sync_state = state.clone();
     let sync_providers = providers.clone();
-    let sync_notify = notify_engine.clone();
+    let notify_wakeup = Arc::new(tokio::sync::Notify::new());
+    let sync_wakeup = notify_wakeup.clone();
 
     let scheduler_task = tokio::spawn(async move {
         scheduler
             .run(move || {
                 let state = sync_state.clone();
                 let providers = sync_providers.clone();
-                let engine = sync_notify.clone();
+                let wakeup = sync_wakeup.clone();
                 async move {
                     let result = sync_all_providers(&providers, &state).await;
-
-                    // Spawn notifications as a separate task so a stuck
-                    // D-Bus call can never block the scheduler loop.
-                    // Individual show_notification calls already have a 10s
-                    // timeout and the semaphore caps in-flight threads, so
-                    // no outer timeout is needed.
-                    let notify_state = state.clone();
-                    tokio::spawn(async move {
-                        let meetings = notify_state.read().await.get_meetings(None);
-                        engine.check_and_notify(&meetings).await;
-                        engine.check_morning_agenda(&meetings).await;
-                    });
-
+                    wakeup.notify_one();
                     result
                 }
             })
             .await;
+    });
+
+    // 8. Notification ticker — checks upcoming meetings on a short cadence,
+    // independent of calendar sync, so short-fuse warnings fire on time.
+    let notify_tick = Duration::from_secs(config.server.notify_tick_secs.unwrap_or(30));
+    let ticker_state = state.clone();
+    let ticker_engine = notify_engine.clone();
+    let notify_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(notify_tick);
+        // Skip missed ticks (e.g. after system sleep) instead of bursting.
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {}
+                _ = notify_wakeup.notified() => {}
+            }
+            let meetings = ticker_state.read().await.get_meetings(None);
+            ticker_engine.check_and_notify(&meetings).await;
+            ticker_engine.check_morning_agenda(&meetings).await;
+            ticker_engine.cleanup().await;
+        }
     });
 
     // 7. Socket server
@@ -174,8 +194,9 @@ pub async fn run(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
         .await
         .map_err(|e| ClientError::Config(format!("server error: {}", e)))?;
 
-    // Clean shutdown: stop the scheduler
+    // Clean shutdown: stop the scheduler and the notification ticker
     info!("Shutting down...");
+    notify_task.abort();
     if let Err(e) = scheduler_handle.stop().await {
         warn!(error = %e, "Failed to send stop command to scheduler");
     }
@@ -259,6 +280,20 @@ fn build_providers(config: &ClientConfig) -> ClientResult<Vec<Box<dyn CalendarPr
     Ok(providers)
 }
 
+/// Builds a SchedulerConfig from client configuration.
+fn build_scheduler_config(config: &ClientConfig) -> SchedulerConfig {
+    let mut scheduler_config = SchedulerConfig::default();
+
+    if let Some(secs) = config.server.sync_interval_secs {
+        scheduler_config.sync_interval = Duration::from_secs(secs);
+    }
+    if let Some(secs) = config.server.refresh_cooldown_secs {
+        scheduler_config.refresh_cooldown = Duration::from_secs(secs);
+    }
+
+    scheduler_config
+}
+
 /// Builds a NotifyConfig from client configuration.
 fn build_notify_config(config: &ClientConfig) -> NotifyConfig {
     let notifications = &config.notifications;
@@ -303,7 +338,6 @@ async fn sync_all_providers(
         .with_time_window(time_window)
         .with_expand_recurring(true);
 
-    let mut all_meetings: Vec<MeetingView> = Vec::new();
     let mut had_error = false;
 
     for provider in providers {
@@ -314,6 +348,7 @@ async fn sync_all_providers(
                 if result.not_modified {
                     info!(provider = %provider_name, "No changes since last fetch");
                     // Keep existing meetings from this provider in state
+                    state.write().await.touch_provider_sync();
                     continue;
                 }
 
@@ -337,37 +372,30 @@ async fn sync_all_providers(
                     error: None,
                     event_count: meetings.len(),
                 };
-                state.write().await.set_provider_status(status);
-
-                all_meetings.extend(meetings);
+                let mut s = state.write().await;
+                s.set_provider_status(status);
+                s.set_provider_meetings(&provider_name, meetings);
             }
             Err(e) => {
                 error!(
                     provider = %provider_name,
                     error = %e,
-                    "Failed to fetch events"
+                    "Failed to fetch events; keeping last-known-good meetings"
                 );
 
-                // Update provider status with error
-                let status = nextmeeting_protocol::ProviderStatus {
-                    name: provider_name.clone(),
-                    healthy: false,
-                    last_fetch: None,
-                    error: Some(e.to_string()),
-                    event_count: 0,
-                };
-                state.write().await.set_provider_status(status);
+                // Preserve the provider's previous last_fetch time and
+                // report its retained (last-known-good) meeting count —
+                // those meetings are kept in state, so the status should
+                // reflect what is actually still shown to the user.
+                state
+                    .write()
+                    .await
+                    .set_provider_error(&provider_name, e.to_string());
 
                 had_error = true;
             }
         }
     }
-
-    // Sort by start time
-    all_meetings.sort_by_key(|a| a.start_local);
-
-    // Update shared state with all collected meetings
-    state.write().await.set_meetings(all_meetings);
 
     if had_error {
         Err("one or more providers failed to sync".into())
@@ -429,5 +457,25 @@ mod tests {
 
         let notify = build_notify_config(&config);
         assert_eq!(notify.end_warning_minutes, Some(7));
+    }
+
+    #[test]
+    fn build_scheduler_config_uses_defaults_when_unset() {
+        let config = ClientConfig::default();
+        let scheduler = build_scheduler_config(&config);
+        let defaults = SchedulerConfig::default();
+        assert_eq!(scheduler.sync_interval, defaults.sync_interval);
+        assert_eq!(scheduler.refresh_cooldown, defaults.refresh_cooldown);
+    }
+
+    #[test]
+    fn build_scheduler_config_maps_settings() {
+        let mut config = ClientConfig::default();
+        config.server.sync_interval_secs = Some(120);
+        config.server.refresh_cooldown_secs = Some(10);
+
+        let scheduler = build_scheduler_config(&config);
+        assert_eq!(scheduler.sync_interval, Duration::from_secs(120));
+        assert_eq!(scheduler.refresh_cooldown, Duration::from_secs(10));
     }
 }

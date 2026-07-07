@@ -50,8 +50,8 @@ Server background loop:
 3. Each provider fetches `RawEvent`.
 4. `normalize_events` converts to `NormalizedEvent`.
 5. `MeetingView::from_event` produces display-ready meetings.
-6. Server state is updated and sorted.
-7. Notification engine checks thresholds and emits deduplicated notifications.
+6. Server state is updated per provider (last-known-good data survives provider errors and not-modified responses) and merged sorted.
+7. A dedicated notification ticker (default 30 s, woken immediately after each sync) checks thresholds and emits deduplicated notifications, independently of the sync cadence.
 
 ## 3. Crate Responsibilities
 
@@ -71,10 +71,10 @@ Key modules:
 
 Key modules:
 
-- `scheduler.rs`: interval sync, jitter, cooldown, exponential backoff, commands (`Refresh`, `SyncNow`, `Pause`, `Resume`, `Stop`).
-- `handler.rs`: protocol request dispatch (`Ping`, `Status`, `GetMeetings`, `Refresh`, `Snooze`, `Shutdown`) and filter application.
+- `scheduler.rs`: interval sync, jitter, cooldown, jittered capped exponential backoff (never gives up permanently: past the failure ceiling it keeps probing at the capped cadence, and forced refreshes always run), commands (`Refresh`, `SyncNow`, `Pause`, `Resume`, `Stop`).
+- `handler.rs`: protocol request dispatch (`Ping`, `Status`, `GetMeetings`, `Refresh`, `Snooze`, `Shutdown`), filter application, and per-provider meeting state (last-known-good retention).
 - `socket.rs`: Unix listener, framed protocol I/O, stale socket cleanup, connection concurrency limit.
-- `notify.rs`: desktop notifications, dedup hash (`SHA-256`), optional morning agenda.
+- `notify.rs`: desktop notifications, dedup hash (`SHA-256`) with time-based eviction (24 h retention, size-capped oldest-first), optional morning agenda.
 - `signals.rs`: `SIGTERM`/`SIGINT` shutdown and `SIGHUP` reload signalling.
 - `pidfile.rs`: duplicate-instance guard.
 - `cache.rs`: TTL cache utilities (currently generic infra; server state currently uses in-memory meetings directly).
@@ -232,8 +232,10 @@ Credential resolution supports:
 ### Notifications
 
 - Configurable pre-meeting reminders (`minutes_before` list).
-- Deduplication based on notification hash.
-- Snooze via command/protocol.
+- Dedicated notification ticker decoupled from calendar sync (`server.notify_tick_secs`, default 30 s), woken immediately after each sync.
+- Start-soon thresholds (e.g. `[15, 5, 1]`) have nesting windows; if a check is delayed and finds several thresholds due at once, only one notification is sent per meeting, labelled with the actual remaining time rather than the stale configured number.
+- Deduplication based on notification hash, with time-based eviction so in-window alerts are never re-sent.
+- Snooze via command/protocol; expired snoozes are pruned automatically.
 - Optional morning agenda notification time.
 
 ## 7. Test Strategy (Current)
@@ -242,7 +244,7 @@ Credential resolution supports:
 - Formatter behaviour is validated with golden snapshot tests in `nextmeeting-core`.
 ## 8. Notable Implementation Characteristics
 
-- Scheduler defaults: 5-minute sync interval, 10% jitter, cooldown + capped exponential backoff.
+- Scheduler defaults: 5-minute sync interval, 10% jitter, cooldown + jittered capped exponential backoff; tunable via `[server]` (`sync_interval_secs`, `refresh_cooldown_secs`, `notify_tick_secs`).
 - Protocol messages are versioned via envelope and have strict size caps.
 - Socket startup handles stale socket cleanup and concurrent connection limits.
 - A PID file prevents duplicate server instances.

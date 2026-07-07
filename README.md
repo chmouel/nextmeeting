@@ -132,6 +132,15 @@ Google credentials may be supplied in either of these forms:
 
 CalDAV credentials also support `env::` and `pass::` references.
 
+The daemon's cadence may be tuned in the `[server]` section:
+
+- `sync_interval_secs` — interval between calendar syncs (default 300, minimum 30)
+- `refresh_cooldown_secs` — cooldown after a manual refresh (default 30)
+- `notify_tick_secs` — interval between notification checks (default 30, minimum 5)
+
+Notifications run on their own ticker, independent of the sync interval, so
+short-fuse reminders arrive punctually even with a leisurely sync cadence.
+
 ## Environment Variables
 
 - `NEXTMEETING_CONFIG`

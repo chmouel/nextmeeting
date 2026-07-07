@@ -6,7 +6,7 @@
 //! - Snooze functionality
 //! - Deduplication to avoid repeated notifications
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -122,8 +122,9 @@ impl NotifyConfig {
 /// Notification state for tracking sent notifications and snooze.
 #[derive(Debug)]
 pub struct NotifyState {
-    /// SHA-256 hashes of sent notifications for deduplication.
-    sent_notifications: HashSet<String>,
+    /// SHA-256 hashes of sent notifications, mapped to when they were sent,
+    /// for deduplication with time-based eviction.
+    sent_notifications: HashMap<String, DateTime<Utc>>,
     /// When notifications are snoozed until.
     snoozed_until: Option<DateTime<Utc>>,
 }
@@ -138,7 +139,7 @@ impl NotifyState {
     /// Creates a new notification state.
     pub fn new() -> Self {
         Self {
-            sent_notifications: HashSet::new(),
+            sent_notifications: HashMap::new(),
             snoozed_until: None,
         }
     }
@@ -171,12 +172,12 @@ impl NotifyState {
 
     /// Checks if a notification has already been sent (by hash).
     pub fn was_sent(&self, hash: &str) -> bool {
-        self.sent_notifications.contains(hash)
+        self.sent_notifications.contains_key(hash)
     }
 
     /// Marks a notification as sent.
     pub fn mark_sent(&mut self, hash: String) {
-        self.sent_notifications.insert(hash);
+        self.sent_notifications.insert(hash, Utc::now());
     }
 
     /// Removes a notification hash so it can be retried.
@@ -184,18 +185,80 @@ impl NotifyState {
         self.sent_notifications.remove(hash);
     }
 
-    /// Clears old notification hashes to prevent unbounded growth.
-    /// Called periodically to remove hashes older than the retention period.
-    pub fn cleanup_old_hashes(&mut self, max_size: usize) {
-        if self.sent_notifications.len() > max_size {
-            // Simple strategy: clear all and let them be re-added
-            // In a production system, we'd use an LRU cache or time-based eviction
-            debug!(
-                size = self.sent_notifications.len(),
-                "Clearing notification hash cache"
-            );
-            self.sent_notifications.clear();
+    /// Given a set of currently-due notification thresholds, marks the
+    /// not-yet-sent ones as sent and returns them.
+    ///
+    /// Used to consolidate multiple simultaneously-due thresholds (which can
+    /// happen after a coarse or delayed check, since notification windows
+    /// nest) into a single physical notification: callers send at most one
+    /// notification per batch, using the actual remaining time, while every
+    /// due threshold is still marked so none of them fire again later with a
+    /// stale label.
+    fn claim_due_thresholds(
+        &mut self,
+        due_thresholds: &[u32],
+        hash_fn: impl Fn(u32) -> String,
+    ) -> Vec<u32> {
+        let mut newly_sent = Vec::new();
+        for &notify_minutes in due_thresholds {
+            let hash = hash_fn(notify_minutes);
+            if !self.was_sent(&hash) {
+                self.mark_sent(hash);
+                newly_sent.push(notify_minutes);
+            }
         }
+        newly_sent
+    }
+
+    /// Evicts stale notification hashes and clears expired snoozes.
+    ///
+    /// Entries older than `retention` are removed; if the map still exceeds
+    /// `max_size`, the oldest entries are evicted first. Recent hashes are
+    /// always preserved so in-window notifications are never re-sent.
+    pub fn cleanup_old_hashes_with_retention(
+        &mut self,
+        max_size: usize,
+        retention: chrono::Duration,
+    ) {
+        let cutoff = Utc::now() - retention;
+        let before = self.sent_notifications.len();
+        self.sent_notifications
+            .retain(|_, sent_at| *sent_at > cutoff);
+
+        if self.sent_notifications.len() > max_size {
+            // Secondary bound: evict the oldest entries beyond the cap.
+            let mut entries: Vec<(String, DateTime<Utc>)> = self
+                .sent_notifications
+                .iter()
+                .map(|(h, t)| (h.clone(), *t))
+                .collect();
+            entries.sort_by_key(|(_, t)| *t);
+            let excess = entries.len() - max_size;
+            for (hash, _) in entries.into_iter().take(excess) {
+                self.sent_notifications.remove(&hash);
+            }
+        }
+
+        let evicted = before.saturating_sub(self.sent_notifications.len());
+        if evicted > 0 {
+            debug!(
+                evicted = evicted,
+                remaining = self.sent_notifications.len(),
+                "Evicted stale notification hashes"
+            );
+        }
+
+        // Drop an expired snooze so state reflects reality.
+        if let Some(until) = self.snoozed_until
+            && Utc::now() >= until
+        {
+            self.snoozed_until = None;
+        }
+    }
+
+    /// Evicts stale notification hashes using the default 24-hour retention.
+    pub fn cleanup_old_hashes(&mut self, max_size: usize) {
+        self.cleanup_old_hashes_with_retention(max_size, chrono::Duration::hours(24));
     }
 }
 
@@ -271,6 +334,28 @@ impl NotifyEngine {
         self.state.clone()
     }
 
+    /// Returns the configured start-soon thresholds whose notification
+    /// window is currently open for a meeting.
+    ///
+    /// Windows nest — e.g. with thresholds `[15, 5, 1]` the 15-minute window
+    /// stays open right through the 5- and 1-minute windows. If a check is
+    /// delayed (coarse tick, server just started, or waking from sleep),
+    /// several thresholds can be due at once; this is handled in
+    /// [`check_and_notify`](Self::check_and_notify) by consolidating them
+    /// into a single notification using the real remaining time.
+    fn due_start_soon_thresholds(&self, meeting: &MeetingView, now: DateTime<Local>) -> Vec<u32> {
+        self.config
+            .notify_minutes
+            .iter()
+            .copied()
+            .filter(|&notify_minutes| {
+                let notify_time =
+                    meeting.start_local - chrono::Duration::minutes(notify_minutes as i64);
+                now >= notify_time && now < meeting.start_local
+            })
+            .collect()
+    }
+
     /// Checks meetings and sends notifications for those starting soon.
     pub async fn check_and_notify(&self, meetings: &[MeetingView]) -> usize {
         if !self.config.enabled {
@@ -292,33 +377,42 @@ impl NotifyEngine {
                 continue; // Skip all-day events
             }
 
-            for &notify_minutes in &self.config.notify_minutes {
-                let notify_time =
-                    meeting.start_local - chrono::Duration::minutes(notify_minutes as i64);
+            // Fire at most one notification per meeting per check, even if
+            // several thresholds are simultaneously due, using the *actual*
+            // remaining time for the label rather than the static configured
+            // number — this keeps the text accurate even when a threshold
+            // was noticed late, and avoids the notification daemon silently
+            // dropping/replacing an earlier, differently-labelled popup for
+            // the same meeting.
+            let due_thresholds = self.due_start_soon_thresholds(meeting, now);
 
-                // Check if we're within the notification window
-                // (notify_time <= now < meeting.start_local)
-                if now >= notify_time && now < meeting.start_local {
-                    let hash = notification_hash_with_kind(
-                        meeting,
-                        notify_minutes,
-                        NotificationKind::StartsSoon,
-                    );
+            if !due_thresholds.is_empty() {
+                let newly_sent = {
+                    let mut state = self.state.write().await;
+                    state.claim_due_thresholds(&due_thresholds, |notify_minutes| {
+                        notification_hash_with_kind(
+                            meeting,
+                            notify_minutes,
+                            NotificationKind::StartsSoon,
+                        )
+                    })
+                };
 
-                    let should_send = {
+                if !newly_sent.is_empty() {
+                    let minutes_left = meeting.minutes_until_start(now).max(0) as u32;
+                    if self.send_notification(meeting, minutes_left).await {
+                        sent_count += 1;
+                    } else {
+                        // Sending failed: allow every threshold in this batch
+                        // to be retried on the next check.
                         let mut state = self.state.write().await;
-                        if state.was_sent(&hash) {
-                            false
-                        } else {
-                            state.mark_sent(hash.clone());
-                            true
-                        }
-                    };
-                    if should_send {
-                        if self.send_notification(meeting, notify_minutes).await {
-                            sent_count += 1;
-                        } else {
-                            self.state.write().await.remove_sent(&hash);
+                        for &notify_minutes in &newly_sent {
+                            let hash = notification_hash_with_kind(
+                                meeting,
+                                notify_minutes,
+                                NotificationKind::StartsSoon,
+                            );
+                            state.remove_sent(&hash);
                         }
                     }
                 }
@@ -733,6 +827,116 @@ mod tests {
         assert!(!state.was_sent(&hash));
         state.mark_sent(hash.clone());
         assert!(state.was_sent(&hash));
+    }
+
+    #[test]
+    fn cleanup_evicts_only_stale_hashes() {
+        let mut state = NotifyState::new();
+        state.mark_sent("fresh".to_string());
+        // Backdate one entry past the retention window.
+        state.sent_notifications.insert(
+            "stale".to_string(),
+            Utc::now() - chrono::Duration::hours(48),
+        );
+
+        state.cleanup_old_hashes_with_retention(1000, chrono::Duration::hours(24));
+
+        assert!(state.was_sent("fresh"), "recent hashes must be preserved");
+        assert!(!state.was_sent("stale"), "stale hashes must be evicted");
+    }
+
+    #[test]
+    fn cleanup_size_cap_evicts_oldest_first() {
+        let mut state = NotifyState::new();
+        for i in 0..10 {
+            state.sent_notifications.insert(
+                format!("hash-{}", i),
+                Utc::now() - chrono::Duration::minutes(10 - i),
+            );
+        }
+
+        state.cleanup_old_hashes_with_retention(5, chrono::Duration::hours(24));
+
+        assert_eq!(state.sent_notifications.len(), 5);
+        // The newest entries survive.
+        for i in 5..10 {
+            assert!(state.was_sent(&format!("hash-{}", i)));
+        }
+        for i in 0..5 {
+            assert!(!state.was_sent(&format!("hash-{}", i)));
+        }
+    }
+
+    #[test]
+    fn cleanup_clears_expired_snooze() {
+        let mut state = NotifyState::new();
+        state.snoozed_until = Some(Utc::now() - chrono::Duration::minutes(1));
+
+        state.cleanup_old_hashes(1000);
+
+        assert!(state.snoozed_until().is_none());
+
+        // An active snooze must be left alone.
+        state.snooze(30);
+        state.cleanup_old_hashes(1000);
+        assert!(state.is_snoozed());
+    }
+
+    #[test]
+    fn claim_due_thresholds_consolidates_a_batch_and_tracks_state() {
+        let mut state = NotifyState::new();
+
+        // A delayed check finds both the 15- and 5-minute windows open at
+        // once; both must be claimed (marked sent) in a single call.
+        let newly = state.claim_due_thresholds(&[15, 5], |m| format!("hash-{m}"));
+        assert_eq!(newly, vec![15, 5]);
+        assert!(state.was_sent("hash-15"));
+        assert!(state.was_sent("hash-5"));
+
+        // Re-checking the same batch claims nothing new.
+        let newly_again = state.claim_due_thresholds(&[15, 5], |m| format!("hash-{m}"));
+        assert!(newly_again.is_empty());
+
+        // Later, the 1-minute threshold becomes due too: only it is newly
+        // claimed, since 15 and 5 were already marked sent.
+        let newly_later = state.claim_due_thresholds(&[15, 5, 1], |m| format!("hash-{m}"));
+        assert_eq!(newly_later, vec![1]);
+    }
+
+    #[test]
+    fn due_start_soon_thresholds_nest_when_check_is_delayed() {
+        // With thresholds [15, 5, 1], a meeting starting in 4 minutes has
+        // both the 15- and 5-minute windows open simultaneously (they
+        // nest), but not the 1-minute window yet. This is exactly the
+        // scenario that used to cause a stale/wrong label (e.g. "in 5
+        // minutes" shown when only 4 actually remain, or a batch of
+        // differently-labelled notifications firing at once).
+        let config = NotifyConfig::new(vec![15, 5, 1]).with_enabled(true);
+        let engine = NotifyEngine::new(config);
+
+        let meeting = make_meeting("1", "Test", 4);
+        let due = engine.due_start_soon_thresholds(&meeting, Local::now());
+        assert_eq!(due, vec![15, 5]);
+    }
+
+    #[test]
+    fn due_start_soon_thresholds_empty_when_meeting_is_far_away() {
+        let config = NotifyConfig::new(vec![15, 5, 1]).with_enabled(true);
+        let engine = NotifyEngine::new(config);
+
+        let meeting = make_meeting("1", "Test", 30);
+        let due = engine.due_start_soon_thresholds(&meeting, Local::now());
+        assert!(due.is_empty());
+    }
+
+    #[test]
+    fn due_start_soon_thresholds_excludes_meetings_that_already_started() {
+        let config = NotifyConfig::new(vec![15, 5, 1]).with_enabled(true);
+        let engine = NotifyEngine::new(config);
+
+        let meeting = make_meeting("1", "Test", -1); // started a minute ago
+        let due = engine.due_start_soon_thresholds(&meeting, Local::now());
+        assert!(due.is_empty());
     }
 
     #[test]
