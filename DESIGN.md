@@ -31,10 +31,6 @@ conventions for this repository.
   - IPC request/response schema.
   - Framing: 4-byte big-endian length + JSON envelope.
   - Protocol constants (`PROTOCOL_VERSION = "1"`, max message size 1MB).
-- `nextmeeting-gtk4` (`nextmeeting-gtk` binary):
-  - Native GTK4/libadwaita desktop UI.
-  - Talks to daemon through existing client socket protocol wrappers.
-  - Provides tray interactions via StatusNotifierItem (`ksni`).
 
 ## 2. Runtime Data Flow
 
@@ -102,15 +98,6 @@ Key modules:
 - `types.rs`: `Envelope`, `Request`, `Response`, `MeetingsFilter`, provider status/state payloads.
 - `framing.rs`: serialization with length-prefix framing.
 - `error.rs`: protocol error model.
-
-### 3.6 `nextmeeting-gtk4`
-
-- `src/main.rs`: GTK application bootstrap.
-- `src/application.rs`: UI lifecycle, async action wiring, tray command integration.
-- `src/daemon/client.rs`: async daemon request bridge (`GetMeetings`, `Refresh`, `Snooze`).
-- `src/dismissals.rs`: persistent event dismissal storage.
-- `src/tray/*`: ksni tray backend and command forwarding.
-- `src/widgets/window.rs`: primary application window composition.
 
 ## 4. Command Surface (Current CLI)
 
@@ -249,19 +236,10 @@ Credential resolution supports:
 - Snooze via command/protocol.
 - Optional morning agenda notification time.
 
-### GTK Desktop UI
-
-- Desktop panel built with GTK4 + libadwaita.
-- StatusNotifier tray menu with show/hide, refresh, and quit actions.
-- Meeting list rendering with per-event dismissal.
-- Quick actions for join/create/refresh/snooze/calendar-day.
-
 ## 7. Test Strategy (Current)
 
 - Rust unit tests cover protocol, server, providers, and client command/logic paths.
 - Formatter behaviour is validated with golden snapshot tests in `nextmeeting-core`.
-- GTK crate includes unit tests for helper/dismissal behaviour; broader UI interaction is currently validated by runtime smoke checks.
-
 ## 8. Notable Implementation Characteristics
 
 - Scheduler defaults: 5-minute sync interval, 10% jitter, cooldown + capped exponential backoff.
@@ -271,8 +249,6 @@ Credential resolution supports:
 
 ## 9. Current Boundaries and Gaps
 
-- Blueprint-driven UI compilation is planned, but current UI is assembled in Rust code.
-- Tray support currently targets StatusNotifierItem through `ksni`; explicit AppIndicator fallback is not yet implemented.
 - The `nextmeeting-server` cache module exists and is tested, but active meeting serving currently relies on in-memory `ServerState` rather than direct `EventCache` integration.
 - `SIGHUP` reload signal plumbing exists; full dynamic provider/config rebuild flow is not yet surfaced as a complete runtime reload path in server orchestration.
 
