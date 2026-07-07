@@ -154,7 +154,7 @@ pub enum Command {
     /// Authentication commands
     Auth {
         #[command(subcommand)]
-        provider: AuthProvider,
+        provider: Option<AuthProvider>,
     },
 
     /// Configuration commands

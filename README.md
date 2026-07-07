@@ -58,6 +58,7 @@ instead.
 Useful authentication commands:
 
 ```sh
+nextmeeting auth                          # if no providers are configured, starts the Google guide
 nextmeeting auth status                   # inspect all accounts and tokens
 nextmeeting auth logout --account work    # clear stored tokens
 nextmeeting auth logout --revoke          # also revoke them with Google

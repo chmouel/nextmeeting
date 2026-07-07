@@ -72,7 +72,7 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
     match cli.command {
         Some(Command::Auth { provider }) => match provider {
             #[cfg(feature = "google")]
-            AuthProvider::Google {
+            Some(AuthProvider::Google {
                 account,
                 guide,
                 client_id,
@@ -82,7 +82,7 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
                 force,
                 no_browser,
                 read_only,
-            } => {
+            }) => {
                 if guide {
                     return nextmeeting_client::commands::auth::google_guide(&config).await;
                 }
@@ -102,9 +102,15 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
                 )
                 .await
             }
-            AuthProvider::Status => nextmeeting_client::commands::auth::status(&config).await,
-            AuthProvider::Logout { account, revoke } => {
+            Some(AuthProvider::Status) => nextmeeting_client::commands::auth::status(&config).await,
+            Some(AuthProvider::Logout { account, revoke }) => {
                 nextmeeting_client::commands::auth::logout(account, revoke, &config).await
+            }
+            None => {
+                if !has_calendar_configuration(&config) {
+                    return nextmeeting_client::commands::auth::google_guide(&config).await;
+                }
+                nextmeeting_client::commands::auth::status(&config).await
             }
         },
         Some(Command::Config { action }) => match action {
@@ -126,6 +132,10 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
 
 /// Default mode: connect to the server, fetch meetings, and render output.
 async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
+    if !has_calendar_configuration(config) {
+        return nextmeeting_client::commands::auth::google_guide(config).await;
+    }
+
     let client = make_client(cli, config);
 
     // Handle refresh action (fire-and-forget to the server)
@@ -183,6 +193,23 @@ async fn run_default(cli: &Cli, config: &ClientConfig) -> ClientResult<()> {
     render_output(cli, config, &meetings);
 
     Ok(())
+}
+
+/// Returns true when at least one calendar provider is configured.
+fn has_calendar_configuration(config: &ClientConfig) -> bool {
+    #[cfg(feature = "google")]
+    if let Some(google) = &config.google
+        && !google.accounts.is_empty()
+    {
+        return true;
+    }
+
+    #[cfg(feature = "caldav")]
+    if config.caldav.is_some() {
+        return true;
+    }
+
+    false
 }
 
 /// Fetches meetings from the server, with auto-spawn fallback.
@@ -587,5 +614,39 @@ fn format_duration_human(seconds: u64) -> String {
         format!("{}m {}s", minutes, secs)
     } else {
         format!("{}s", secs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_calendar_configuration;
+    use nextmeeting_client::config::ClientConfig;
+
+    #[test]
+    fn has_calendar_configuration_false_when_empty() {
+        let config = ClientConfig::default();
+        assert!(!has_calendar_configuration(&config));
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn has_calendar_configuration_true_with_google_account() {
+        let mut config = ClientConfig::default();
+        config.google = Some(nextmeeting_client::config::GoogleSettings {
+            accounts: vec![nextmeeting_client::config::GoogleAccountSettings {
+                name: "work".to_string(),
+                client_id: Some("id.apps.googleusercontent.com".to_string()),
+                client_secret: Some("secret".to_string()),
+                credentials_file: None,
+                domain: None,
+                calendar_ids: vec!["primary".to_string()],
+                token_path: None,
+                token_storage: None,
+                read_only: false,
+                scopes: None,
+            }],
+        });
+
+        assert!(has_calendar_configuration(&config));
     }
 }
