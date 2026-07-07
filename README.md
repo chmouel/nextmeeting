@@ -1,14 +1,14 @@
 # NextMeeting
 
-NextMeeting is a Linux calendar companion with a client/daemon architecture.
-It integrates with Google Calendar and CalDAV to display upcoming meetings in
-the terminal or Waybar, and to run quick meeting actions.
+NextMeeting is a Linux calendar tool with a CLI/daemon architecture. It reads
+Google Calendar and CalDAV, shows upcoming meetings in the terminal or Waybar,
+and supports quick meeting actions.
 
 ## Features
 
 - Google Calendar and CalDAV provider support.
 - Terminal, JSON, and Waybar outputs.
-- Calendar-backed per-event actions (Google): edit in calendar, decline, and delete.
+- Google event actions: edit in calendar, decline, and delete.
 - Automatic meeting-link detection (Zoom, Meet, Teams, Webex, Jitsi, and more).
 - Desktop notification scheduling with snooze support.
 - Action commands for joining meetings, copying meeting details, refreshing
@@ -18,8 +18,7 @@ the terminal or Waybar, and to run quick meeting actions.
 
 ### From source
 
-No packaged binaries are published yet. The supported installation path is from
-source.
+No packaged binaries are published yet. Install from source.
 
 Install the CLI:
 
@@ -31,13 +30,13 @@ cargo install --path crates/nextmeeting-client
 
 ### Google Calendar
 
-The interactive wizard walks you through the whole setup:
+Run the setup wizard:
 
 ```sh
 nextmeeting auth google --guide
 ```
 
-The easiest Google path is:
+Quick path:
 
 1. Create a Google OAuth client of type `Desktop app` (a `Web
    application` client will fail with `redirect_uri_mismatch`).
@@ -49,30 +48,28 @@ nextmeeting auth google --account work \
   --credentials-file /path/to/client_secret_<id>.json
 ```
 
-By default nextmeeting requests read/write access to events
-(`calendar.events`) so actions such as decline and delete work out of
-the box, plus `calendar.readonly` to list calendars. Pass `--read-only`
-(or set `read_only = true` on the account) to request read-only access
-instead.
+By default, nextmeeting requests `calendar.events` (read/write events) and
+`calendar.readonly` (list calendars). This enables decline and delete actions.
+Use `--read-only` (or `read_only = true` in account config) for read-only
+access.
 
 Useful authentication commands:
 
 ```sh
-nextmeeting auth                          # if no providers are configured, starts the Google guide
+nextmeeting auth                          # starts Google guide when no providers are configured
 nextmeeting auth status                   # inspect all accounts and tokens
 nextmeeting auth logout --account work    # clear stored tokens
 nextmeeting auth logout --revoke          # also revoke them with Google
-nextmeeting auth google --no-browser      # headless/SSH flow: paste the
-                                          # redirect URL back into the terminal
+nextmeeting auth google --no-browser      # headless/SSH flow, paste redirect URL in terminal
 ```
 
-If you re-authenticate whilst the daemon is running, it is notified
-automatically and refreshes with the new tokens.
+If you re-authenticate whilst the daemon is running, the CLI notifies it and
+it refreshes with the new tokens.
 
-Tokens are stored in `~/.local/share/nextmeeting/` with `0600`
-permissions by default. To keep them in the desktop keyring instead
-(via the freedesktop Secret Service; requires `secret-tool` from
-libsecret), set `token_storage = "keyring"` on the account.
+Tokens are stored in `~/.local/share/nextmeeting/` with `0600` permissions by
+default. To store them in the desktop keyring instead (freedesktop Secret
+Service, via `secret-tool` from `libsecret`), set
+`token_storage = "keyring"` on the account.
 
 ### CalDAV
 
@@ -86,7 +83,7 @@ password = "env::NEXTMEETING_CALDAV_PASSWORD"
 calendar_hint = "work"
 ```
 
-### Run It
+### Run it
 
 Show the next meeting:
 
@@ -100,7 +97,7 @@ Use Waybar output:
 nextmeeting --waybar
 ```
 
-The daemon is started automatically when required.
+The CLI starts the daemon automatically when needed.
 
 ## Common Commands
 
@@ -116,7 +113,7 @@ The daemon is started automatically when required.
 
 ## Configuration
 
-Default configuration path:
+Default config path:
 
 `~/.config/nextmeeting/config.toml`
 
