@@ -467,6 +467,23 @@ pub struct GoogleAccountSettings {
     ///
     /// Defaults to `google-tokens-{name}.json` in the config directory.
     pub token_path: Option<PathBuf>,
+
+    /// Token storage backend: `"file"` (default) or `"keyring"`.
+    ///
+    /// The keyring backend stores tokens in the desktop keyring via the
+    /// freedesktop Secret Service (`secret-tool`), falling back to file
+    /// storage when no secret service is available.
+    pub token_storage: Option<String>,
+
+    /// Request read-only calendar access.
+    ///
+    /// When true, only the `calendar.readonly` scope is requested and
+    /// event actions (decline, delete) are unavailable.
+    #[serde(default)]
+    pub read_only: bool,
+
+    /// Explicit OAuth scopes (advanced; overrides `read_only`).
+    pub scopes: Option<Vec<String>>,
 }
 
 #[cfg(feature = "google")]
@@ -527,6 +544,11 @@ impl GoogleSettings {
                     account.name
                 ));
             }
+
+            if let Some(ref backend) = account.token_storage {
+                nextmeeting_providers::google::TokenBackend::parse(backend)
+                    .map_err(|e| format!("Google account '{}': {}", account.name, e))?;
+            }
         }
 
         Ok(())
@@ -566,6 +588,17 @@ impl GoogleAccountSettings {
 
         if let Some(ref path) = self.token_path {
             config = config.with_token_path(path);
+        }
+
+        if let Some(ref backend) = self.token_storage {
+            let backend = nextmeeting_providers::google::TokenBackend::parse(backend)?;
+            config = config.with_token_backend(backend);
+        }
+
+        if let Some(ref scopes) = self.scopes {
+            config = config.with_scopes(scopes.clone());
+        } else if self.read_only {
+            config = config.with_scopes(GoogleConfig::readonly_scopes());
         }
 
         Ok(config)
@@ -636,6 +669,9 @@ mod tests {
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
+            token_storage: None,
+            read_only: false,
+            scopes: None,
         }
     }
 
@@ -662,6 +698,9 @@ mod tests {
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
+            token_storage: None,
+            read_only: false,
+            scopes: None,
         };
         let creds = account.resolve_credentials().unwrap();
         assert_eq!(creds.client_id, "env-id.apps.googleusercontent.com");
@@ -683,6 +722,9 @@ mod tests {
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
+            token_storage: None,
+            read_only: false,
+            scopes: None,
         };
         let result = account.resolve_credentials();
         assert!(result.is_err());
@@ -699,6 +741,9 @@ mod tests {
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
+            token_storage: None,
+            read_only: false,
+            scopes: None,
         };
         let result = account.resolve_credentials();
         assert!(result.is_err());
@@ -715,6 +760,9 @@ mod tests {
             domain: Some("example.com".to_string()),
             calendar_ids: vec!["cal1".to_string(), "cal2".to_string()],
             token_path: None,
+            token_storage: None,
+            read_only: false,
+            scopes: None,
         };
         let config = account.to_provider_config().unwrap();
         assert_eq!(
@@ -728,6 +776,52 @@ mod tests {
             vec!["cal1".to_string(), "cal2".to_string()]
         );
         assert_eq!(config.account_name, "work");
+    }
+
+    #[test]
+    fn to_provider_config_read_only_scopes() {
+        let mut account = test_account("work");
+        account.read_only = true;
+        let config = account.to_provider_config().unwrap();
+        assert_eq!(
+            config.scopes,
+            nextmeeting_providers::google::GoogleConfig::readonly_scopes()
+        );
+    }
+
+    #[test]
+    fn to_provider_config_explicit_scopes_override_read_only() {
+        let mut account = test_account("work");
+        account.read_only = true;
+        account.scopes = Some(vec!["https://www.googleapis.com/auth/calendar".to_string()]);
+        let config = account.to_provider_config().unwrap();
+        assert_eq!(
+            config.scopes,
+            vec!["https://www.googleapis.com/auth/calendar".to_string()]
+        );
+    }
+
+    #[test]
+    fn to_provider_config_keyring_backend() {
+        let mut account = test_account("work");
+        account.token_storage = Some("keyring".to_string());
+        let config = account.to_provider_config().unwrap();
+        assert_eq!(
+            config.token_backend,
+            nextmeeting_providers::google::TokenBackend::Keyring
+        );
+    }
+
+    #[test]
+    fn validate_rejects_unknown_token_storage() {
+        let mut account = test_account("work");
+        account.token_storage = Some("vault".to_string());
+        let settings = GoogleSettings {
+            accounts: vec![account],
+        };
+        let result = settings.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("token storage"));
     }
 
     #[test]

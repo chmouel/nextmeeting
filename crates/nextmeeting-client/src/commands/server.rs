@@ -364,7 +364,7 @@ async fn sync_all_providers(
     }
 
     // Sort by start time
-    all_meetings.sort_by(|a, b| a.start_local.cmp(&b.start_local));
+    all_meetings.sort_by_key(|a| a.start_local);
 
     // Update shared state with all collected meetings
     state.write().await.set_meetings(all_meetings);

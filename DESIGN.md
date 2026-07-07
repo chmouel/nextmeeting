@@ -140,6 +140,8 @@ Top-level options:
 Subcommands:
 
 - `nextmeeting auth google [...]`
+- `nextmeeting auth status`
+- `nextmeeting auth logout [--account <NAME>] [--revoke]`
 - `nextmeeting config dump`
 - `nextmeeting config validate`
 - `nextmeeting config path`
@@ -187,8 +189,22 @@ Credential resolution supports:
 ### Providers
 
 - Google Calendar provider:
-  - OAuth 2.0 PKCE (loopback callback).
-  - token refresh support.
+  - OAuth 2.0 PKCE (loopback callback on an ephemeral port).
+  - Desktop-app client detection: `web`-type credentials produce a
+    warning, as Google rejects loopback redirects for them
+    (`redirect_uri_mismatch`).
+  - consent screen only forced when needed (`--force`, scope changes,
+    or a missing refresh token, with one automatic consent retry).
+  - default scopes `calendar.events` + `calendar.readonly`; per-account
+    `read_only` and explicit `scopes` overrides.
+  - headless flow (`--no-browser`): the pasted redirect URL is accepted
+    in place of the loopback callback.
+  - token refresh support with `invalid_grant` detection and explicit
+    re-authentication guidance.
+  - token storage backends: `file` (0600 JSON) or `keyring`
+    (freedesktop Secret Service via `secret-tool`, with file fallback).
+  - `auth status` / `auth logout [--revoke]` subcommands; a running
+    daemon is nudged to reload tokens after re-authentication.
   - multi-account configuration.
 - CalDAV provider:
   - calendar discovery.

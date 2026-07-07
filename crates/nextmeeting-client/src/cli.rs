@@ -207,6 +207,30 @@ pub enum AuthProvider {
         /// Force re-authentication even if already authenticated
         #[arg(long, short)]
         force: bool,
+
+        /// Do not open a browser; print the URL and accept a pasted
+        /// redirect URL instead (for SSH or headless sessions)
+        #[arg(long)]
+        no_browser: bool,
+
+        /// Request read-only calendar access instead of the default
+        /// read/write events access
+        #[arg(long)]
+        read_only: bool,
+    },
+
+    /// Show authentication status for all configured accounts
+    Status,
+
+    /// Clear stored tokens for an account
+    Logout {
+        /// Account name (required when multiple accounts exist)
+        #[arg(long, short)]
+        account: Option<String>,
+
+        /// Also revoke the tokens with Google before clearing them
+        #[arg(long)]
+        revoke: bool,
     },
 }
 

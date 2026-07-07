@@ -9,7 +9,7 @@ use std::sync::RwLock;
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::error::{ProviderError, ProviderResult};
 
@@ -63,9 +63,12 @@ impl TokenInfo {
         }
     }
 
-    /// Returns true if the token has the required scopes.
+    /// Returns true if the token has (or satisfies) the required scopes.
+    ///
+    /// Uses scope-satisfaction logic: the full `calendar` scope counts as
+    /// covering the narrower calendar scopes.
     pub fn has_scopes(&self, required: &[String]) -> bool {
-        required.iter().all(|scope| self.scopes.contains(scope))
+        super::config::GoogleConfig::scopes_satisfied(&self.scopes, required)
     }
 
     /// Updates the access token after a refresh.
@@ -86,32 +89,211 @@ impl TokenInfo {
     }
 }
 
+/// Storage backend for OAuth tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TokenBackend {
+    /// JSON file with 0600 permissions (default).
+    #[default]
+    File,
+    /// Desktop keyring via the freedesktop Secret Service (`secret-tool`).
+    ///
+    /// Falls back to file storage with a warning when no secret service
+    /// is available.
+    Keyring,
+}
+
+impl TokenBackend {
+    /// Parses a backend name from configuration (`"file"` or `"keyring"`).
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "file" => Ok(Self::File),
+            "keyring" => Ok(Self::Keyring),
+            other => Err(format!(
+                "unknown token storage backend '{}'; expected 'file' or 'keyring'",
+                other
+            )),
+        }
+    }
+
+    /// Returns the backend name.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::Keyring => "keyring",
+        }
+    }
+}
+
 /// Persisted token storage with file-based backend.
 ///
-/// Tokens are stored as JSON in the user's config directory.
+/// Tokens are stored as JSON in the user's config directory, or in the
+/// desktop keyring when the [`TokenBackend::Keyring`] backend is selected.
 /// The storage handles reading, writing, and updating tokens atomically.
 #[derive(Debug)]
 pub struct TokenStorage {
-    /// Path to the token file.
+    /// Path to the token file (also the fallback for the keyring backend).
     path: PathBuf,
+
+    /// The selected storage backend.
+    backend: TokenBackend,
+
+    /// Keyring attribute identifying this account (`google-<account>`).
+    keyring_account: Option<String>,
+
+    /// The `secret-tool` binary to invoke (overridable for tests).
+    secret_tool: String,
 
     /// In-memory cache of the current tokens.
     tokens: RwLock<Option<TokenInfo>>,
 }
 
+/// Keyring service attribute for all nextmeeting secrets.
+const KEYRING_SERVICE: &str = "nextmeeting";
+
 impl TokenStorage {
-    /// Creates a new token storage at the given path.
+    /// Creates a new file-backed token storage at the given path.
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
+            backend: TokenBackend::File,
+            keyring_account: None,
+            secret_tool: "secret-tool".to_string(),
             tokens: RwLock::new(None),
         }
     }
 
-    /// Loads tokens from disk into memory.
+    /// Creates a keyring-backed token storage.
+    ///
+    /// `fallback_path` is used when no secret service is available.
+    pub fn new_keyring(account: impl Into<String>, fallback_path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: fallback_path.into(),
+            backend: TokenBackend::Keyring,
+            keyring_account: Some(format!("google-{}", account.into())),
+            secret_tool: "secret-tool".to_string(),
+            tokens: RwLock::new(None),
+        }
+    }
+
+    /// Overrides the `secret-tool` binary (for tests).
+    #[doc(hidden)]
+    pub fn with_secret_tool(mut self, command: impl Into<String>) -> Self {
+        self.secret_tool = command.into();
+        self
+    }
+
+    /// Returns the selected backend.
+    pub fn backend(&self) -> TokenBackend {
+        self.backend
+    }
+
+    /// Looks up tokens in the keyring.
+    ///
+    /// Returns `Ok(None)` when no entry exists, `Err` when the secret
+    /// service is unavailable.
+    fn keyring_lookup(&self) -> Result<Option<String>, String> {
+        let account = self.keyring_account.as_deref().unwrap_or_default();
+        let output = std::process::Command::new(&self.secret_tool)
+            .args(["lookup", "service", KEYRING_SERVICE, "account", account])
+            .output()
+            .map_err(|e| format!("failed to run {}: {}", self.secret_tool, e))?;
+
+        if !output.status.success() {
+            // secret-tool exits non-zero when no matching secret exists
+            return Ok(None);
+        }
+        let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if content.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(content))
+        }
+    }
+
+    /// Stores tokens in the keyring.
+    fn keyring_store(&self, content: &str) -> Result<(), String> {
+        use std::io::Write as _;
+        let account = self.keyring_account.as_deref().unwrap_or_default();
+        let mut child = std::process::Command::new(&self.secret_tool)
+            .args([
+                "store",
+                "--label",
+                &format!("nextmeeting Google tokens ({})", account),
+                "service",
+                KEYRING_SERVICE,
+                "account",
+                account,
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("failed to run {}: {}", self.secret_tool, e))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(content.as_bytes())
+                .map_err(|e| format!("failed to write to {}: {}", self.secret_tool, e))?;
+        }
+
+        let status = child
+            .wait()
+            .map_err(|e| format!("failed to wait for {}: {}", self.secret_tool, e))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} store failed (exit {})",
+                self.secret_tool, status
+            ))
+        }
+    }
+
+    /// Removes tokens from the keyring.
+    fn keyring_clear(&self) {
+        let account = self.keyring_account.as_deref().unwrap_or_default();
+        let _ = std::process::Command::new(&self.secret_tool)
+            .args(["clear", "service", KEYRING_SERVICE, "account", account])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    /// Loads tokens from the backend into memory.
     ///
     /// Returns Ok(true) if tokens were loaded, Ok(false) if no tokens exist.
     pub fn load(&self) -> ProviderResult<bool> {
+        if self.backend == TokenBackend::Keyring {
+            match self.keyring_lookup() {
+                Ok(Some(content)) => {
+                    let tokens: TokenInfo = serde_json::from_str(&content).map_err(|e| {
+                        ProviderError::configuration(format!(
+                            "failed to parse keyring tokens: {}",
+                            e
+                        ))
+                    })?;
+                    info!("loaded tokens from keyring");
+                    *self.tokens.write().unwrap() = Some(tokens);
+                    return Ok(true);
+                }
+                Ok(None) => {
+                    // No keyring entry; fall through to the file for migration
+                    debug!("no keyring entry, checking token file");
+                }
+                Err(e) => {
+                    warn!(
+                        "keyring unavailable ({}); falling back to file storage at {:?}",
+                        e, self.path
+                    );
+                }
+            }
+        }
+
+        self.load_from_file()
+    }
+
+    /// Loads tokens from the file backend.
+    fn load_from_file(&self) -> ProviderResult<bool> {
         if !self.path.exists() {
             debug!("no token file at {:?}", self.path);
             return Ok(false);
@@ -130,13 +312,42 @@ impl TokenStorage {
         Ok(true)
     }
 
-    /// Saves the current tokens to disk.
+    /// Saves the current tokens to the backend.
     pub fn save(&self) -> ProviderResult<()> {
-        let tokens = self.tokens.read().unwrap();
-        let tokens = tokens
-            .as_ref()
-            .ok_or_else(|| ProviderError::internal("no tokens to save"))?;
+        let content = {
+            let tokens = self.tokens.read().unwrap();
+            let tokens = tokens
+                .as_ref()
+                .ok_or_else(|| ProviderError::internal("no tokens to save"))?;
+            serde_json::to_string_pretty(tokens).map_err(|e| {
+                ProviderError::internal(format!("failed to serialize tokens: {}", e))
+            })?
+        };
 
+        if self.backend == TokenBackend::Keyring {
+            match self.keyring_store(&content) {
+                Ok(()) => {
+                    debug!("saved tokens to keyring");
+                    // Remove any stale fallback file so secrets live in one place
+                    if self.path.exists() {
+                        let _ = fs::remove_file(&self.path);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    warn!(
+                        "keyring unavailable ({}); falling back to file storage at {:?}",
+                        e, self.path
+                    );
+                }
+            }
+        }
+
+        self.save_to_file(&content)
+    }
+
+    /// Saves serialized tokens to the file backend.
+    fn save_to_file(&self, content: &str) -> ProviderResult<()> {
         // Ensure parent directory exists
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
@@ -146,10 +357,8 @@ impl TokenStorage {
 
         // Write to temp file first, then rename for atomicity
         let temp_path = self.path.with_extension("json.tmp");
-        let content = serde_json::to_string_pretty(tokens)
-            .map_err(|e| ProviderError::internal(format!("failed to serialize tokens: {}", e)))?;
 
-        fs::write(&temp_path, &content).map_err(|e| {
+        fs::write(&temp_path, content).map_err(|e| {
             ProviderError::configuration(format!("failed to write token file: {}", e))
         })?;
 
@@ -196,9 +405,12 @@ impl TokenStorage {
         }
     }
 
-    /// Clears the stored tokens (both in memory and on disk).
+    /// Clears the stored tokens (in memory, on disk, and in the keyring).
     pub fn clear(&self) -> ProviderResult<()> {
         *self.tokens.write().unwrap() = None;
+        if self.backend == TokenBackend::Keyring {
+            self.keyring_clear();
+        }
         if self.path.exists() {
             fs::remove_file(&self.path).map_err(|e| {
                 ProviderError::configuration(format!("failed to remove token file: {}", e))
@@ -352,6 +564,65 @@ mod tests {
         let storage = TokenStorage::new(path);
         assert!(!storage.load().unwrap());
         assert!(storage.get().is_none());
+    }
+
+    #[test]
+    fn token_backend_parse() {
+        assert_eq!(TokenBackend::parse("file").unwrap(), TokenBackend::File);
+        assert_eq!(
+            TokenBackend::parse("keyring").unwrap(),
+            TokenBackend::Keyring
+        );
+        assert!(TokenBackend::parse("vault").is_err());
+        assert_eq!(TokenBackend::Keyring.as_str(), "keyring");
+    }
+
+    #[test]
+    fn token_scope_satisfaction_full_scope() {
+        // A token granted the full calendar scope satisfies narrower scopes
+        let token = TokenInfo::new(
+            "access",
+            None,
+            None,
+            vec!["https://www.googleapis.com/auth/calendar".to_string()],
+        );
+        assert!(token.has_scopes(&[
+            "https://www.googleapis.com/auth/calendar.readonly".to_string(),
+            "https://www.googleapis.com/auth/calendar.events".to_string(),
+        ]));
+    }
+
+    #[test]
+    fn keyring_storage_falls_back_to_file() {
+        // `false` exits non-zero: lookup treats it as "no entry",
+        // store treats it as unavailable and falls back to the file.
+        let path = temp_path();
+        let storage = TokenStorage::new_keyring("test", path.clone()).with_secret_tool("false");
+        assert_eq!(storage.backend(), TokenBackend::Keyring);
+
+        let token = TokenInfo::new("access", None, None, vec![]);
+        storage.set(token).unwrap();
+        assert!(path.exists(), "fallback file should be written");
+
+        let storage2 = TokenStorage::new_keyring("test", path.clone()).with_secret_tool("false");
+        assert!(storage2.load().unwrap());
+        assert_eq!(storage2.get().unwrap().access_token, "access");
+
+        storage2.clear().unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn keyring_storage_missing_tool_falls_back() {
+        let path = temp_path();
+        let storage = TokenStorage::new_keyring("test", path.clone())
+            .with_secret_tool("/nonexistent/secret-tool");
+
+        let token = TokenInfo::new("access", None, None, vec![]);
+        storage.set(token).unwrap();
+        assert!(path.exists());
+
+        let _ = fs::remove_file(&path);
     }
 
     #[test]

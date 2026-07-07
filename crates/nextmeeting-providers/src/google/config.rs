@@ -5,6 +5,25 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use super::tokens::TokenBackend;
+
+/// The type of OAuth client the credentials belong to.
+///
+/// Google only permits loopback redirects on arbitrary ports for
+/// **Desktop app** ("installed") clients. Web application clients require
+/// every redirect URI to be registered in advance, which leads to
+/// `redirect_uri_mismatch` errors with the loopback flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OAuthClientType {
+    /// A Desktop app ("installed") client. The recommended type.
+    Desktop,
+    /// A Web application client. Loopback redirects will likely fail.
+    Web,
+    /// Unknown origin (e.g. inline client ID/secret).
+    #[default]
+    Unknown,
+}
+
 /// OAuth 2.0 credentials for Google API access.
 ///
 /// Users must provide their own OAuth client ID and secret, as Google
@@ -15,6 +34,8 @@ pub struct OAuthCredentials {
     pub client_id: String,
     /// The OAuth 2.0 client secret from Google Cloud Console.
     pub client_secret: String,
+    /// The OAuth client type, when known.
+    pub client_type: OAuthClientType,
 }
 
 /// Structure of Google's OAuth credentials JSON file.
@@ -48,12 +69,19 @@ pub struct NestedCredentials {
 }
 
 impl OAuthCredentials {
-    /// Creates new OAuth credentials.
+    /// Creates new OAuth credentials of unknown client type.
     pub fn new(client_id: impl Into<String>, client_secret: impl Into<String>) -> Self {
         Self {
             client_id: client_id.into(),
             client_secret: client_secret.into(),
+            client_type: OAuthClientType::Unknown,
         }
+    }
+
+    /// Sets the OAuth client type.
+    pub fn with_client_type(mut self, client_type: OAuthClientType) -> Self {
+        self.client_type = client_type;
+        self
     }
 
     /// Loads OAuth credentials from a Google Cloud Console JSON file.
@@ -77,8 +105,13 @@ impl OAuthCredentials {
             .map_err(|e| format!("failed to parse credentials JSON: {}", e))?;
 
         // Try nested format first (installed or web section)
-        if let Some(creds) = file.installed.or(file.web) {
-            return Ok(Self::new(creds.client_id, creds.client_secret));
+        if let Some(creds) = file.installed {
+            return Ok(Self::new(creds.client_id, creds.client_secret)
+                .with_client_type(OAuthClientType::Desktop));
+        }
+        if let Some(creds) = file.web {
+            return Ok(Self::new(creds.client_id, creds.client_secret)
+                .with_client_type(OAuthClientType::Web));
         }
 
         // Try flat format (client_id and client_secret at root level)
@@ -129,7 +162,11 @@ pub struct GoogleConfig {
     /// Path to store OAuth tokens.
     ///
     /// Defaults to `~/.local/share/nextmeeting/google-tokens-{account}.json`.
+    /// With the keyring backend this is the fallback location.
     pub token_path: PathBuf,
+
+    /// Token storage backend (file or keyring).
+    pub token_backend: TokenBackend,
 
     /// Specific calendar IDs to fetch from.
     ///
@@ -145,12 +182,14 @@ pub struct GoogleConfig {
     /// Port range for the loopback OAuth server.
     ///
     /// The OAuth flow will try to bind to ports in this range.
-    /// Defaults to (8080, 8090).
+    /// Defaults to `(0, 0)`, which requests an ephemeral port from the
+    /// operating system (recommended for Desktop app clients).
     pub loopback_port_range: (u16, u16),
 
     /// OAuth scopes to request.
     ///
-    /// Defaults to `["https://www.googleapis.com/auth/calendar.readonly"]`.
+    /// Defaults to [`GoogleConfig::default_scopes`] (`calendar.events`
+    /// plus `calendar.readonly`).
     pub scopes: Vec<String>,
 }
 
@@ -158,8 +197,60 @@ impl GoogleConfig {
     /// Default timeout in seconds.
     pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
+    /// OAuth scope for read-only calendar access.
+    pub const SCOPE_READONLY: &'static str = "https://www.googleapis.com/auth/calendar.readonly";
+
+    /// OAuth scope for viewing and editing events.
+    pub const SCOPE_EVENTS: &'static str = "https://www.googleapis.com/auth/calendar.events";
+
+    /// OAuth scope for full calendar access.
+    pub const SCOPE_FULL: &'static str = "https://www.googleapis.com/auth/calendar";
+
     /// Default OAuth scope for read-only calendar access.
-    pub const DEFAULT_SCOPE: &'static str = "https://www.googleapis.com/auth/calendar.readonly";
+    ///
+    /// Kept for backwards compatibility; prefer [`Self::default_scopes`].
+    pub const DEFAULT_SCOPE: &'static str = Self::SCOPE_EVENTS;
+
+    /// Returns the default OAuth scopes.
+    ///
+    /// Includes `calendar.events` (so event actions such as decline and
+    /// delete work out of the box) and `calendar.readonly` (required to
+    /// list calendars).
+    pub fn default_scopes() -> Vec<String> {
+        vec![
+            Self::SCOPE_EVENTS.to_string(),
+            Self::SCOPE_READONLY.to_string(),
+        ]
+    }
+
+    /// Returns the read-only OAuth scopes.
+    pub fn readonly_scopes() -> Vec<String> {
+        vec![Self::SCOPE_READONLY.to_string()]
+    }
+
+    /// Returns true if a granted scope satisfies a required scope.
+    ///
+    /// The full `calendar` scope satisfies every calendar scope, and
+    /// `calendar.events` satisfies its read-only variant.
+    pub fn scope_satisfies(granted: &str, required: &str) -> bool {
+        if granted == required {
+            return true;
+        }
+        match granted {
+            Self::SCOPE_FULL => required.starts_with("https://www.googleapis.com/auth/calendar"),
+            Self::SCOPE_EVENTS => {
+                required == "https://www.googleapis.com/auth/calendar.events.readonly"
+            }
+            _ => false,
+        }
+    }
+
+    /// Returns true if the granted scopes collectively satisfy all required scopes.
+    pub fn scopes_satisfied(granted: &[String], required: &[String]) -> bool {
+        required
+            .iter()
+            .all(|req| granted.iter().any(|g| Self::scope_satisfies(g, req)))
+    }
 
     /// Creates a new Google configuration with the given credentials.
     pub fn new(credentials: OAuthCredentials) -> Self {
@@ -168,11 +259,12 @@ impl GoogleConfig {
             credentials,
             domain: None,
             token_path: Self::default_token_path("default"),
+            token_backend: TokenBackend::File,
             calendar_ids: vec!["primary".to_string()],
             timeout: Duration::from_secs(Self::DEFAULT_TIMEOUT_SECS),
             user_agent: format!("nextmeeting/{}", env!("CARGO_PKG_VERSION")),
-            loopback_port_range: (8080, 8090),
-            scopes: vec![Self::DEFAULT_SCOPE.to_string()],
+            loopback_port_range: (0, 0),
+            scopes: Self::default_scopes(),
         }
     }
 
@@ -211,6 +303,12 @@ impl GoogleConfig {
     /// Sets the token storage path.
     pub fn with_token_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.token_path = path.into();
+        self
+    }
+
+    /// Sets the token storage backend.
+    pub fn with_token_backend(mut self, backend: TokenBackend) -> Self {
+        self.token_backend = backend;
         self
     }
 
@@ -310,7 +408,76 @@ mod tests {
         let config = GoogleConfig::new(test_credentials());
         assert!(config.domain.is_none());
         assert_eq!(config.calendar_ids, vec!["primary".to_string()]);
-        assert_eq!(config.scopes, vec![GoogleConfig::DEFAULT_SCOPE.to_string()]);
+        assert_eq!(config.scopes, GoogleConfig::default_scopes());
+    }
+
+    #[test]
+    fn scope_satisfaction() {
+        // Exact match
+        assert!(GoogleConfig::scope_satisfies(
+            GoogleConfig::SCOPE_READONLY,
+            GoogleConfig::SCOPE_READONLY
+        ));
+        // Full scope satisfies everything calendar-related
+        assert!(GoogleConfig::scope_satisfies(
+            GoogleConfig::SCOPE_FULL,
+            GoogleConfig::SCOPE_READONLY
+        ));
+        assert!(GoogleConfig::scope_satisfies(
+            GoogleConfig::SCOPE_FULL,
+            GoogleConfig::SCOPE_EVENTS
+        ));
+        // Events does not satisfy readonly (cannot list calendars)
+        assert!(!GoogleConfig::scope_satisfies(
+            GoogleConfig::SCOPE_EVENTS,
+            GoogleConfig::SCOPE_READONLY
+        ));
+        // Readonly does not satisfy events
+        assert!(!GoogleConfig::scope_satisfies(
+            GoogleConfig::SCOPE_READONLY,
+            GoogleConfig::SCOPE_EVENTS
+        ));
+    }
+
+    #[test]
+    fn scopes_satisfied_collections() {
+        let full = vec![GoogleConfig::SCOPE_FULL.to_string()];
+        assert!(GoogleConfig::scopes_satisfied(
+            &full,
+            &GoogleConfig::default_scopes()
+        ));
+
+        let readonly = GoogleConfig::readonly_scopes();
+        assert!(!GoogleConfig::scopes_satisfied(
+            &readonly,
+            &GoogleConfig::default_scopes()
+        ));
+        assert!(GoogleConfig::scopes_satisfied(
+            &GoogleConfig::default_scopes(),
+            &readonly
+        ));
+    }
+
+    #[test]
+    fn credentials_client_type_detection() {
+        let installed =
+            r#"{"installed": {"client_id": "a.apps.googleusercontent.com", "client_secret": "s"}}"#;
+        assert_eq!(
+            OAuthCredentials::from_json(installed).unwrap().client_type,
+            OAuthClientType::Desktop
+        );
+
+        let web = r#"{"web": {"client_id": "a.apps.googleusercontent.com", "client_secret": "s"}}"#;
+        assert_eq!(
+            OAuthCredentials::from_json(web).unwrap().client_type,
+            OAuthClientType::Web
+        );
+
+        let flat = r#"{"client_id": "a.apps.googleusercontent.com", "client_secret": "s"}"#;
+        assert_eq!(
+            OAuthCredentials::from_json(flat).unwrap().client_type,
+            OAuthClientType::Unknown
+        );
     }
 
     #[test]

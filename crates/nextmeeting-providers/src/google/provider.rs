@@ -17,8 +17,8 @@ use crate::provider::{
 
 use super::client::GoogleCalendarClient;
 use super::config::GoogleConfig;
-use super::oauth::OAuthClient;
-use super::tokens::TokenStorage;
+use super::oauth::{AuthorizeOptions, OAuthClient};
+use super::tokens::{TokenBackend, TokenInfo, TokenStorage};
 
 /// Google Calendar provider.
 ///
@@ -44,7 +44,12 @@ impl GoogleProvider {
         config.validate().map_err(ProviderError::configuration)?;
 
         let display_name = config.provider_name();
-        let token_storage = TokenStorage::new(&config.token_path);
+        let token_storage = match config.token_backend {
+            TokenBackend::File => TokenStorage::new(&config.token_path),
+            TokenBackend::Keyring => {
+                TokenStorage::new_keyring(&config.account_name, &config.token_path)
+            }
+        };
         let _ = token_storage.load();
 
         let oauth_client = OAuthClient::new(config.credentials.clone(), config.timeout);
@@ -74,16 +79,26 @@ impl GoogleProvider {
         })
     }
 
-    /// Initiates the OAuth authentication flow.
+    /// Initiates the OAuth authentication flow with default options.
     ///
     /// This opens the user's browser to Google's consent page.
     /// After authorization, tokens are stored for future use.
     pub async fn authenticate(&self) -> ProviderResult<()> {
+        self.authenticate_with_options(AuthorizeOptions::default())
+            .await
+    }
+
+    /// Initiates the OAuth authentication flow with explicit options.
+    pub async fn authenticate_with_options(&self, options: AuthorizeOptions) -> ProviderResult<()> {
         info!("starting Google authentication flow");
 
         let tokens = self
             .oauth_client
-            .authorize(&self.config.scopes, self.config.loopback_port_range)
+            .authorize_with_options(
+                &self.config.scopes,
+                self.config.loopback_port_range,
+                options,
+            )
             .await?;
 
         // Store the tokens
@@ -94,6 +109,40 @@ impl GoogleProvider {
         *self.api_client.write().await = Some(client);
 
         info!("authentication successful");
+        Ok(())
+    }
+
+    /// Returns a snapshot of the stored token information, if any.
+    pub fn token_info(&self) -> Option<TokenInfo> {
+        self.token_storage.get()
+    }
+
+    /// Returns the token storage path.
+    pub fn token_path(&self) -> &std::path::Path {
+        self.token_storage.path()
+    }
+
+    /// Returns the token storage backend.
+    pub fn token_backend(&self) -> TokenBackend {
+        self.token_storage.backend()
+    }
+
+    /// Returns the configured OAuth scopes.
+    pub fn configured_scopes(&self) -> &[String] {
+        &self.config.scopes
+    }
+
+    /// Clears stored tokens, optionally revoking them with Google first.
+    pub async fn logout(&self, revoke: bool) -> ProviderResult<()> {
+        if revoke && let Some(tokens) = self.token_storage.get() {
+            let token = tokens
+                .refresh_token
+                .clone()
+                .unwrap_or_else(|| tokens.access_token.clone());
+            self.oauth_client.revoke_token(&token).await?;
+        }
+        self.token_storage.clear()?;
+        *self.api_client.write().await = None;
         Ok(())
     }
 
@@ -121,6 +170,10 @@ impl GoogleProvider {
 
     /// Ensures we have valid authentication, refreshing if needed.
     async fn ensure_authenticated(&self) -> ProviderResult<()> {
+        // Re-read token storage first: the user may have re-authenticated
+        // via the CLI while this (daemon) process was running.
+        let _ = self.token_storage.load();
+
         let tokens = self.token_storage.get().ok_or_else(|| {
             ProviderError::authentication("not authenticated - run 'nextmeeting auth google'")
         })?;

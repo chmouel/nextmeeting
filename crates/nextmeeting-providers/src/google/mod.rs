@@ -51,7 +51,7 @@ mod provider;
 mod tokens;
 
 pub use client::CalendarListEntry;
-pub use config::{GoogleConfig, OAuthCredentials};
-pub use oauth::{OAuthClient, PkceFlow};
+pub use config::{GoogleConfig, OAuthClientType, OAuthCredentials};
+pub use oauth::{AuthorizeOptions, OAuthClient, PkceFlow};
 pub use provider::GoogleProvider;
-pub use tokens::{TokenInfo, TokenStorage};
+pub use tokens::{TokenBackend, TokenInfo, TokenStorage};

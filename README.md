@@ -38,13 +38,16 @@ cargo run -p nextmeeting-gtk4 --bin nextmeeting-gtk
 
 ### Google Calendar
 
+The interactive wizard walks you through the whole setup:
+
 ```sh
 nextmeeting auth google --guide
 ```
 
 The easiest Google path is:
 
-1. Create a Google OAuth client of type `Desktop app`.
+1. Create a Google OAuth client of type `Desktop app` (a `Web
+   application` client will fail with `redirect_uri_mismatch`).
 2. Download the credentials JSON file.
 3. Run:
 
@@ -52,6 +55,30 @@ The easiest Google path is:
 nextmeeting auth google --account work \
   --credentials-file /path/to/client_secret_<id>.json
 ```
+
+By default nextmeeting requests read/write access to events
+(`calendar.events`) so actions such as decline and delete work out of
+the box, plus `calendar.readonly` to list calendars. Pass `--read-only`
+(or set `read_only = true` on the account) to request read-only access
+instead.
+
+Useful authentication commands:
+
+```sh
+nextmeeting auth status                   # inspect all accounts and tokens
+nextmeeting auth logout --account work    # clear stored tokens
+nextmeeting auth logout --revoke          # also revoke them with Google
+nextmeeting auth google --no-browser      # headless/SSH flow: paste the
+                                          # redirect URL back into the terminal
+```
+
+If you re-authenticate whilst the daemon is running, it is notified
+automatically and refreshes with the new tokens.
+
+Tokens are stored in `~/.local/share/nextmeeting/` with `0600`
+permissions by default. To keep them in the desktop keyring instead
+(via the freedesktop Secret Service; requires `secret-tool` from
+libsecret), set `token_storage = "keyring"` on the account.
 
 ### CalDAV
 

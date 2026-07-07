@@ -237,7 +237,7 @@ impl EventCache {
             .collect();
 
         // Sort by start time
-        meetings.sort_by(|a, b| a.start_local.cmp(&b.start_local));
+        meetings.sort_by_key(|a| a.start_local);
         meetings
     }
 

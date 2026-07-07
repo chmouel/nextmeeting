@@ -1,11 +1,14 @@
 //! Authentication commands.
 
+use std::io::Write as _;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use tracing::info;
 
 use crate::config::ClientConfig;
 use crate::error::ClientResult;
+use crate::socket::SocketClient;
 
 use nextmeeting_providers::CalendarProvider;
 
@@ -13,9 +16,16 @@ use nextmeeting_providers::CalendarProvider;
 pub fn print_google_setup_guide() {
     println!("Google Calendar setup guide");
     println!();
-    println!("1. Open Google Cloud Console and create or select a project.");
-    println!("2. Enable the Google Calendar API for that project.");
-    println!("3. Create an OAuth client ID of type 'Desktop app'.");
+    println!("1. Open Google Cloud Console and create or select a project:");
+    println!("   https://console.cloud.google.com/projectcreate");
+    println!("2. Enable the Google Calendar API for that project:");
+    println!("   https://console.cloud.google.com/apis/library/calendar-json.googleapis.com");
+    println!("3. Create an OAuth client ID of type 'Desktop app':");
+    println!("   https://console.cloud.google.com/apis/credentials/oauthclient");
+    println!();
+    println!("   Important: the client type MUST be 'Desktop app'. A 'Web");
+    println!("   application' client will fail with 'redirect_uri_mismatch'.");
+    println!();
     println!("4. Download the OAuth credentials JSON file.");
     println!("5. Run one of these commands:");
     println!();
@@ -33,6 +43,149 @@ pub fn print_google_setup_guide() {
     println!("After authentication, run `nextmeeting` to show your next meeting.");
 }
 
+/// Runs the interactive Google setup wizard.
+///
+/// Falls back to the static guide when not attached to a terminal.
+pub async fn google_guide(config: &ClientConfig) -> ClientResult<()> {
+    use std::io::IsTerminal as _;
+
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        print_google_setup_guide();
+        return Ok(());
+    }
+
+    println!("Welcome to the Google Calendar setup wizard.");
+    println!();
+    println!("nextmeeting needs an OAuth client of type 'Desktop app' from your");
+    println!("own Google Cloud project (Google requires this for API access).");
+    println!();
+    println!("Step 1 of 3 - Create the OAuth client");
+    println!();
+    println!("  a. Create or select a project:");
+    println!("     https://console.cloud.google.com/projectcreate");
+    println!("  b. Enable the Google Calendar API:");
+    println!("     https://console.cloud.google.com/apis/library/calendar-json.googleapis.com");
+    println!("  c. Create an OAuth client ID of type 'Desktop app' and");
+    println!("     download the credentials JSON file:");
+    println!("     https://console.cloud.google.com/apis/credentials/oauthclient");
+    println!();
+
+    if prompt_yes_no("Open the Google Cloud Console in your browser now?", true) {
+        let _ = open::that("https://console.cloud.google.com/apis/credentials/oauthclient");
+    }
+
+    println!();
+    println!("Step 2 of 3 - Credentials file");
+    println!();
+
+    let credentials_file = loop {
+        let answer = prompt_line("Path to the downloaded credentials JSON file: ")?;
+        if answer.is_empty() {
+            println!("A credentials file is required to continue (Ctrl-C to abort).");
+            continue;
+        }
+        let path = PathBuf::from(shellexpand_tilde(&answer));
+        match nextmeeting_providers::google::OAuthCredentials::from_file(&path) {
+            Ok(creds) => {
+                if creds.client_type == nextmeeting_providers::google::OAuthClientType::Web {
+                    println!();
+                    println!("Warning: this is a 'Web application' client. Google will very");
+                    println!("likely reject the sign-in with 'redirect_uri_mismatch'. Please");
+                    println!("create a 'Desktop app' client instead.");
+                    if !prompt_yes_no("Continue with this file anyway?", false) {
+                        continue;
+                    }
+                }
+                break path;
+            }
+            Err(e) => {
+                println!("Could not use {}: {}", path.display(), e);
+            }
+        }
+    };
+
+    println!();
+    println!("Step 3 of 3 - Account name");
+    println!();
+    let account = {
+        let answer = prompt_line("Account name [default]: ")?;
+        if answer.is_empty() {
+            "default".to_string()
+        } else {
+            answer
+        }
+    };
+
+    println!();
+    google(
+        GoogleAuthRequest {
+            account: Some(account),
+            credentials_file: Some(credentials_file),
+            ..Default::default()
+        },
+        config,
+    )
+    .await
+}
+
+/// Prompts for a line of input.
+fn prompt_line(prompt: &str) -> ClientResult<String> {
+    print!("{}", prompt);
+    std::io::stdout().flush().ok();
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .map_err(crate::error::ClientError::Io)?;
+    Ok(line.trim().to_string())
+}
+
+/// Prompts for a yes/no answer.
+fn prompt_yes_no(prompt: &str, default: bool) -> bool {
+    let hint = if default { "[Y/n]" } else { "[y/N]" };
+    loop {
+        match prompt_line(&format!("{} {} ", prompt, hint)) {
+            Ok(answer) => match answer.to_lowercase().as_str() {
+                "" => return default,
+                "y" | "yes" => return true,
+                "n" | "no" => return false,
+                _ => continue,
+            },
+            Err(_) => return default,
+        }
+    }
+}
+
+/// Expands a leading `~/` to the home directory.
+fn shellexpand_tilde(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest).to_string_lossy().into_owned();
+    }
+    path.to_string()
+}
+
+/// Parameters for the Google authentication flow.
+#[derive(Debug, Default)]
+pub struct GoogleAuthRequest {
+    /// Account name to authenticate.
+    pub account: Option<String>,
+    /// OAuth client ID.
+    pub client_id: Option<String>,
+    /// OAuth client secret.
+    pub client_secret: Option<String>,
+    /// Path to the downloaded OAuth credentials JSON file.
+    pub credentials_file: Option<PathBuf>,
+    /// Google Workspace domain.
+    pub domain: Option<String>,
+    /// Force re-authentication and the consent screen.
+    pub force: bool,
+    /// Do not open a browser (headless/SSH flow).
+    pub no_browser: bool,
+    /// Request read-only access.
+    pub read_only: bool,
+}
+
 /// Run the Google authentication flow.
 ///
 /// Resolves credentials from CLI flags, a `--credentials-file`, or
@@ -40,33 +193,36 @@ pub fn print_google_setup_guide() {
 ///
 /// When credentials are provided via CLI or `--credentials-file`, they are
 /// persisted to `config.toml` so the server can find them.
-pub async fn google(
-    account: Option<String>,
-    client_id: Option<String>,
-    client_secret: Option<String>,
-    credentials_file: Option<PathBuf>,
-    domain: Option<String>,
-    force: bool,
-    config: &ClientConfig,
-) -> ClientResult<()> {
-    use nextmeeting_providers::google::{GoogleConfig, GoogleProvider, OAuthCredentials};
+pub async fn google(request: GoogleAuthRequest, config: &ClientConfig) -> ClientResult<()> {
+    use nextmeeting_providers::google::{
+        AuthorizeOptions, GoogleConfig, GoogleProvider, OAuthClientType, OAuthCredentials,
+    };
 
     // Resolve the target account
     let resolved = resolve_target_account(
-        account.as_deref(),
-        client_id,
-        client_secret,
-        credentials_file,
-        domain,
+        request.account.as_deref(),
+        request.client_id,
+        request.client_secret,
+        request.credentials_file,
+        request.domain,
         config,
     )?;
 
     // Build provider configuration
-    let credentials =
+    let mut credentials =
         OAuthCredentials::new(&resolved.final_client_id, &resolved.final_client_secret);
+    credentials.client_type = resolved.client_type;
     credentials.validate().map_err(|e| {
         crate::error::ClientError::Config(format!("invalid Google credentials: {}", e))
     })?;
+
+    if credentials.client_type == OAuthClientType::Web {
+        eprintln!("Warning: your credentials belong to a 'Web application' OAuth client.");
+        eprintln!("Google only allows the loopback sign-in flow for 'Desktop app' clients;");
+        eprintln!("expect 'Error 400: redirect_uri_mismatch' in the browser. Create a");
+        eprintln!("'Desktop app' client instead (see `nextmeeting auth google --guide`).");
+        eprintln!();
+    }
 
     let mut google_config =
         GoogleConfig::new(credentials).with_account_name(&resolved.account_name);
@@ -80,18 +236,38 @@ pub async fn google(
         google_config = google_config.with_token_path(path);
     }
 
+    if let Some(backend) = resolved.token_backend {
+        google_config = google_config.with_token_backend(backend);
+    }
+
+    // Scope selection: CLI --read-only wins, then per-account config
+    if request.read_only {
+        google_config = google_config.with_scopes(GoogleConfig::readonly_scopes());
+    } else if let Some(ref scopes) = resolved.scopes {
+        google_config = google_config.with_scopes(scopes.clone());
+    }
+
     // Create the provider
     let provider = GoogleProvider::new(google_config)?;
 
-    // Check if already authenticated
-    if provider.is_authenticated() && !force {
-        save_credentials_to_config(&resolved);
-        println!(
-            "Already authenticated with Google Calendar (account: {}).",
-            resolved.account_name
-        );
-        println!("Use --force to re-authenticate.");
-        return Ok(());
+    // Check if already authenticated (with sufficient scopes)
+    if provider.is_authenticated() && !request.force {
+        if provider.needs_reauth() {
+            println!(
+                "Stored tokens for account '{}' do not cover the required permissions",
+                resolved.account_name
+            );
+            println!("(e.g. event actions such as decline and delete). Re-authenticating...");
+            println!();
+        } else {
+            save_credentials_to_config(&resolved);
+            println!(
+                "Already authenticated with Google Calendar (account: {}).",
+                resolved.account_name
+            );
+            println!("Use --force to re-authenticate.");
+            return Ok(());
+        }
     }
 
     // Perform authentication
@@ -100,11 +276,13 @@ pub async fn google(
         resolved.account_name
     );
     println!();
-    println!("A browser window will open for you to authorize access.");
-    println!("If the browser doesn't open, check the terminal for a URL to copy.");
-    println!();
 
-    provider.authenticate().await?;
+    provider
+        .authenticate_with_options(AuthorizeOptions {
+            force_consent: request.force,
+            open_browser: !request.no_browser,
+        })
+        .await?;
 
     // Save credentials to config.toml so the server can find them
     save_credentials_to_config(&resolved);
@@ -113,10 +291,42 @@ pub async fn google(
     println!();
     println!("Authentication successful!");
     println!("Your Google Calendar tokens have been saved.");
+
+    // Nudge a running daemon so it picks up the new tokens immediately
+    notify_daemon(config).await;
+
     println!();
     println!("You can now use nextmeeting to fetch your calendar events.");
 
     Ok(())
+}
+
+/// Asks a running daemon to refresh so it reloads tokens from storage.
+///
+/// Best-effort: failures are logged but never fail the auth flow.
+async fn notify_daemon(config: &ClientConfig) {
+    let socket_path = config
+        .server
+        .socket_path
+        .clone()
+        .unwrap_or_else(nextmeeting_server::default_socket_path);
+    let client = SocketClient::new(socket_path, Duration::from_secs(2));
+
+    if !client.socket_exists() {
+        return;
+    }
+
+    match client
+        .send(nextmeeting_protocol::Request::refresh(true))
+        .await
+    {
+        Ok(_) => {
+            println!("Running daemon notified; calendars will refresh shortly.");
+        }
+        Err(e) => {
+            info!("could not notify daemon: {}", e);
+        }
+    }
 }
 
 /// Where the credentials were resolved from.
@@ -136,6 +346,9 @@ struct ResolvedAccount {
     final_client_secret: String,
     final_domain: Option<String>,
     token_path: Option<PathBuf>,
+    token_backend: Option<nextmeeting_providers::google::TokenBackend>,
+    scopes: Option<Vec<String>>,
+    client_type: nextmeeting_providers::google::OAuthClientType,
     source: CredentialSource,
     persistence: Option<CredentialPersistence>,
 }
@@ -157,6 +370,7 @@ enum CredentialPersistence {
 struct ResolvedCliCredentials {
     client_id: String,
     client_secret: String,
+    client_type: nextmeeting_providers::google::OAuthClientType,
     persistence: CredentialPersistence,
 }
 
@@ -184,12 +398,21 @@ fn resolve_target_account(
         let resolved_cli =
             resolve_cli_credentials(cli_client_id, cli_client_secret, cli_credentials_file)?;
 
+        // If the account also exists in config, honour its storage settings
+        let existing = config
+            .google
+            .as_ref()
+            .and_then(|g| g.accounts.iter().find(|a| a.name == account_name));
+
         return Ok(ResolvedAccount {
             account_name: account_name.to_string(),
             final_client_id: resolved_cli.client_id,
             final_client_secret: resolved_cli.client_secret,
             final_domain: cli_domain,
-            token_path: None,
+            token_path: existing.and_then(|a| a.token_path.clone()),
+            token_backend: existing.and_then(parse_token_backend),
+            scopes: existing.and_then(account_scopes),
+            client_type: resolved_cli.client_type,
             source: CredentialSource::Cli,
             persistence: Some(resolved_cli.persistence),
         });
@@ -274,9 +497,33 @@ fn resolve_target_account(
         final_client_secret: creds.client_secret,
         final_domain,
         token_path: target_account.token_path.clone(),
+        token_backend: parse_token_backend(target_account),
+        scopes: account_scopes(target_account),
+        client_type: creds.client_type,
         source: CredentialSource::Config,
         persistence: None,
     })
+}
+
+/// Parses the token backend from an account's settings, if valid.
+fn parse_token_backend(
+    account: &crate::config::GoogleAccountSettings,
+) -> Option<nextmeeting_providers::google::TokenBackend> {
+    account
+        .token_storage
+        .as_deref()
+        .and_then(|s| nextmeeting_providers::google::TokenBackend::parse(s).ok())
+}
+
+/// Returns the effective scopes for an account, if customised.
+fn account_scopes(account: &crate::config::GoogleAccountSettings) -> Option<Vec<String>> {
+    if let Some(ref scopes) = account.scopes {
+        Some(scopes.clone())
+    } else if account.read_only {
+        Some(nextmeeting_providers::google::GoogleConfig::readonly_scopes())
+    } else {
+        None
+    }
 }
 
 /// Resolves credentials from CLI flags (--client-id/--client-secret or --credentials-file).
@@ -292,6 +539,7 @@ fn resolve_cli_credentials(
         return Ok(ResolvedCliCredentials {
             client_id: id.clone(),
             client_secret: secret.clone(),
+            client_type: nextmeeting_providers::google::OAuthClientType::Unknown,
             persistence: CredentialPersistence::Inline {
                 client_id: id.clone(),
                 client_secret: secret.clone(),
@@ -311,6 +559,7 @@ fn resolve_cli_credentials(
         return Ok(ResolvedCliCredentials {
             client_id: creds.client_id,
             client_secret: creds.client_secret,
+            client_type: creds.client_type,
             persistence: CredentialPersistence::CredentialsFile(path.clone()),
         });
     }
@@ -326,6 +575,203 @@ fn resolve_cli_credentials(
     Err(crate::error::ClientError::Config(
         "no credentials provided".to_string(),
     ))
+}
+
+/// Shows authentication status for all configured accounts.
+pub async fn status(config: &ClientConfig) -> ClientResult<()> {
+    let mut any = false;
+
+    #[cfg(feature = "google")]
+    {
+        use nextmeeting_providers::google::GoogleProvider;
+
+        let accounts = config
+            .google
+            .as_ref()
+            .map(|g| &g.accounts[..])
+            .unwrap_or(&[]);
+
+        for account in accounts {
+            any = true;
+            println!("google:{}", account.name);
+
+            let provider_config = match account.to_provider_config() {
+                Ok(c) => c,
+                Err(e) => {
+                    println!("  credentials:  error ({})", e);
+                    println!();
+                    continue;
+                }
+            };
+
+            let provider = match GoogleProvider::new(provider_config) {
+                Ok(p) => p,
+                Err(e) => {
+                    println!("  provider:     error ({})", e);
+                    println!();
+                    continue;
+                }
+            };
+
+            let source = if let Some(ref file) = account.credentials_file {
+                format!("credentials file ({})", file.display())
+            } else {
+                "inline client_id/client_secret".to_string()
+            };
+            println!("  credentials:  {}", source);
+            println!(
+                "  tokens:       {} ({})",
+                provider.token_backend().as_str(),
+                provider.token_path().display()
+            );
+
+            match provider.token_info() {
+                Some(tokens) => {
+                    let expiry = match tokens.time_until_expiry() {
+                        Some(d) if d.num_seconds() > 0 => {
+                            format!("expires in {} min", d.num_minutes().max(1))
+                        }
+                        Some(_) => "expired".to_string(),
+                        None => "no expiry".to_string(),
+                    };
+                    let refresh = if tokens.refresh_token.is_some() {
+                        "refresh token present"
+                    } else {
+                        "no refresh token"
+                    };
+                    println!("  access token: {} ({})", expiry, refresh);
+                    println!("  scopes:       {}", tokens.scopes.join(" "));
+
+                    if provider.needs_reauth() {
+                        println!(
+                            "  status:       re-authentication needed (required scopes: {})",
+                            provider.configured_scopes().join(" ")
+                        );
+                        println!(
+                            "                run: nextmeeting auth google --account {}",
+                            account.name
+                        );
+                    } else if provider.is_authenticated() {
+                        println!("  status:       authenticated");
+                    } else {
+                        println!(
+                            "  status:       not authenticated - run: nextmeeting auth google --account {}",
+                            account.name
+                        );
+                    }
+                }
+                None => {
+                    println!(
+                        "  status:       not authenticated - run: nextmeeting auth google --account {}",
+                        account.name
+                    );
+                }
+            }
+            println!();
+        }
+    }
+
+    #[cfg(feature = "caldav")]
+    {
+        if let Some(ref caldav) = config.caldav {
+            any = true;
+            println!("caldav");
+            println!(
+                "  url:          {}",
+                caldav.url.as_deref().unwrap_or("(not set)")
+            );
+            println!("  status:       configured (credentials checked at fetch time)");
+            println!();
+        }
+    }
+
+    if !any {
+        println!("No calendar accounts configured.");
+        println!("Run `nextmeeting auth google --guide` to set up Google Calendar.");
+    }
+
+    Ok(())
+}
+
+/// Clears (and optionally revokes) stored tokens for a Google account.
+pub async fn logout(
+    account: Option<String>,
+    revoke: bool,
+    config: &ClientConfig,
+) -> ClientResult<()> {
+    #[cfg(feature = "google")]
+    {
+        use nextmeeting_providers::google::GoogleProvider;
+
+        let accounts = config
+            .google
+            .as_ref()
+            .map(|g| &g.accounts[..])
+            .unwrap_or(&[]);
+
+        let target = match account.as_deref() {
+            Some(name) => accounts.iter().find(|a| a.name == name).ok_or_else(|| {
+                let available: Vec<&str> = accounts.iter().map(|a| a.name.as_str()).collect();
+                crate::error::ClientError::Config(if available.is_empty() {
+                    "no Google accounts configured".to_string()
+                } else {
+                    format!(
+                        "account '{}' not found. Available accounts: {}",
+                        name,
+                        available.join(", ")
+                    )
+                })
+            })?,
+            None => match accounts.len() {
+                0 => {
+                    return Err(crate::error::ClientError::Config(
+                        "no Google accounts configured".to_string(),
+                    ));
+                }
+                1 => &accounts[0],
+                _ => {
+                    let names: Vec<&str> = accounts.iter().map(|a| a.name.as_str()).collect();
+                    return Err(crate::error::ClientError::Config(format!(
+                        "multiple Google accounts configured. Use --account to specify which one: {}",
+                        names.join(", ")
+                    )));
+                }
+            },
+        };
+
+        let provider_config = target.to_provider_config().map_err(|e| {
+            crate::error::ClientError::Config(format!(
+                "invalid configuration for account '{}': {}",
+                target.name, e
+            ))
+        })?;
+        let provider = GoogleProvider::new(provider_config)?;
+
+        if provider.token_info().is_none() {
+            println!("No stored tokens for account '{}'.", target.name);
+            return Ok(());
+        }
+
+        provider.logout(revoke).await?;
+
+        if revoke {
+            println!(
+                "Tokens for account '{}' revoked with Google and cleared.",
+                target.name
+            );
+        } else {
+            println!("Tokens for account '{}' cleared.", target.name);
+        }
+        Ok(())
+    }
+
+    #[cfg(not(feature = "google"))]
+    {
+        let _ = (account, revoke, config);
+        Err(crate::error::ClientError::Config(
+            "Google support is not enabled in this build".to_string(),
+        ))
+    }
 }
 
 /// Saves credentials to `config.toml` under `[[google.accounts]]`.
@@ -462,6 +908,9 @@ mod tests {
             domain: None,
             calendar_ids: vec!["primary".to_string()],
             token_path: None,
+            token_storage: None,
+            read_only: false,
+            scopes: None,
         }
     }
 
@@ -651,6 +1100,47 @@ mod tests {
     }
 
     #[test]
+    fn resolve_cli_credentials_inherit_config_storage_settings() {
+        // CLI re-auth for an account already in config keeps its storage settings
+        let mut account = test_account("work");
+        account.token_storage = Some("keyring".to_string());
+        account.read_only = true;
+        let config = config_with_accounts(vec![account]);
+
+        let result = resolve_target_account(
+            Some("work"),
+            Some("new-id.apps.googleusercontent.com".to_string()),
+            Some("new-secret".to_string()),
+            None,
+            None,
+            &config,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.token_backend,
+            Some(nextmeeting_providers::google::TokenBackend::Keyring)
+        );
+        assert_eq!(
+            result.scopes,
+            Some(nextmeeting_providers::google::GoogleConfig::readonly_scopes())
+        );
+    }
+
+    #[test]
+    fn resolve_from_config_carries_scope_settings() {
+        let mut account = test_account("work");
+        account.scopes = Some(vec!["https://www.googleapis.com/auth/calendar".to_string()]);
+        let config = config_with_accounts(vec![account]);
+
+        let result = resolve_target_account(None, None, None, None, None, &config).unwrap();
+        assert_eq!(
+            result.scopes,
+            Some(vec!["https://www.googleapis.com/auth/calendar".to_string()])
+        );
+    }
+
+    #[test]
     fn save_credentials_skips_when_source_is_config() {
         let resolved = ResolvedAccount {
             account_name: "test".to_string(),
@@ -658,6 +1148,9 @@ mod tests {
             final_client_secret: "secret".to_string(),
             final_domain: None,
             token_path: None,
+            token_backend: None,
+            scopes: None,
+            client_type: nextmeeting_providers::google::OAuthClientType::Unknown,
             source: CredentialSource::Config,
             persistence: None,
         };

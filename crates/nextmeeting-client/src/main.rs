@@ -80,22 +80,31 @@ async fn run(cli: Cli, config: ClientConfig) -> ClientResult<()> {
                 credentials_file,
                 domain,
                 force,
+                no_browser,
+                read_only,
             } => {
                 if guide {
-                    nextmeeting_client::commands::auth::print_google_setup_guide();
-                    return Ok(());
+                    return nextmeeting_client::commands::auth::google_guide(&config).await;
                 }
 
                 nextmeeting_client::commands::auth::google(
-                    account,
-                    client_id,
-                    client_secret,
-                    credentials_file,
-                    domain,
-                    force,
+                    nextmeeting_client::commands::auth::GoogleAuthRequest {
+                        account,
+                        client_id,
+                        client_secret,
+                        credentials_file,
+                        domain,
+                        force,
+                        no_browser,
+                        read_only,
+                    },
                     &config,
                 )
                 .await
+            }
+            AuthProvider::Status => nextmeeting_client::commands::auth::status(&config).await,
+            AuthProvider::Logout { account, revoke } => {
+                nextmeeting_client::commands::auth::logout(account, revoke, &config).await
             }
         },
         Some(Command::Config { action }) => match action {

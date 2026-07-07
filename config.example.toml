@@ -14,6 +14,9 @@ credentials_file = "/path/to/client_secret_<id>.json"
 # domain = "example.com"              # Google Workspace domain (per-account)
 calendar_ids = ["primary"]
 # token_path = "~/.config/nextmeeting/google-tokens-work.json"
+# token_storage = "keyring"           # "file" (default) or "keyring" (secret-tool)
+# read_only = true                    # request read-only access (no decline/delete)
+# scopes = ["https://www.googleapis.com/auth/calendar"]  # advanced: explicit scopes
 
 # Add more accounts as needed:
 # [[google.accounts]]
