@@ -72,7 +72,8 @@ pub fn normalize_event(raw: &RawEvent) -> NormalizedEvent {
             .with_links(links)
             .with_user_response_status(user_response_status)
             .with_other_attendee_count(other_attendee_count)
-            .with_attendees(attendees);
+            .with_attendees(attendees)
+            .with_reminder_minutes(raw.reminder_minutes.clone());
 
     // Set optional fields
     if let Some(ref tz) = raw.timezone {
@@ -322,6 +323,24 @@ mod tests {
                 Some("https://calendar.google.com/event/123".to_string())
             );
             assert!(normalized.is_recurring_instance);
+        }
+
+        #[test]
+        fn normalizes_reminder_minutes() {
+            let raw = sample_raw_event().with_reminder_minutes(vec![10, 2]);
+
+            let normalized = normalize_event(&raw);
+
+            assert_eq!(normalized.reminder_minutes, Some(vec![10, 2]));
+        }
+
+        #[test]
+        fn normalizes_missing_reminder_minutes_as_none() {
+            let raw = sample_raw_event();
+
+            let normalized = normalize_event(&raw);
+
+            assert_eq!(normalized.reminder_minutes, None);
         }
 
         #[test]

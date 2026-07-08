@@ -193,6 +193,11 @@ Credential resolution supports:
   - `auth status` / `auth logout [--revoke]` subcommands; a running
     daemon is nudged to reload tokens after re-authentication.
   - multi-account configuration.
+  - per-event popup reminder minutes are read from the event's `reminders`
+    field (explicit `overrides`, or the calendar's `defaultReminders` when
+    `useDefault` is set); resolved calendar defaults are cached per calendar
+    ID with a 1-hour TTL (`GoogleProvider::reminder_defaults_cache`) to
+    avoid an extra `calendarList.list` call on every sync.
 - CalDAV provider:
   - calendar discovery.
   - digest auth support path in provider stack.
@@ -231,9 +236,15 @@ Credential resolution supports:
 
 ### Notifications
 
-- Configurable pre-meeting reminders (`minutes_before` list).
+- Configurable pre-meeting reminders (`minutes_before` list) act as the
+  fallback when a per-event reminder can't be resolved.
+- For Google Calendar events, `NormalizedEvent`/`MeetingView` carry a
+  resolved `reminder_minutes: Option<Vec<u32>>` (popup-only minutes, from
+  the event's own overrides or the calendar's default reminders); when
+  present and non-empty, `NotifyEngine::due_start_soon_thresholds` uses
+  these instead of the global `notify_minutes` config.
 - Dedicated notification ticker decoupled from calendar sync (`server.notify_tick_secs`, default 30 s), woken immediately after each sync.
-- Start-soon thresholds (e.g. `[15, 5, 1]`) have nesting windows; if a check is delayed and finds several thresholds due at once, only one notification is sent per meeting, labelled with the actual remaining time rather than the stale configured number.
+- Start-soon thresholds (e.g. `[15, 5, 1]`, or an event's own reminder minutes) have nesting windows; if a check is delayed and finds several thresholds due at once, only one notification is sent per meeting, labelled with the actual remaining time rather than the stale configured number.
 - Deduplication based on notification hash, with time-based eviction so in-window alerts are never re-sent.
 - Snooze via command/protocol; expired snoozes are pruned automatically.
 - Optional morning agenda notification time.

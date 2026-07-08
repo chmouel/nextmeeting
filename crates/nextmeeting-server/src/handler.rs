@@ -676,6 +676,7 @@ mod tests {
             location: None,
             description: None,
             attendees: vec![],
+            reminder_minutes: None,
         }
     }
 
@@ -822,6 +823,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -840,6 +842,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "3".to_string(),
@@ -858,6 +861,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
         ];
 
@@ -915,6 +919,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "timed".to_string(),
@@ -933,6 +938,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
         ]);
 
@@ -969,6 +975,7 @@ mod tests {
             location: None,
             description: None,
             attendees: vec![],
+            reminder_minutes: None,
         }]);
 
         let filter = MeetingsFilter::new().today_only(true);
@@ -1119,6 +1126,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -1137,6 +1145,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
         ];
 
@@ -1177,6 +1186,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -1195,6 +1205,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
         ];
 
@@ -1227,6 +1238,7 @@ mod tests {
             location: None,
             description: None,
             attendees: vec![],
+            reminder_minutes: None,
         }];
 
         let mut state = ServerState::new();
@@ -1261,6 +1273,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "2".to_string(),
@@ -1279,6 +1292,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
             MeetingView {
                 id: "3".to_string(),
@@ -1297,6 +1311,7 @@ mod tests {
                 location: None,
                 description: None,
                 attendees: vec![],
+                reminder_minutes: None,
             },
         ];
 

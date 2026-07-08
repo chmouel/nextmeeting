@@ -196,6 +196,18 @@ pub struct RawEvent {
     /// This allows preserving data that doesn't map to standard fields.
     #[serde(default)]
     pub extra: std::collections::HashMap<String, String>,
+
+    /// Popup reminder minutes-before-start, resolved from the event's own
+    /// `reminders` field (explicit overrides) or the calendar's default
+    /// reminders (when the event uses `useDefault`).
+    ///
+    /// `None` means no event- or calendar-specific popup reminders could be
+    /// resolved (including when reminders are explicitly disabled for the
+    /// event); callers should fall back to their own default notification
+    /// timing configuration in that case. `Some(minutes)` (non-empty) means
+    /// these minutes should take priority over the fallback configuration.
+    #[serde(default)]
+    pub reminder_minutes: Option<Vec<u32>>,
 }
 
 impl RawEvent {
@@ -229,6 +241,7 @@ impl RawEvent {
             updated: None,
             etag: None,
             extra: std::collections::HashMap::new(),
+            reminder_minutes: None,
         }
     }
 
@@ -299,6 +312,12 @@ impl RawEvent {
     /// Builder method to add an attendee.
     pub fn with_attendee(mut self, attendee: RawAttendee) -> Self {
         self.attendees.push(attendee);
+        self
+    }
+
+    /// Builder method to set the resolved popup reminder minutes.
+    pub fn with_reminder_minutes(mut self, minutes: Vec<u32>) -> Self {
+        self.reminder_minutes = Some(minutes);
         self
     }
 

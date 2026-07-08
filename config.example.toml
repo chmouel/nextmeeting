@@ -68,7 +68,8 @@ skip_pending = false             # Skip events where you haven't responded
 skip_without_guests = false      # Skip events without other attendees (solo events)
 
 [notifications]
-minutes_before = [5, 1] # Minutes before to notify
+minutes_before = [5, 1] # Fallback minutes before to notify when an event has no
+                        # usable Google Calendar reminders of its own (see below)
 # end_warning_minutes = 5 # If unset, no end-warning notification/class is emitted
 
 [server]

@@ -2,8 +2,9 @@
 //!
 //! This module implements the [`CalendarProvider`] trait for Google Calendar.
 
+use std::collections::HashMap;
 use std::sync::RwLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock as TokioRwLock;
@@ -20,6 +21,14 @@ use super::config::GoogleConfig;
 use super::oauth::{AuthorizeOptions, OAuthClient};
 use super::tokens::{TokenBackend, TokenInfo, TokenStorage};
 
+/// How long cached calendar default reminders remain valid before being
+/// refreshed from the `calendarList.list` endpoint.
+const REMINDER_DEFAULTS_CACHE_TTL: Duration = Duration::from_secs(3600);
+
+/// Cached calendar default popup reminder minutes, keyed by calendar ID,
+/// alongside the time they were fetched (for TTL expiry).
+type ReminderDefaultsCache = Option<(Instant, HashMap<String, Vec<u32>>)>;
+
 /// Google Calendar provider.
 ///
 /// This provider fetches events from Google Calendar using the Calendar API v3.
@@ -33,6 +42,9 @@ pub struct GoogleProvider {
     api_client: TokioRwLock<Option<GoogleCalendarClient>>,
     last_sync: RwLock<Option<DateTime<Utc>>>,
     last_etag: RwLock<Option<String>>,
+    /// Cache of each calendar's default popup reminder minutes, keyed by
+    /// calendar ID, refreshed on a TTL to avoid an extra API call per sync.
+    reminder_defaults_cache: TokioRwLock<ReminderDefaultsCache>,
 }
 
 impl GoogleProvider {
@@ -76,6 +88,7 @@ impl GoogleProvider {
             api_client: TokioRwLock::new(api_client),
             last_sync: RwLock::new(None),
             last_etag: RwLock::new(None),
+            reminder_defaults_cache: TokioRwLock::new(None),
         })
     }
 
@@ -252,6 +265,8 @@ impl GoogleProvider {
         for calendar_id in &calendar_ids {
             debug!("fetching events from calendar: {}", calendar_id);
 
+            let default_reminder_minutes = self.default_reminder_minutes_for(calendar_id).await;
+
             // Acquire read lock only for the API call, then release
             let (events, response_etag, not_modified) = {
                 let client = self.api_client.read().await;
@@ -267,6 +282,7 @@ impl GoogleProvider {
                         options.max_results,
                         options.expand_recurring,
                         etag.as_deref(),
+                        default_reminder_minutes.as_deref(),
                     )
                     .await?
             };
@@ -294,6 +310,57 @@ impl GoogleProvider {
         }
 
         Ok(result)
+    }
+
+    /// Returns the calendar's default popup reminder minutes, refreshing
+    /// the cache from `calendarList.list` if it is missing or stale.
+    ///
+    /// Returns `None` if the defaults couldn't be resolved (e.g. the API
+    /// call failed); callers should fall back to their own default
+    /// notification configuration in that case.
+    async fn default_reminder_minutes_for(&self, calendar_id: &str) -> Option<Vec<u32>> {
+        {
+            let cache = self.reminder_defaults_cache.read().await;
+            if let Some((fetched_at, map)) = cache.as_ref()
+                && fetched_at.elapsed() < REMINDER_DEFAULTS_CACHE_TTL
+            {
+                return map.get(calendar_id).cloned();
+            }
+        }
+
+        self.refresh_reminder_defaults_cache().await;
+
+        let cache = self.reminder_defaults_cache.read().await;
+        cache
+            .as_ref()
+            .and_then(|(_, map)| map.get(calendar_id).cloned())
+    }
+
+    /// Refreshes the calendar default-reminders cache via `calendarList.list`.
+    async fn refresh_reminder_defaults_cache(&self) {
+        if self.ensure_client().await.is_err() {
+            return;
+        }
+
+        let calendars = {
+            let client = self.api_client.read().await;
+            let Some(client) = client.as_ref() else {
+                return;
+            };
+            client.list_calendars().await
+        };
+
+        let Ok(calendars) = calendars else {
+            debug!("failed to refresh calendar default reminders cache");
+            return;
+        };
+
+        let map: HashMap<String, Vec<u32>> = calendars
+            .into_iter()
+            .map(|c| (c.id.clone(), c.default_popup_reminder_minutes()))
+            .collect();
+
+        *self.reminder_defaults_cache.write().await = Some((Instant::now(), map));
     }
 
     /// Lists available calendars.

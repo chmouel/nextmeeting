@@ -294,6 +294,7 @@ mod tests {
             location: None,
             description: None,
             attendees: vec![],
+            reminder_minutes: None,
         }
     }
 

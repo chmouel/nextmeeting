@@ -32,6 +32,7 @@ expression: output
             location: None,
             description: None,
             attendees: [],
+            reminder_minutes: None,
         },
     },
 ]

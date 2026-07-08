@@ -295,6 +295,11 @@ pub struct NormalizedEvent {
     /// Non-self, non-resource attendees.
     #[serde(default)]
     pub attendees: Vec<Attendee>,
+    /// Resolved popup reminder minutes-before-start for this event (from the
+    /// provider's own reminder settings), if any. `None` means the caller
+    /// should fall back to its own default notification timing.
+    #[serde(default)]
+    pub reminder_minutes: Option<Vec<u32>>,
 }
 
 impl NormalizedEvent {
@@ -321,6 +326,7 @@ impl NormalizedEvent {
             user_response_status: ResponseStatus::Unknown,
             other_attendee_count: 0,
             attendees: Vec::new(),
+            reminder_minutes: None,
         }
     }
 
@@ -432,6 +438,12 @@ impl NormalizedEvent {
         self.attendees = attendees;
         self
     }
+
+    /// Builder method to set resolved reminder minutes.
+    pub fn with_reminder_minutes(mut self, reminder_minutes: Option<Vec<u32>>) -> Self {
+        self.reminder_minutes = reminder_minutes;
+        self
+    }
 }
 
 /// A display-ready view of a meeting.
@@ -474,6 +486,11 @@ pub struct MeetingView {
     /// Non-self, non-resource attendees.
     #[serde(default)]
     pub attendees: Vec<Attendee>,
+    /// Resolved popup reminder minutes-before-start for this event (from the
+    /// provider's own reminder settings), if any. `None` means the caller
+    /// should fall back to its own default notification timing.
+    #[serde(default)]
+    pub reminder_minutes: Option<Vec<u32>>,
 }
 
 fn first_local_datetime_on_date<Tz: TimeZone>(tz: &Tz, date: NaiveDate) -> DateTime<Tz> {
@@ -547,6 +564,7 @@ impl MeetingView {
             location: event.raw_location.clone(),
             description: event.raw_description.clone(),
             attendees: event.attendees.clone(),
+            reminder_minutes: event.reminder_minutes.clone(),
         }
     }
 

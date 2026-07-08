@@ -54,10 +54,15 @@ impl GoogleCalendarClient {
     /// * `max_results` - Maximum number of events to return
     /// * `single_events` - Whether to expand recurring events
     /// * `etag` - Optional ETag for conditional fetch
+    /// * `default_reminder_minutes` - The calendar's default popup reminder
+    ///   minutes (from `calendarList.entry.defaultReminders`), used to
+    ///   resolve events whose `reminders.useDefault` is true and which have
+    ///   no explicit popup overrides of their own.
     ///
     /// # Returns
     ///
     /// Returns a tuple of (events, new_etag, not_modified).
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_events(
         &self,
         calendar_id: &str,
@@ -66,6 +71,7 @@ impl GoogleCalendarClient {
         max_results: Option<usize>,
         single_events: bool,
         etag: Option<&str>,
+        default_reminder_minutes: Option<&[u32]>,
     ) -> ProviderResult<(Vec<RawEvent>, Option<String>, bool)> {
         let mut all_events = Vec::new();
         let mut page_token: Option<String> = None;
@@ -96,7 +102,9 @@ impl GoogleCalendarClient {
 
             // Convert API events to RawEvents
             for event in result.items {
-                if let Some(raw_event) = self.convert_event(event, calendar_id) {
+                if let Some(raw_event) =
+                    self.convert_event(event, calendar_id, default_reminder_minutes)
+                {
                     all_events.push(raw_event);
                 }
             }
@@ -428,7 +436,16 @@ impl GoogleCalendarClient {
     }
 
     /// Converts a Google Calendar API event to a RawEvent.
-    fn convert_event(&self, event: ApiEvent, calendar_id: &str) -> Option<RawEvent> {
+    ///
+    /// `default_reminder_minutes` is the calendar's default popup reminder
+    /// minutes, used to resolve events whose `reminders.useDefault` is true
+    /// and which have no explicit popup overrides of their own.
+    fn convert_event(
+        &self,
+        event: ApiEvent,
+        calendar_id: &str,
+        default_reminder_minutes: Option<&[u32]>,
+    ) -> Option<RawEvent> {
         // Skip cancelled events
         if event.status.as_deref() == Some("cancelled") {
             return None;
@@ -539,9 +556,52 @@ impl GoogleCalendarClient {
         raw_event.attendees = attendees;
         raw_event.conference_data = conference_data;
         raw_event.etag = event.etag;
+        raw_event.reminder_minutes =
+            resolve_reminder_minutes(event.reminders, default_reminder_minutes);
 
         Some(raw_event)
     }
+}
+
+/// Resolves the effective popup reminder minutes for an event.
+///
+/// - Explicit popup overrides on the event always take priority.
+/// - If the event has `useDefault: true` and no popup overrides, the
+///   calendar's default popup reminders are used instead (if any).
+/// - Otherwise (e.g. reminders explicitly disabled, or nothing resolvable),
+///   returns `None` so callers fall back to their own default notification
+///   configuration.
+fn resolve_reminder_minutes(
+    reminders: Option<ApiReminders>,
+    default_reminder_minutes: Option<&[u32]>,
+) -> Option<Vec<u32>> {
+    let reminders = reminders?;
+
+    let mut popup_minutes: Vec<u32> = reminders
+        .overrides
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|o| o.method == "popup")
+        .map(|o| o.minutes)
+        .collect();
+
+    if !popup_minutes.is_empty() {
+        popup_minutes.sort_unstable();
+        popup_minutes.dedup();
+        return Some(popup_minutes);
+    }
+
+    if reminders.use_default
+        && let Some(defaults) = default_reminder_minutes
+        && !defaults.is_empty()
+    {
+        let mut minutes = defaults.to_vec();
+        minutes.sort_unstable();
+        minutes.dedup();
+        return Some(minutes);
+    }
+
+    None
 }
 
 /// Response from the events.list endpoint.
@@ -575,6 +635,7 @@ struct ApiEvent {
     attendees: Option<Vec<ApiAttendee>>,
     conference_data: Option<ApiConferenceData>,
     etag: Option<String>,
+    reminders: Option<ApiReminders>,
 }
 
 /// Event time from the API.
@@ -625,6 +686,31 @@ struct ApiEntryPoint {
     password: Option<String>,
 }
 
+/// Reminders settings on an event, as returned by the Calendar API.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiReminders {
+    /// Whether the event uses the calendar's default reminders. Google
+    /// omits this field on some events; it defaults to `true` in that case.
+    #[serde(default = "default_true")]
+    use_default: bool,
+    /// Explicit per-event reminder overrides (replaces calendar defaults
+    /// entirely when present).
+    overrides: Option<Vec<ApiReminderOverride>>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// A single reminder override (event- or calendar-level).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiReminderOverride {
+    method: String,
+    minutes: u32,
+}
+
 /// Response from the calendarList endpoint.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -652,6 +738,26 @@ pub struct CalendarListEntry {
     pub background_color: Option<String>,
     /// Foreground color.
     pub foreground_color: Option<String>,
+    /// The calendar's default reminders (used when an event's `reminders.useDefault` is true).
+    #[serde(default)]
+    default_reminders: Option<Vec<ApiReminderOverride>>,
+}
+
+impl CalendarListEntry {
+    /// Returns the calendar's default popup reminder minutes (sorted, deduped).
+    pub fn default_popup_reminder_minutes(&self) -> Vec<u32> {
+        let mut minutes: Vec<u32> = self
+            .default_reminders
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|o| o.method == "popup")
+            .map(|o| o.minutes)
+            .collect();
+        minutes.sort_unstable();
+        minutes.dedup();
+        minutes
+    }
 }
 
 #[cfg(test)]
@@ -759,5 +865,127 @@ mod tests {
         let url = client.event_url("work@example.com", "abc 123");
         assert!(url.contains("work%40example.com"));
         assert!(url.contains("abc%20123"));
+    }
+
+    fn sample_event_json(reminders: &str) -> String {
+        format!(
+            r#"{{
+                "id": "event1",
+                "summary": "Test Meeting",
+                "start": {{ "dateTime": "2024-03-15T10:00:00Z" }},
+                "end": {{ "dateTime": "2024-03-15T11:00:00Z" }},
+                "status": "confirmed",
+                "reminders": {reminders}
+            }}"#
+        )
+    }
+
+    #[test]
+    fn parse_event_with_popup_override() {
+        let json = sample_event_json(
+            r#"{ "useDefault": false, "overrides": [{ "method": "popup", "minutes": 10 }] }"#,
+        );
+        let event: ApiEvent = serde_json::from_str(&json).unwrap();
+        let reminders = event.reminders.unwrap();
+        assert!(!reminders.use_default);
+        assert_eq!(reminders.overrides.unwrap()[0].minutes, 10);
+    }
+
+    #[test]
+    fn resolve_reminder_minutes_prefers_explicit_popup_overrides() {
+        let reminders = ApiReminders {
+            use_default: true,
+            overrides: Some(vec![
+                ApiReminderOverride {
+                    method: "popup".to_string(),
+                    minutes: 10,
+                },
+                ApiReminderOverride {
+                    method: "email".to_string(),
+                    minutes: 30,
+                },
+            ]),
+        };
+
+        let resolved = resolve_reminder_minutes(Some(reminders), Some(&[15, 5, 1]));
+        assert_eq!(resolved, Some(vec![10]));
+    }
+
+    #[test]
+    fn resolve_reminder_minutes_falls_back_to_calendar_defaults() {
+        let reminders = ApiReminders {
+            use_default: true,
+            overrides: None,
+        };
+
+        let resolved = resolve_reminder_minutes(Some(reminders), Some(&[20, 10]));
+        assert_eq!(resolved, Some(vec![10, 20]));
+    }
+
+    #[test]
+    fn resolve_reminder_minutes_disabled_falls_back_to_none() {
+        // useDefault: false with no overrides means reminders were
+        // explicitly disabled for this event; callers fall back to their
+        // own default configuration.
+        let reminders = ApiReminders {
+            use_default: false,
+            overrides: None,
+        };
+
+        let resolved = resolve_reminder_minutes(Some(reminders), Some(&[20, 10]));
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn resolve_reminder_minutes_missing_field_returns_none() {
+        // No `reminders` field at all in the API response.
+        let resolved = resolve_reminder_minutes(None, Some(&[20, 10]));
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn resolve_reminder_minutes_use_default_without_calendar_defaults() {
+        let reminders = ApiReminders {
+            use_default: true,
+            overrides: None,
+        };
+
+        let resolved = resolve_reminder_minutes(Some(reminders), None);
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn convert_event_resolves_reminder_minutes_end_to_end() {
+        let client = GoogleCalendarClient::new("token", Duration::from_secs(1));
+        let json = sample_event_json(
+            r#"{ "useDefault": false, "overrides": [{ "method": "popup", "minutes": 10 }, { "method": "popup", "minutes": 2 }] }"#,
+        );
+        let api_event: ApiEvent = serde_json::from_str(&json).unwrap();
+
+        let raw = client
+            .convert_event(api_event, "primary", Some(&[15, 5, 1]))
+            .unwrap();
+
+        assert_eq!(raw.reminder_minutes, Some(vec![2, 10]));
+    }
+
+    #[test]
+    fn parse_calendar_list_default_reminders() {
+        let json = r#"{
+            "items": [
+                {
+                    "id": "primary",
+                    "summary": "My Calendar",
+                    "primary": true,
+                    "defaultReminders": [
+                        { "method": "popup", "minutes": 30 },
+                        { "method": "email", "minutes": 60 }
+                    ]
+                }
+            ]
+        }"#;
+
+        let response: CalendarListResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.items[0].default_popup_reminder_minutes(), vec![30]);
     }
 }

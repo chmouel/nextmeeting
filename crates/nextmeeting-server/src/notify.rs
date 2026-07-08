@@ -334,6 +334,20 @@ impl NotifyEngine {
         self.state.clone()
     }
 
+    /// Returns the effective notification thresholds (minutes-before-start)
+    /// to use for a given meeting.
+    ///
+    /// If the meeting carries resolved reminder minutes (from the calendar
+    /// provider's own reminder settings, e.g. Google's `reminders` field),
+    /// those take priority over the global configured thresholds. Otherwise
+    /// the global `notify_minutes` configuration is used as a fallback.
+    fn effective_notify_minutes<'a>(&'a self, meeting: &'a MeetingView) -> &'a [u32] {
+        match &meeting.reminder_minutes {
+            Some(minutes) if !minutes.is_empty() => minutes,
+            _ => &self.config.notify_minutes,
+        }
+    }
+
     /// Returns the configured start-soon thresholds whose notification
     /// window is currently open for a meeting.
     ///
@@ -344,8 +358,7 @@ impl NotifyEngine {
     /// [`check_and_notify`](Self::check_and_notify) by consolidating them
     /// into a single notification using the real remaining time.
     fn due_start_soon_thresholds(&self, meeting: &MeetingView, now: DateTime<Local>) -> Vec<u32> {
-        self.config
-            .notify_minutes
+        self.effective_notify_minutes(meeting)
             .iter()
             .copied()
             .filter(|&notify_minutes| {
@@ -778,6 +791,15 @@ mod tests {
     use chrono::Local;
 
     fn make_meeting(id: &str, title: &str, minutes_from_now: i64) -> MeetingView {
+        make_meeting_with_reminders(id, title, minutes_from_now, None)
+    }
+
+    fn make_meeting_with_reminders(
+        id: &str,
+        title: &str,
+        minutes_from_now: i64,
+        reminder_minutes: Option<Vec<u32>>,
+    ) -> MeetingView {
         let start = Local::now() + chrono::Duration::minutes(minutes_from_now);
         MeetingView {
             id: id.to_string(),
@@ -796,6 +818,7 @@ mod tests {
             location: None,
             description: None,
             attendees: vec![],
+            reminder_minutes,
         }
     }
 
@@ -937,6 +960,43 @@ mod tests {
         let meeting = make_meeting("1", "Test", -1); // started a minute ago
         let due = engine.due_start_soon_thresholds(&meeting, Local::now());
         assert!(due.is_empty());
+    }
+
+    #[test]
+    fn due_start_soon_thresholds_uses_per_event_reminder_minutes_over_config() {
+        // The global config would fire at 15/5/1, but this event carries its
+        // own popup reminder minutes (e.g. resolved from Google Calendar's
+        // `reminders` field), which must take priority.
+        let config = NotifyConfig::new(vec![15, 5, 1]).with_enabled(true);
+        let engine = NotifyEngine::new(config);
+
+        let meeting = make_meeting_with_reminders("1", "Test", 10, Some(vec![10]));
+        let due = engine.due_start_soon_thresholds(&meeting, Local::now());
+        assert_eq!(due, vec![10]);
+    }
+
+    #[test]
+    fn due_start_soon_thresholds_falls_back_to_config_when_reminders_disabled() {
+        // `None` represents reminders that were explicitly disabled (or
+        // otherwise unresolved) for the event; the global config is used.
+        let config = NotifyConfig::new(vec![15, 5, 1]).with_enabled(true);
+        let engine = NotifyEngine::new(config);
+
+        let meeting = make_meeting_with_reminders("1", "Test", 12, None);
+        let due = engine.due_start_soon_thresholds(&meeting, Local::now());
+        assert_eq!(due, vec![15]);
+    }
+
+    #[test]
+    fn due_start_soon_thresholds_falls_back_to_config_when_reminders_empty() {
+        // An empty (but present) reminder list also falls back to the
+        // global config, rather than silently notifying never.
+        let config = NotifyConfig::new(vec![15, 5, 1]).with_enabled(true);
+        let engine = NotifyEngine::new(config);
+
+        let meeting = make_meeting_with_reminders("1", "Test", 12, Some(vec![]));
+        let due = engine.due_start_soon_thresholds(&meeting, Local::now());
+        assert_eq!(due, vec![15]);
     }
 
     #[test]

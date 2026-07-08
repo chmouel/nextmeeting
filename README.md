@@ -141,6 +141,17 @@ The daemon's cadence may be tuned in the `[server]` section:
 Notifications run on their own ticker, independent of the sync interval, so
 short-fuse reminders arrive punctually even with a leisurely sync cadence.
 
+### Notification timing
+
+For Google Calendar events, NextMeeting reads the event's own `reminders`
+setting (popup reminders configured in Google Calendar, on by default) and
+uses those minutes-before-start values in preference to the global
+`notifications.minutes_before` configuration. If an event has explicit
+reminder overrides, those are used; if it relies on the calendar's default
+reminders, those defaults are resolved and used instead. Only when an event
+has disabled reminders altogether, or none can be resolved (e.g. non-Google
+providers), does NextMeeting fall back to `notifications.minutes_before`.
+
 ## Environment Variables
 
 - `NEXTMEETING_CONFIG`
