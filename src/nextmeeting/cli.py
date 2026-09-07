@@ -265,7 +265,9 @@ class MeetingFormatter:
         elif deltad.days < 0 or deltad.hours < 0 or deltad.minutes < 0:
             s = "Now"
         elif (
-            deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
+            not deltad.days
+            and not deltad.hours
+            and deltad.minutes <= NOTIFY_MIN_BEFORE_EVENTS
             and self.args.notify_min_color
             and self.args.waybar
         ):
@@ -274,7 +276,7 @@ class MeetingFormatter:
                 f'color="{self.args.notify_min_color_foreground}">'
                 f"{deltad.minutes}</span>"
             )
-            s = "Now 🏃" if number == 0 else f"In {number} minutes"
+            s = "Now 🏃" if deltad.minutes == 0 else f"In {number} minutes"
         else:
             parts = []
             if deltad.days:

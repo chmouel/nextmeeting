@@ -152,3 +152,27 @@ def test_ellipsis_strips_html_tags():
     result = ellipsis("<span>Hello</span> World", 15)
     assert "<span>" not in result
     assert "Hello World" in result or "Hello Wor..." in result
+
+
+def test_format_time_until_exactly_one_hour_away():
+    """Meeting exactly 1 hour away should show 'In 1 hour', not 'In 0 minutes'."""
+    now = datetime.datetime.now().replace(second=0, microsecond=0)
+    m = _meeting("Sync", now + datetime.timedelta(hours=1), now + datetime.timedelta(hours=2))
+    args = _args(waybar=True)
+    fmt = MeetingFormatter(args)
+    fmt.today = now
+    text, css = fmt.format_meeting(m)
+    assert "0 minute" not in text
+    assert "1 hour" in text
+    assert css != "soon"
+
+
+def test_format_time_until_exactly_two_hours_zero_minutes():
+    """Meeting 2 hours away should not enter the 'soon' branch."""
+    now = datetime.datetime.now().replace(second=0, microsecond=0)
+    m = _meeting("Later", now + datetime.timedelta(hours=2), now + datetime.timedelta(hours=3))
+    args = _args(waybar=True)
+    fmt = MeetingFormatter(args)
+    fmt.today = now
+    text, _ = fmt.format_meeting(m)
+    assert "0 minute" not in text
