@@ -1,5 +1,5 @@
 > [!WARNING]
-> This project is maintenance only, i have moved to another project [waymeet](https://github.com/chmouel/waymeet) which use a more robust server/client model
+> This project is maintenance only, i have moved to another project [waymeet](https://github.com/chmouel/waymeet) which use a more robust server/client model. (but waymeet wsa vibecoded while this one was made way before vibecoding was a thing
 
 # nextmeeting: Calendar Widget for Waybar and Polybar
 
